@@ -31,9 +31,11 @@ function runSeed(): void {
   const staffData = [
     { email: 'admin@clinica-tanah.com.br', full_name: 'Dra. Helena Tanaka', role: 'admin', cpf: '11122233396' },
     { email: 'dpo@clinica-tanah.com.br', full_name: 'Dr. Marcos Vieira (DPO)', role: 'dpo', cpf: '22233344405' },
-    { email: 'silva@clinica-tanah.com.br', full_name: 'Dr. Roberto Silva', role: 'doctor', cpf: '33344455514' },
-    { email: 'santos@clinica-tanah.com.br', full_name: 'Dra. Beatriz Santos', role: 'doctor', cpf: '44455566623' },
-    { email: 'oliveira@clinica-tanah.com.br', full_name: 'Dr. Carlos Oliveira', role: 'doctor', cpf: '55566677732' },
+    { email: 'dermato@clinica-tanah.com.br', full_name: 'Dra. Beatriz Santos', role: 'doctor', cpf: '44455566623' },
+    { email: 'transplante@clinica-tanah.com.br', full_name: 'Dr. Roberto Silva', role: 'doctor', cpf: '33344455514' },
+    { email: 'endocrino@clinica-tanah.com.br', full_name: 'Dr. Carlos Oliveira', role: 'doctor', cpf: '55566677732' },
+    { email: 'gineco@clinica-tanah.com.br', full_name: 'Dra. Fernanda Lima', role: 'doctor', cpf: '11144477735' },
+    { email: 'nutri@clinica-tanah.com.br', full_name: 'Dra. Patrícia Rocha', role: 'doctor', cpf: '11155588896' },
     { email: 'ana.enf@clinica-tanah.com.br', full_name: 'Ana Paula Ferreira', role: 'nurse', cpf: '66677788841' },
     { email: 'mariana@clinica-tanah.com.br', full_name: 'Mariana Costa', role: 'receptionist', cpf: '77788899950' },
     { email: 'contabil@clinica-tanah.com.br', full_name: 'João Mendes', role: 'accountant', cpf: '88899900069' },
@@ -111,16 +113,18 @@ function runSeed(): void {
   // Employees
   const employees = [
     { name: 'Dra. Helena Tanaka', cpf: '11122233396', role: 'admin', salary: 22000, dep: 2 },
-    { name: 'Dr. Roberto Silva', cpf: '33344455514', role: 'doctor', salary: 18500, dep: 1 },
-    { name: 'Dra. Beatriz Santos', cpf: '44455566623', role: 'doctor', salary: 19200, dep: 0 },
-    { name: 'Dr. Carlos Oliveira', cpf: '55566677732', role: 'doctor', salary: 17800, dep: 3 },
+    { name: 'Dra. Beatriz Santos', cpf: '44455566623', role: 'doctor', salary: 19200, dep: 0, spec: 'Dermatologia' },
+    { name: 'Dr. Roberto Silva', cpf: '33344455514', role: 'doctor', salary: 28000, dep: 1, spec: 'Transplante Capilar' },
+    { name: 'Dr. Carlos Oliveira', cpf: '55566677732', role: 'doctor', salary: 17800, dep: 3, spec: 'Endocrinologia' },
+    { name: 'Dra. Fernanda Lima', cpf: '11144477735', role: 'doctor', salary: 19500, dep: 1, spec: 'Ginecologia' },
+    { name: 'Dra. Patrícia Rocha', cpf: '11155588896', role: 'doctor', salary: 9500, dep: 0, spec: 'Nutrição' },
     { name: 'Ana Paula Ferreira', cpf: '66677788841', role: 'nurse', salary: 4800, dep: 1 },
     { name: 'Mariana Costa', cpf: '77788899950', role: 'receptionist', salary: 3200, dep: 0 },
     { name: 'João Mendes', cpf: '88899900069', role: 'accountant', salary: 6500, dep: 2 },
     { name: 'Patrícia Almeida', cpf: '99900011178', role: 'pharmacist', salary: 5800, dep: 1 },
   ];
   const insE = db.prepare(`INSERT INTO employees (id, full_name, cpf, role, admission_date, base_salary, dependents) VALUES (?,?,?,?,?,?,?)`);
-  for (const e of employees) insE.run(uuid(), e.name, e.cpf, e.role, '2024-01-15', e.salary, e.dep);
+  for (const e of employees) insE.run(uuid(), e.name, e.cpf, (e as any).spec || e.role, '2024-01-15', e.salary, e.dep);
 
   // Chart of accounts (minimal)
   const accounts = [

@@ -10,5 +10,8 @@
     "build": "npm run install:all && npm run build:frontend && npm run build:backend",
     "seed": "cd backend && npm run seed",
     "start": "cd backend && npm start"
+  },
+  "dependencies": {
+    "playwright": "^1.62.1"
   }
 }

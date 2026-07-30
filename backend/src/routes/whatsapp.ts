@@ -13,12 +13,11 @@ import { sendTextMessage, persistIncoming, getOrCreateConversation, updateConver
 const router = Router();
 
 const SPECIALTIES = [
-  { code: 'general', name: 'Clínica Geral' },
-  { code: 'cardio', name: 'Cardiologia' },
-  { code: 'derma', name: 'Dermatologia' },
+  { code: 'dermato', name: 'Dermatologia' },
+  { code: 'transplante_capilar', name: 'Transplante Capilar' },
+  { code: 'endocrino', name: 'Endocrinologia' },
   { code: 'gineco', name: 'Ginecologia' },
-  { code: 'pediatria', name: 'Pediatria' },
-  { code: 'orto', name: 'Ortopedia' },
+  { code: 'nutri', name: 'Nutrição' },
 ];
 
 function detectUserLocale(text: string): Locale {
@@ -162,10 +161,23 @@ async function handleMessage(phone: string, body: string, locale: Locale): Promi
         }
       }
       if (!date) { await reply(phone, locale, 'ask_date'); return; }
-      // Find a practitioner matching the specialty (use first available doctor)
-      const practitioner = db.prepare(`
-        SELECT id, full_name FROM users WHERE role = 'doctor' AND active = 1 LIMIT 1
-      `).get() as any;
+      // Map specialty code to practitioner email prefix
+      const specialtyMap: Record<string, string> = {
+        'dermato': 'dermato@',
+        'transplante_capilar': 'transplante@',
+        'endocrino': 'endocrino@',
+        'gineco': 'gineco@',
+        'nutri': 'nutri@',
+      };
+      const emailPrefix = specialtyMap[ctx.specialty];
+      let practitioner: any;
+      if (emailPrefix) {
+        practitioner = db.prepare(`SELECT id, full_name FROM users WHERE role = 'doctor' AND active = 1 AND email LIKE ? LIMIT 1`).get(`${emailPrefix}%`) as any;
+      }
+      if (!practitioner) {
+        // Fallback: any active doctor
+        practitioner = db.prepare(`SELECT id, full_name FROM users WHERE role = 'doctor' AND active = 1 LIMIT 1`).get() as any;
+      }
       if (!practitioner) {
         await reply(phone, locale, 'not_found');
         return;

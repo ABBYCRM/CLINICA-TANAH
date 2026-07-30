@@ -286,7 +286,7 @@
     "lgpd_consent_granted": "Consentimento registrado. Obrigado!",
     "lgpd_optout_confirmed": "Você foi removido das nossas listas. Respeitamos sua decisão. Para reativar, é só pedir.",
     "bot_menu": "Olá! Sou o assistente da {{clinic}}. Como posso ajudar?\n\n1️⃣ Agendar consulta\n2️⃣ Ver minhas consultas\n3️⃣ Cancelar consulta\n4️⃣ Falar com a recepção\n5️⃣ Remover meus dados (LGPD)\n\nResponda o número da opção desejada.",
-    "ask_specialty": "Qual especialidade você precisa? Digite o número:\n\n1️⃣ Clínica Geral\n2️⃣ Cardiologia\n3️⃣ Dermatologia\n4️⃣ Ginecologia\n5️⃣ Pediatria\n6️⃣ Ortopedia",
+    "ask_specialty": "Qual especialidade você precisa? Digite o número:\n\n1️⃣ Dermatologia\n2️⃣ Transplante Capilar\n3️⃣ Endocrinologia\n4️⃣ Ginecologia\n5️⃣ Nutrição",
     "ask_date": "Qual dia você prefere? Responda com a data (DD/MM) ou digite AMANHÃ.",
     "ask_time": "Que horário é melhor? Responda MANHÃ, TARDE ou NOITE.",
     "ask_cpf": "Para confirmar, informe seu CPF (somente números).",
