@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: clinica-tanah
+    runtime: node
+    rootDir: backend
+    plan: free
+    autoDeploy: false
+    buildCommand: cd .. && npm install:all && npm run build:frontend && cd backend && npm run build
+    startCommand: node dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: META_WA_VERIFY_TOKEN
+        value: clinica-tanah-verify
+      - key: DEFAULT_LOCALE
+        value: pt-BR

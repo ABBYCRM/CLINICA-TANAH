@@ -1,0 +1,203 @@
+import { Router, Request, Response } from 'express';
+import { v4 as uuid } from 'uuid';
+import { z } from 'zod';
+import { db } from '../db/schema';
+import { authenticate, requireRole } from '../middleware/auth';
+import { logAudit, recordConsent, hasActiveConsent } from '../services/audit';
+
+const router = Router();
+
+const patientSchema = z.object({
+  full_name: z.string().min(1),
+  social_name: z.string().optional().nullable(),
+  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  cpf: z.string().regex(/^\d{11}$/).optional().nullable(),
+  rg: z.string().optional().nullable(),
+  gender: z.string().optional().nullable(),
+  phone: z.string().min(8),
+  email: z.string().email().optional().nullable(),
+  address_zip: z.string().optional().nullable(),
+  address_street: z.string().optional().nullable(),
+  address_number: z.string().optional().nullable(),
+  address_complement: z.string().optional().nullable(),
+  address_neighborhood: z.string().optional().nullable(),
+  address_city: z.string().optional().nullable(),
+  address_state: z.string().optional().nullable(),
+  health_insurance: z.string().optional().nullable(),
+  health_insurance_number: z.string().optional().nullable(),
+  blood_type: z.string().optional().nullable(),
+  allergies: z.array(z.string()).optional().default([]),
+  chronic_conditions: z.array(z.string()).optional().default([]),
+  medications_in_use: z.array(z.string()).optional().default([]),
+  emergency_contact_name: z.string().optional().nullable(),
+  emergency_contact_phone: z.string().optional().nullable(),
+  lgpd_consent_granted: z.boolean().optional().default(false),
+  lgpd_policy_version: z.string().optional().default('1.0'),
+});
+
+router.use(authenticate);
+
+// List patients — with search and pagination
+router.get('/', (req: Request, res: Response) => {
+  const q = (req.query.q as string || '').trim();
+  const limit = Math.min(parseInt(req.query.limit as string || '50'), 200);
+  const offset = parseInt(req.query.offset as string || '0');
+  let rows: any[];
+  if (q) {
+    const like = `%${q}%`;
+    rows = db.prepare(`
+      SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
+      FROM patients
+      WHERE full_name LIKE ? OR cpf LIKE ? OR phone LIKE ?
+      ORDER BY full_name ASC LIMIT ? OFFSET ?
+    `).all(like, like, like, limit, offset);
+  } else {
+    rows = db.prepare(`
+      SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
+      FROM patients ORDER BY full_name ASC LIMIT ? OFFSET ?
+    `).all(limit, offset);
+  }
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM patients`).get() as any).c;
+  res.json({ patients: rows, total });
+});
+
+// Get single patient — audit logged (PHI access)
+router.get('/:id', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'view_patient_phi', resourceType: 'patient', resourceId: p.id,
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({ patient: p });
+});
+
+// Create patient — LGPD consent is mandatory
+router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const parsed = patientSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'validation', details: parsed.error.flatten() });
+    return;
+  }
+  const d = parsed.data;
+  if (!d.lgpd_consent_granted) {
+    res.status(400).json({ error: 'lgpd_consent_required' });
+    return;
+  }
+  const id = uuid();
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO patients (id, full_name, social_name, birth_date, cpf, rg, gender, phone, email,
+                          address_zip, address_street, address_number, address_complement,
+                          address_neighborhood, address_city, address_state,
+                          health_insurance, health_insurance_number, blood_type,
+                          allergies, chronic_conditions, medications_in_use,
+                          emergency_contact_name, emergency_contact_phone,
+                          lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version,
+                          created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    id, d.full_name, d.social_name ?? null, d.birth_date, d.cpf ?? null, d.rg ?? null,
+    d.gender ?? null, d.phone, d.email ?? null,
+    d.address_zip ?? null, d.address_street ?? null, d.address_number ?? null, d.address_complement ?? null,
+    d.address_neighborhood ?? null, d.address_city ?? null, d.address_state ?? null,
+    d.health_insurance ?? null, d.health_insurance_number ?? null, d.blood_type ?? null,
+    JSON.stringify(d.allergies), JSON.stringify(d.chronic_conditions), JSON.stringify(d.medications_in_use),
+    d.emergency_contact_name ?? null, d.emergency_contact_phone ?? null,
+    now, req.ip ?? null, d.lgpd_policy_version,
+    now, now
+  );
+  // Record formal LGPD consent
+  recordConsent({
+    subjectType: 'patient', subjectId: id,
+    consentType: 'health_data_processing',
+    granted: true, policyVersion: d.lgpd_policy_version,
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    evidence: 'Consentimento fornecido durante o cadastro presencial/telefônico.',
+  });
+  if (d.phone) {
+    recordConsent({
+      subjectType: 'patient', subjectId: id,
+      consentType: 'whatsapp_communication',
+      granted: true, policyVersion: d.lgpd_policy_version,
+      ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+      evidence: 'Consentimento WhatsApp fornecido no cadastro.',
+    });
+  }
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'create_patient', resourceType: 'patient', resourceId: id,
+    afterValue: { full_name: d.full_name, cpf: d.cpf },
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: 'consent_art7_I',
+  });
+  res.status(201).json({ id });
+});
+
+// Update patient
+router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const before = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id) as any;
+  if (!before) { res.status(404).json({ error: 'not_found' }); return; }
+  const parsed = patientSchema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  const d = parsed.data;
+  const allowed = [
+    'full_name','social_name','birth_date','cpf','rg','gender','phone','email',
+    'address_zip','address_street','address_number','address_complement',
+    'address_neighborhood','address_city','address_state',
+    'health_insurance','health_insurance_number','blood_type',
+    'allergies','chronic_conditions','medications_in_use',
+    'emergency_contact_name','emergency_contact_phone',
+  ];
+  const sets: string[] = [];
+  const args: any[] = [];
+  for (const k of allowed) {
+    if ((d as any)[k] !== undefined) {
+      sets.push(`${k} = ?`);
+      let v = (d as any)[k];
+      if (['allergies','chronic_conditions','medications_in_use'].includes(k) && Array.isArray(v)) {
+        v = JSON.stringify(v);
+      }
+      args.push(v);
+    }
+  }
+  if (sets.length === 0) { res.json({ ok: true, noop: true }); return; }
+  sets.push(`updated_at = ?`);
+  args.push(new Date().toISOString());
+  args.push(req.params.id);
+  db.prepare(`UPDATE patients SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'update_patient', resourceType: 'patient', resourceId: req.params.id,
+    beforeValue: { full_name: before.full_name },
+    afterValue: { full_name: d.full_name ?? before.full_name },
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({ ok: true });
+});
+
+// Patient LGPD data export (portability)
+router.get('/:id/data-export', requireRole('admin', 'patient', 'doctor'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id);
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const encounters = db.prepare(`SELECT * FROM encounters WHERE patient_id = ? ORDER BY started_at DESC`).all(req.params.id);
+  const prescriptions = db.prepare(`SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC`).all(req.params.id);
+  const appointments = db.prepare(`SELECT * FROM appointments WHERE patient_id = ? ORDER BY scheduled_at DESC`).all(req.params.id);
+  const consents = db.prepare(`SELECT * FROM lgpd_consents WHERE subject_type='patient' AND subject_id = ? ORDER BY granted_at DESC`).all(req.params.id);
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'lgpd_data_portability_export',
+    resourceType: 'patient', resourceId: req.params.id,
+    legalBasis: 'consent_art7_I',
+  });
+  res.json({
+    patient: p, encounters, prescriptions, appointments, consents,
+    generated_at: new Date().toISOString(),
+    legal_basis: 'LGPD art. 18, V — direito de portabilidade',
+  });
+});
+
+export default router;
