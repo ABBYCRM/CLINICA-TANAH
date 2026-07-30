@@ -1,0 +1,336 @@
+/**
+ * Seed realistic Clínica Tanah São Paulo data.
+ * Run with: npx tsx src/db/seed.ts
+ */
+import bcrypt from 'bcryptjs';
+import { v4 as uuid } from 'uuid';
+import { db, initSchema } from './schema';
+import { recordConsent } from '../services/audit';
+
+initSchema();
+
+console.log('🌱 Seeding Clínica Tanah...');
+
+const now = new Date();
+const today = now.toISOString().slice(0, 10);
+const monthAgo = new Date(Date.now() - 30*86400000).toISOString().slice(0, 10);
+
+// Wipe and reseed (idempotent for development)
+db.exec(`
+  DELETE FROM audit_log;
+  DELETE FROM lgpd_data_requests;
+  DELETE FROM lgpd_consents;
+  DELETE FROM whatsapp_messages;
+  DELETE FROM whatsapp_conversations;
+  DELETE FROM payslips;
+  DELETE FROM payroll_runs;
+  DELETE FROM employees;
+  DELETE FROM users;
+  DELETE FROM invoice_lines;
+  DELETE FROM invoices;
+  DELETE FROM journal_lines;
+  DELETE FROM journal_entries;
+  DELETE FROM chart_of_accounts;
+  DELETE FROM purchase_order_lines;
+  DELETE FROM purchase_orders;
+  DELETE FROM stock_movements;
+  DELETE FROM inventory_batches;
+  DELETE FROM inventory_items;
+  DELETE FROM vendors;
+  DELETE FROM prescriptions;
+  DELETE FROM encounters;
+  DELETE FROM appointments;
+  DELETE FROM patients;
+  DELETE FROM settings;
+`);
+
+// USERS / STAFF
+const staffData = [
+  { email: 'admin@clinica-tanah.com.br', full_name: 'Dra. Helena Tanaka', role: 'admin', cpf: '11122233396', council_number: 'CRM-SP 123456', council_state: 'SP' },
+  { email: 'dpo@clinica-tanah.com.br', full_name: 'Dr. Marcos Vieira (DPO)', role: 'dpo', cpf: '22233344405', council_number: 'OAB-SP 234567', council_state: 'SP' },
+  { email: 'silva@clinica-tanah.com.br', full_name: 'Dr. Roberto Silva', role: 'doctor', cpf: '33344455514', council_number: 'CRM-SP 145678', council_state: 'SP' },
+  { email: 'santos@clinica-tanah.com.br', full_name: 'Dra. Beatriz Santos', role: 'doctor', cpf: '44455566623', council_number: 'CRM-SP 156789', council_state: 'SP' },
+  { email: 'oliveira@clinica-tanah.com.br', full_name: 'Dr. Carlos Oliveira', role: 'doctor', cpf: '55566677732', council_number: 'CRM-SP 167890', council_state: 'SP' },
+  { email: 'ana.enf@clinica-tanah.com.br', full_name: 'Ana Paula Ferreira', role: 'nurse', cpf: '66677788841', council_number: 'COREN-SP 234567', council_state: 'SP' },
+  { email: 'mariana@clinica-tanah.com.br', full_name: 'Mariana Costa', role: 'receptionist', cpf: '77788899950', council_number: null, council_state: null },
+  { email: 'contabil@clinica-tanah.com.br', full_name: 'João Mendes', role: 'accountant', cpf: '88899900069', council_number: 'CRC-SP 1SP234567', council_state: 'SP' },
+  { email: 'farmacia@clinica-tanah.com.br', full_name: 'Patrícia Almeida', role: 'pharmacist', cpf: '99900011178', council_number: 'CRF-SP 45678', council_state: 'SP' },
+];
+
+const userIds: Record<string, string> = {};
+const passwordHash = bcrypt.hashSync('clinica2026', 10);
+const insertUser = db.prepare(`
+  INSERT INTO users (id, email, password_hash, full_name, role, cpf, council_number, council_state, active)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+`);
+for (const u of staffData) {
+  const id = uuid();
+  userIds[u.email] = id;
+  insertUser.run(id, u.email, passwordHash, u.full_name, u.role, u.cpf, u.council_number, u.council_state);
+}
+console.log(`  ✓ ${staffData.length} users`);
+
+// PATIENTS — realistic São Paulo patients
+const patientData = [
+  { full_name: 'José Carlos Pereira', cpf: '12345678901', birth_date: '1972-04-15', gender: 'M', phone: '+5511987654321', email: 'jose.pereira@email.com', address_neighborhood: 'Pinheiros', health_insurance: 'Amil', blood_type: 'O+', allergies: ['Penicilina'], chronic_conditions: ['Hipertensão', 'Diabetes tipo 2'] },
+  { full_name: 'Maria Aparecida Silva', cpf: '23456789012', birth_date: '1958-09-22', gender: 'F', phone: '+5511956781234', email: 'maria.aparecida@email.com', address_neighborhood: 'Vila Mariana', health_insurance: 'SulAmérica', blood_type: 'A+', allergies: [], chronic_conditions: ['Osteoporose'] },
+  { full_name: 'Pedro Henrique Souza', cpf: '34567890123', birth_date: '1990-12-03', gender: 'M', phone: '+5511934567890', email: 'pedro.souza@email.com', address_neighborhood: 'Moema', health_insurance: 'Bradesco Saúde', blood_type: 'B+', allergies: ['Frutos do mar'], chronic_conditions: [] },
+  { full_name: 'Ana Beatriz Lima', cpf: '45678901234', birth_date: '1985-06-18', gender: 'F', phone: '+5511923456789', email: 'ana.lima@email.com', address_neighborhood: 'Itaim Bibi', health_insurance: 'Amil', blood_type: 'AB+', allergies: [], chronic_conditions: ['Asma leve'] },
+  { full_name: 'Lucas Oliveira Santos', cpf: '56789012345', birth_date: '2015-03-25', gender: 'M', phone: '+5511912345678', email: 'pais.lucas@email.com', address_neighborhood: 'Tatuapé', health_insurance: 'NotreDame Intermédica', blood_type: 'O+', allergies: ['Amendoim'], chronic_conditions: [] },
+  { full_name: 'Fernanda Costa Rodrigues', cpf: '67890123456', birth_date: '1992-11-08', gender: 'F', phone: '+5511901234567', email: 'fernanda.costa@email.com', address_neighborhood: 'Perdizes', health_insurance: 'Particular', blood_type: 'A-', allergies: [], chronic_conditions: [] },
+  { full_name: 'Ricardo Almeida Filho', cpf: '78901234567', birth_date: '1965-07-30', gender: 'M', phone: '+5511989012345', email: 'ricardo.almeida@email.com', address_neighborhood: 'Brooklin', health_insurance: 'SulAmérica', blood_type: 'O-', allergies: ['Sulfas'], chronic_conditions: ['Hipertensão', 'Colesterol alto'] },
+  { full_name: 'Camila Mendes Pereira', cpf: '89012345678', birth_date: '1988-02-14', gender: 'F', phone: '+5511978901234', email: 'camila.mendes@email.com', address_neighborhood: 'Lapa', health_insurance: 'Hapvida', blood_type: 'B-', allergies: [], chronic_conditions: [] },
+  { full_name: 'Gabriel Ferreira Costa', cpf: '90123456789', birth_date: '2001-08-09', gender: 'M', phone: '+5511967890123', email: 'gabriel.ferreira@email.com', address_neighborhood: 'Santana', health_insurance: 'Particular', blood_type: 'A+', allergies: [], chronic_conditions: [] },
+  { full_name: 'Juliana Ribeiro Martins', cpf: '01234567890', birth_date: '1979-10-21', gender: 'F', phone: '+5511956789012', email: 'juliana.ribeiro@email.com', address_neighborhood: 'Campo Belo', health_insurance: 'Amil', blood_type: 'AB-', allergies: ['Iodo'], chronic_conditions: ['Hipotireoidismo'] },
+];
+
+const patientIds: string[] = [];
+const insertPatient = db.prepare(`
+  INSERT INTO patients (id, full_name, birth_date, cpf, rg, gender, phone, email, address_zip, address_street, address_number, address_neighborhood, address_city, address_state, health_insurance, health_insurance_number, blood_type, allergies, chronic_conditions, medications_in_use, emergency_contact_name, emergency_contact_phone, lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version, created_at, updated_at)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+`);
+for (const p of patientData) {
+  const id = uuid();
+  patientIds.push(id);
+  insertPatient.run(
+    id, p.full_name, p.birth_date, p.cpf, `${Math.floor(Math.random()*9+1)}${Math.floor(Math.random()*99999999)}`,
+    p.gender, p.phone, p.email,
+    '01310-100', 'Rua Augusta', `${1000 + Math.floor(Math.random()*900)}`,
+    p.address_neighborhood, 'São Paulo', 'SP',
+    p.health_insurance, `${Math.floor(Math.random()*999999999)}`, p.blood_type,
+    JSON.stringify(p.allergies), JSON.stringify(p.chronic_conditions), JSON.stringify([]),
+    'Familiar', '+5511900000000', now.toISOString(), '127.0.0.1', '1.0', now.toISOString(), now.toISOString()
+  );
+  // Record LGPD consent
+  recordConsent({
+    subjectType: 'patient', subjectId: id, consentType: 'health_data_processing',
+    granted: true, policyVersion: '1.0', ipAddress: '127.0.0.1',
+    evidence: 'Cadastro presencial com assinatura digital do termo de consentimento.',
+  });
+  recordConsent({
+    subjectType: 'patient', subjectId: id, consentType: 'whatsapp_communication',
+    granted: true, policyVersion: '1.0', ipAddress: '127.0.0.1',
+    evidence: 'Consentimento WhatsApp registrado no cadastro.',
+  });
+}
+console.log(`  ✓ ${patientData.length} patients with LGPD consent`);
+
+// VENDORS — distributors, labs, suppliers
+const vendorData = [
+  { legal_name: 'MedSupply Distribuidora de Medicamentos Ltda', trade_name: 'MedSupply', cnpj: '11222333000181', contact_name: 'Carlos Mendes', phone: '+551133334444', email: 'vendas@medsupply.com.br', anvisa_license: 'AFE 1.23456.7', address_city: 'São Paulo', address_state: 'SP' },
+  { legal_name: 'FarmaCorp Comercial Farmacêutica S.A.', trade_name: 'FarmaCorp', cnpj: '22333444000192', contact_name: 'Renata Oliveira', phone: '+551133445555', email: 'comercial@farmacorp.com.br', anvisa_license: 'AFE 2.34567.8', address_city: 'Guarulhos', address_state: 'SP' },
+  { legal_name: 'LabDiagnósticos Importação e Distribuição Ltda', trade_name: 'LabDiagnósticos', cnpj: '33444555000103', contact_name: 'Felipe Rocha', phone: '+551133556666', email: 'contato@labdiag.com.br', anvisa_license: 'AFE 3.45678.9', address_city: 'São Paulo', address_state: 'SP' },
+  { legal_name: 'HospClean Materiais Hospitalares ME', trade_name: 'HospClean', cnpj: '44555666000114', contact_name: 'Sandra Lima', phone: '+551133667777', email: 'vendas@hospclean.com.br', anvisa_license: null, address_city: 'Osasco', address_state: 'SP' },
+  { legal_name: 'Energia Elétrica SP S.A.', trade_name: 'Enel São Paulo', cnpj: '61695255000114', contact_name: 'Atendimento', phone: '0800-7272-120', email: 'atendimento@enel.com', anvisa_license: null, address_city: 'São Paulo', address_state: 'SP' },
+];
+const vendorIds: string[] = [];
+const insertVendor = db.prepare(`
+  INSERT INTO vendors (id, legal_name, trade_name, cnpj, phone, email, contact_name, anvisa_license, address_city, address_state, active)
+  VALUES (?,?,?,?,?,?,?,?,?,?,1)
+`);
+for (const v of vendorData) {
+  const id = uuid();
+  vendorIds.push(id);
+  insertVendor.run(id, v.legal_name, v.trade_name, v.cnpj, v.phone, v.email, v.contact_name, v.anvisa_license, v.address_city, v.address_state);
+}
+console.log(`  ✓ ${vendorData.length} vendors`);
+
+// INVENTORY ITEMS
+const itemsData = [
+  { sku: 'MED-001', name: 'Dipirona Sódica 500mg (caixa c/ 20 cp)', category: 'medication', unit: 'caixa', anvisa_registry: '1.0043.0011.001-1', min_stock: 10, max_stock: 100, unit_cost: 8.50, sale_price: 15.00 },
+  { sku: 'MED-002', name: 'Paracetamol 750mg (caixa c/ 20 cp)', category: 'medication', unit: 'caixa', anvisa_registry: '1.0043.0012.002-2', min_stock: 15, max_stock: 150, unit_cost: 6.20, sale_price: 12.00 },
+  { sku: 'MED-003', name: 'Amoxicilina 500mg (caixa c/ 21 cp)', category: 'medication', unit: 'caixa', anvisa_registry: '1.0107.0234.003-3', min_stock: 8, max_stock: 80, unit_cost: 22.00, sale_price: 45.00 },
+  { sku: 'MED-004', name: 'Ibuprofeno 400mg (caixa c/ 20 cp)', category: 'medication', unit: 'caixa', anvisa_registry: '1.0107.0235.004-4', min_stock: 10, max_stock: 100, unit_cost: 12.00, sale_price: 22.00 },
+  { sku: 'MED-005', name: 'Losartana Potássica 50mg (caixa c/ 30 cp)', category: 'medication', unit: 'caixa', anvisa_registry: '1.0535.0145.005-5', min_stock: 20, max_stock: 200, unit_cost: 18.00, sale_price: 35.00 },
+  { sku: 'MED-006', name: 'Metformina 850mg (caixa c/ 30 cp)', category: 'medication', unit: 'caixa', anvisa_registry: '1.0535.0146.006-6', min_stock: 15, max_stock: 150, unit_cost: 14.00, sale_price: 28.00 },
+  { sku: 'MED-007', name: 'Soro Fisiológico 0,9% 500ml', category: 'medication', unit: 'frasco', anvisa_registry: '1.0043.0098.007-7', min_stock: 25, max_stock: 200, unit_cost: 4.50, sale_price: 9.00 },
+  { sku: 'CON-001', name: 'Luva de Látex Tam M (caixa c/ 100)', category: 'consumable', unit: 'caixa', anvisa_registry: '8.1234.5678.001-1', min_stock: 10, max_stock: 80, unit_cost: 28.00, sale_price: 0 },
+  { sku: 'CON-002', name: 'Máscara Cirúrgica Descartável (caixa c/ 50)', category: 'consumable', unit: 'caixa', anvisa_registry: '8.1234.5678.002-2', min_stock: 20, max_stock: 200, unit_cost: 12.00, sale_price: 0 },
+  { sku: 'CON-003', name: 'Seringa Descartável 10ml (unidade)', category: 'consumable', unit: 'unidade', anvisa_registry: '8.1234.5678.003-3', min_stock: 100, max_stock: 1000, unit_cost: 0.50, sale_price: 0 },
+  { sku: 'CON-004', name: 'Algodão Hidrófilo 500g', category: 'consumable', unit: 'pacote', anvisa_registry: '8.1234.5678.004-4', min_stock: 5, max_stock: 30, unit_cost: 14.00, sale_price: 0 },
+  { sku: 'CON-005', name: 'Álcool Etílico 70% 1L', category: 'consumable', unit: 'frasco', anvisa_registry: '3.0001.4567.005-5', min_stock: 15, max_stock: 100, unit_cost: 8.00, sale_price: 0 },
+  { sku: 'EQP-001', name: 'Esfigmomanômetro Aneróide Adulto', category: 'equipment', unit: 'unidade', anvisa_registry: '8.4567.8901.001-1', min_stock: 3, max_stock: 10, unit_cost: 145.00, sale_price: 0 },
+  { sku: 'EQP-002', name: 'Estetoscópio Duplo Adulto', category: 'equipment', unit: 'unidade', anvisa_registry: '8.4567.8901.002-2', min_stock: 3, max_stock: 10, unit_cost: 220.00, sale_price: 0 },
+  { sku: 'MED-008', name: 'Lorazepam 2mg (caixa c/ 20 cp) — CONTROLADO', category: 'medication', unit: 'caixa', anvisa_registry: '1.0234.0567.008-8', controlled: true, min_stock: 5, max_stock: 30, unit_cost: 35.00, sale_price: 65.00 },
+];
+const itemIds: string[] = [];
+const insertItem = db.prepare(`
+  INSERT INTO inventory_items (id, sku, name, category, unit, anvisa_registry, controlled, min_stock, max_stock, unit_cost, sale_price, active)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
+`);
+for (const it of itemsData) {
+  const id = uuid();
+  itemIds.push(id);
+  insertItem.run(id, it.sku, it.name, it.category, it.unit, it.anvisa_registry,
+                 (it as any).controlled ? 1 : 0, it.min_stock, it.max_stock, it.unit_cost, it.sale_price);
+}
+console.log(`  ✓ ${itemsData.length} inventory items`);
+
+// INVENTORY BATCHES — with realistic expiry dates
+const insertBatch = db.prepare(`
+  INSERT INTO inventory_batches (id, item_id, batch_number, expiry_date, quantity, vendor_id, cost_per_unit, received_at)
+  VALUES (?,?,?,?,?,?,?,?)
+`);
+const insertMovement = db.prepare(`
+  INSERT INTO stock_movements (id, item_id, batch_id, movement_type, quantity, reason, user_id, created_at)
+  VALUES (?,?,?,?,?,?,?,?)
+`);
+itemIds.forEach((itemId, idx) => {
+  const item = itemsData[idx];
+  // Each item gets 2-3 batches with different expiries
+  const numBatches = 2 + (idx % 2);
+  let remaining = Math.floor(item.min_stock + Math.random() * (item.max_stock - item.min_stock));
+  for (let b = 0; b < numBatches && remaining > 0; b++) {
+    const qty = b === numBatches - 1 ? remaining : Math.floor(remaining / (numBatches - b));
+    remaining -= qty;
+    const expiry = new Date(Date.now() + (60 + Math.floor(Math.random() * 800)) * 86400000).toISOString().slice(0, 10);
+    const batchId = uuid();
+    insertBatch.run(batchId, itemId, `L${item.sku}-${b+1}-2026`, expiry, qty, vendorIds[idx % vendorIds.length], item.unit_cost, monthAgo);
+    insertMovement.run(uuid(), itemId, batchId, 'in', qty, 'purchase', userIds['farmacia@clinica-tanah.com.br'], monthAgo);
+  }
+});
+console.log(`  ✓ Inventory batches created`);
+
+// EMPLOYEES + PAYROLL
+const employeeData = [
+  { full_name: 'Dra. Helena Tanaka', cpf: '11122233396', pis: '123.45678.90-1', role: 'admin', base_salary: 22000.00, dependents: 2 },
+  { full_name: 'Dr. Roberto Silva', cpf: '33344455514', pis: '234.56789.01-2', role: 'doctor', base_salary: 18500.00, dependents: 1 },
+  { full_name: 'Dra. Beatriz Santos', cpf: '44455566623', pis: '345.67890.12-3', role: 'doctor', base_salary: 19200.00, dependents: 0 },
+  { full_name: 'Dr. Carlos Oliveira', cpf: '55566677732', pis: '456.78901.23-4', role: 'doctor', base_salary: 17800.00, dependents: 3 },
+  { full_name: 'Ana Paula Ferreira', cpf: '66677788841', pis: '567.89012.34-5', role: 'nurse', base_salary: 4800.00, dependents: 1 },
+  { full_name: 'Mariana Costa', cpf: '77788899950', pis: '678.90123.45-6', role: 'receptionist', base_salary: 3200.00, dependents: 0 },
+  { full_name: 'João Mendes', cpf: '88899900069', pis: '789.01234.56-7', role: 'accountant', base_salary: 6500.00, dependents: 2 },
+  { full_name: 'Patrícia Almeida', cpf: '99900011178', pis: '890.12345.67-8', role: 'pharmacist', base_salary: 5800.00, dependents: 1 },
+  { full_name: 'Roberto Lima Santos', cpf: '12312312345', pis: '111.22233.44-5', role: 'cleaner', base_salary: 2200.00, dependents: 0 },
+];
+const insertEmployee = db.prepare(`
+  INSERT INTO employees (id, full_name, cpf, pis, ctps_number, ctps_series, role, admission_date, base_salary, weekly_hours, dependents)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?)
+`);
+const empIds: string[] = [];
+for (const e of employeeData) {
+  const id = uuid();
+  empIds.push(id);
+  insertEmployee.run(id, e.full_name, e.cpf, e.pis, '12345', '001', e.role, '2024-01-15', e.base_salary, 44, e.dependents);
+}
+console.log(`  ✓ ${employeeData.length} employees`);
+
+// APPOINTMENTS — past, today, upcoming
+const apptTypes = ['consultation','return','exam','procedure'];
+const apptStatuses = ['completed','completed','completed','scheduled','confirmed'];
+const doctorEmails = ['silva@clinica-tanah.com.br','santos@clinica-tanah.com.br','oliveira@clinica-tanah.com.br'];
+const insertAppt = db.prepare(`
+  INSERT INTO appointments (id, patient_id, practitioner_id, scheduled_at, duration_minutes, type, status, source, notes)
+  VALUES (?,?,?,?,?,?,?,?,?)
+`);
+for (let day = -7; day <= 7; day++) {
+  const date = new Date(Date.now() + day * 86400000);
+  const dateStr = date.toISOString().slice(0, 10);
+  const numAppts = day === 0 ? 6 : 2 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < numAppts; i++) {
+    const h = 8 + Math.floor(Math.random() * 9);
+    const m = Math.random() < 0.5 ? 0 : 30;
+    const scheduled = `${dateStr} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
+    const status = day < 0 ? 'completed' : apptStatuses[Math.floor(Math.random() * apptStatuses.length)];
+    const doctorEmail = doctorEmails[Math.floor(Math.random() * doctorEmails.length)];
+    insertAppt.run(uuid(), patientIds[Math.floor(Math.random() * patientIds.length)],
+                   userIds[doctorEmail], scheduled, 30,
+                   apptTypes[Math.floor(Math.random() * apptTypes.length)],
+                   status, ['reception','whatsapp_bot','phone','website'][Math.floor(Math.random() * 4)],
+                   null);
+  }
+}
+console.log(`  ✓ Appointments across 15 days`);
+
+// ENCOUNTERS + PRESCRIPTIONS for past appointments
+const insertEncounter = db.prepare(`
+  INSERT INTO encounters (id, patient_id, practitioner_id, appointment_id, started_at, ended_at, subjective, objective, assessment, plan, icd10_codes, cid10_codes, notes)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+`);
+const pastAppts = db.prepare(`
+  SELECT a.*, p.id AS pid FROM appointments a
+  JOIN patients p ON p.id = a.patient_id
+  WHERE a.status = 'completed' LIMIT 10
+`).all() as any[];
+const icd10 = ['I10','E11.9','J45','M54.5','R51','K21.9','J06.9','F41.1'];
+for (const a of pastAppts) {
+  const eid = uuid();
+  insertEncounter.run(
+    eid, a.patient_id, a.practitioner_id, a.id,
+    a.scheduled_at, a.scheduled_at,
+    'Paciente relata sintomas descritos na consulta anterior.',
+    'Exame físico sem alterações significativas. PA: 130/85 mmHg. FC: 78 bpm.',
+    icd10[Math.floor(Math.random() * icd10.length)],
+    'Manter medicação. Retornar em 30 dias.',
+    JSON.stringify([icd10[Math.floor(Math.random() * icd10.length)]]),
+    JSON.stringify([icd10[Math.floor(Math.random() * icd10.length)]]),
+    'Paciente orientado sobre hábitos saudáveis.'
+  );
+  // Prescription
+  db.prepare(`
+    INSERT INTO prescriptions (id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp)
+    VALUES (?,?,?,?,?,?)
+  `).run(uuid(), eid, a.patient_id, a.practitioner_id, JSON.stringify([
+    { medication: 'Dipirona 500mg', dosage: '1 cp', frequency: '6/6h se dor', duration: '5 dias', instructions: 'Tomar com água após refeições' },
+    { medication: 'Paracetamol 750mg', dosage: '1 cp', frequency: '8/8h', duration: '7 dias', instructions: 'Em caso de febre' },
+  ]), Math.random() < 0.6 ? 1 : 0);
+}
+console.log(`  ✓ ${pastAppts.length} clinical encounters + prescriptions`);
+
+// INVOICES — past month
+const insertInvoice = db.prepare(`
+  INSERT INTO invoices (id, invoice_number, patient_id, issue_date, due_date, total, status, payment_method, paid_at)
+  VALUES (?,?,?,?,?,?,?,?,?)
+`);
+for (let i = 0; i < 25; i++) {
+  const issueDate = new Date(Date.now() - Math.floor(Math.random() * 30) * 86400000).toISOString().slice(0, 10);
+  const total = [150, 180, 220, 250, 280, 320, 350, 400][Math.floor(Math.random() * 8)];
+  const status = Math.random() < 0.7 ? 'paid' : (Math.random() < 0.5 ? 'issued' : 'overdue');
+  insertInvoice.run(uuid(), `INV-${String(1000 + i).padStart(4,'0')}`,
+    patientIds[Math.floor(Math.random() * patientIds.length)],
+    issueDate, issueDate, total, status,
+    ['pix','credit_card','cash','health_insurance'][Math.floor(Math.random() * 4)],
+    status === 'paid' ? issueDate : null);
+}
+console.log(`  ✓ 25 invoices`);
+
+// WHATSAPP CONVERSATION EXAMPLES
+const waPhones = ['+5511987654321', '+5511956781234', '+5511934567890'];
+for (const p of waPhones) {
+  const convId = uuid();
+  db.prepare(`
+    INSERT INTO whatsapp_conversations (id, phone, patient_id, state, lgpd_consent_granted, last_message_at, created_at, updated_at)
+    VALUES (?, ?, (SELECT id FROM patients WHERE phone = ?), 'idle', 1, datetime('now'), datetime('now'), datetime('now'))
+  `).run(convId, p, p);
+  const stmt = db.prepare(`
+    INSERT INTO whatsapp_messages (id, phone, direction, body, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(uuid(), p, 'in', 'Olá', 'received', new Date(Date.now() - 2*3600*1000).toISOString());
+  stmt.run(uuid(), p, 'out', 'Olá! Sou a assistente da Clínica Tanah. Como posso ajudar?', 'sent', new Date(Date.now() - 2*3600*1000).toISOString());
+  stmt.run(uuid(), p, 'in', '1', 'received', new Date(Date.now() - 1*3600*1000).toISOString());
+  stmt.run(uuid(), p, 'out', 'Qual especialidade você precisa? Digite o número: 1️⃣ Clínica Geral 2️⃣ Cardiologia 3️⃣ Dermatologia 4️⃣ Ginecologia 5️⃣ Pediatria 6️⃣ Ortopedia', 'sent', new Date(Date.now() - 1*3600*1000).toISOString());
+}
+console.log(`  ✓ WhatsApp conversation examples`);
+
+// SETTINGS
+const settings = [
+  ['clinic_name', 'Clínica Tanah'],
+  ['clinic_cnpj', '12.345.678/0001-90'],
+  ['clinic_phone', '+55 11 3000-0000'],
+  ['clinic_address', 'Rua Augusta, 1234 — Consolação, São Paulo / SP — CEP 01304-001'],
+  ['lgpd_policy_version', '1.0'],
+  ['lgpd_policy_effective', '2026-07-30'],
+  ['dpo_email', 'dpo@clinica-tanah.com.br'],
+  ['dpo_name', 'Dr. Marcos Vieira'],
+  ['default_locale', 'pt-BR'],
+  ['default_currency', 'BRL'],
+];
+const insertSetting = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)`);
+for (const [k, v] of settings) insertSetting.run(k, v);
+console.log(`  ✓ ${settings.length} settings`);
+
+console.log('\n✅ Seed complete!\n');
+console.log('  Test users (password = clinica2026):');
+for (const u of staffData) console.log(`    ${u.email}  —  ${u.role}`);
+console.log('');

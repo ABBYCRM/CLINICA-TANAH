@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+data/
+*.db
+*.db-journal
+*.log
+.env
+.DS_Store
+test/screenshots/
+backend/public/
+playwright-report/
+data/
+node_modules/
+dist/

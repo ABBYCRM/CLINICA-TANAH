@@ -1,0 +1,59 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './hooks/useAuth';
+import Layout from './components/Layout';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Patients from './pages/Patients';
+import Appointments from './pages/Appointments';
+import Encounters from './pages/Encounters';
+import Prescriptions from './pages/Prescriptions';
+import Inventory from './pages/Inventory';
+import Vendors from './pages/Vendors';
+import Accounting from './pages/Accounting';
+import Invoices from './pages/Invoices';
+import Payroll from './pages/Payroll';
+import WhatsApp from './pages/WhatsApp';
+import LGPD from './pages/LGPD';
+import './index.css';
+
+function Protected({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="p-8 text-slate-400">Carregando...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<Protected><Layout /></Protected>}>
+        <Route index element={<Dashboard />} />
+        <Route path="patients" element={<Patients />} />
+        <Route path="appointments" element={<Appointments />} />
+        <Route path="encounters" element={<Encounters />} />
+        <Route path="prescriptions" element={<Prescriptions />} />
+        <Route path="inventory" element={<Inventory />} />
+        <Route path="vendors" element={<Vendors />} />
+        <Route path="accounting" element={<Accounting />} />
+        <Route path="invoices" element={<Invoices />} />
+        <Route path="payroll" element={<Payroll />} />
+        <Route path="whatsapp" element={<WhatsApp />} />
+        <Route path="lgpd" element={<LGPD />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  </StrictMode>
+);
