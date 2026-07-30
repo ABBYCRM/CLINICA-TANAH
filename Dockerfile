@@ -40,4 +40,5 @@ ENV DB_DIR=/app/backend/data
 EXPOSE 10000
 
 WORKDIR /app/backend
+# Auto-seed runs in server.ts startup via autoSeedIfEmpty()
 CMD ["node", "dist/server.js"]

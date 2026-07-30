@@ -13,3 +13,4 @@ playwright-report/
 data/
 node_modules/
 dist/
+mcp-tokens.json

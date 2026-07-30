@@ -2,11 +2,12 @@ services:
   - type: web
     name: clinica-tanah
     runtime: node
-    rootDir: backend
     plan: free
+    region: oregon
+    branch: main
     autoDeploy: false
-    buildCommand: cd .. && npm install:all && npm run build:frontend && cd backend && npm run build
-    startCommand: node dist/server.js
+    buildCommand: cd backend && npm install && cd ../frontend && npm install && npm run build && cd ../backend && npm run build
+    startCommand: cd backend && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
