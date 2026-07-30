@@ -286,7 +286,7 @@
     "lgpd_consent_granted": "Consent registered. Thank you!",
     "lgpd_optout_confirmed": "You have been removed from our lists. We respect your decision. To reactivate, just ask.",
     "bot_menu": "Hello! I'm the {{clinic}} assistant. How can I help?\n\n1️⃣ Book appointment\n2️⃣ View my appointments\n3️⃣ Cancel appointment\n4️⃣ Talk to reception\n5️⃣ Remove my data (LGPD)\n\nReply with the option number.",
-    "ask_specialty": "Which specialty do you need? Type the number:\n\n1️⃣ Dermatology\n2️⃣ Hair Transplant\n3️⃣ Endocrinology\n4️⃣ Gynecology\n5️⃣ Nutrition",
+    "ask_specialty": "Which specialty do you need? Type the number:\n\n1️⃣ Dermatology\n2️⃣ Hair Transplant\n3️⃣ Endocrinology\n4️⃣ Gynecology\n5️⃣ Nutrition\n6️⃣ Proctology",
     "ask_date": "Which day do you prefer? Reply with the date (DD/MM) or type TOMORROW.",
     "ask_time": "What time works best? Reply MORNING, AFTERNOON or EVENING.",
     "ask_cpf": "To confirm, please provide your CPF (numbers only).",

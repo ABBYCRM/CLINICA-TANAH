@@ -18,6 +18,7 @@ const SPECIALTIES = [
   { code: 'endocrino', name: 'Endocrinologia' },
   { code: 'gineco', name: 'Ginecologia' },
   { code: 'nutri', name: 'Nutrição' },
+  { code: 'procto', name: 'Proctologia' },
 ];
 
 function detectUserLocale(text: string): Locale {
@@ -168,6 +169,7 @@ async function handleMessage(phone: string, body: string, locale: Locale): Promi
         'endocrino': 'endocrino@',
         'gineco': 'gineco@',
         'nutri': 'nutri@',
+        'procto': 'procto@',
       };
       const emailPrefix = specialtyMap[ctx.specialty];
       let practitioner: any;

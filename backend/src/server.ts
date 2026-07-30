@@ -16,6 +16,8 @@ import accountingRouter from './routes/accounting';
 import payrollRouter from './routes/payroll';
 import whatsappRouter from './routes/whatsapp';
 import lgpdRouter from './routes/lgpd';
+import bulkImportRouter from './routes/bulk-import';
+import fhirRouter from './routes/fhir';
 import { mountStatic } from './static';
 
 initSchema();
@@ -25,6 +27,7 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+app.use(express.text({ type: ['text/csv', 'text/plain'], limit: '10mb' }));
 
 // Rate limit WhatsApp webhook & auth
 const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 30, message: { error: 'rate_limited' } });
@@ -44,6 +47,8 @@ app.get('/api/health', (_req, res) => {
 
 // Routes
 app.use('/api/auth', authRouter);
+app.use('/api', bulkImportRouter);
+app.use('/api', fhirRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/clinical', clinicalRouter);
