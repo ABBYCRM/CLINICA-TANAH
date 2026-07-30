@@ -205,13 +205,14 @@ function runSeed(): void {
       'Lesões eritematosas reduzidas em ~60%. Sem sinais de infecção secundária.',
       'Dermatite atópica (L20.9)',
       'Manter tratamento. Retornar em 30 dias para reavaliação.',
-      JSON.stringify(['L20.9']), JSON.stringify(['L20.9']),
+      JSON.stringify(['L20.9']),
+      JSON.stringify(['L20.9']),
       'Paciente orientado sobre hidratação diária e evitar sabonetes agressivos.');
 
     const rxId = uuid();
     db.prepare(`
       INSERT INTO prescriptions (id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp)
-      VALUES (?, ?, ?, ?, ?, 1)
+      VALUES (?, ?, ?, ?, ?, ?)
     `).run(rxId, encId, pid, docId, JSON.stringify([
       { medication: 'Hidratante facial Cerave', dosage: 'Aplicar camada fina', frequency: '2x ao dia', duration: 'Uso contínuo', instructions: 'Manhã e noite, após limpeza suave' },
       { medication: 'Cetirizina 10mg', dosage: '1 cp', frequency: '1x ao dia', duration: '30 dias', instructions: 'Em caso de prurido intenso' },
