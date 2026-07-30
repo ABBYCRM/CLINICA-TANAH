@@ -6,6 +6,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { initSchema } from './db/schema';
+import { autoSeedIfEmpty } from './auto-seed';
 import authRouter from './routes/auth';
 import patientsRouter from './routes/patients';
 import appointmentsRouter from './routes/appointments';
@@ -18,6 +19,7 @@ import lgpdRouter from './routes/lgpd';
 import { mountStatic } from './static';
 
 initSchema();
+autoSeedIfEmpty();
 
 const app = express();
 app.set('trust proxy', 1);
