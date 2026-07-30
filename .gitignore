@@ -10,6 +10,8 @@ data/
 test/screenshots/
 backend/public/
 playwright-report/
+test-results/
+e2e/.data/
 data/
 node_modules/
 dist/

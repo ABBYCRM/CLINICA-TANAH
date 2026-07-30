@@ -202,6 +202,29 @@ npm start
 | **art. 48** — Incident notification | `audit_log` captures anomalous access patterns; staff can review. |
 | **art. 50** — Good practices | DPO designated publicly, retention policy documented, opt-out mechanism in every WhatsApp message. |
 
+## Testing
+
+```bash
+# Unit tests (backend, vitest)
+npm test
+
+# E2E — boots the real app (seeded SQLite + built frontend) and checks
+# every spec on desktop Chrome AND a mobile (Pixel 7) viewport:
+#   · sign-in render / locale switch / invalid + valid login
+#   · mobile: no horizontal overflow, drawer navigation
+#   · API smoke: health, auth, patients RBAC
+npm run test:e2e
+
+# Only the mobile e2e check / only desktop
+npm run test:e2e:mobile
+npm run test:e2e:desktop
+
+# First time only — install the Chromium browser
+npm run e2e:install
+```
+
+The e2e suite also runs in CI (`.github/workflows/e2e.yml`) on every push/PR.
+
 ## Deploy
 
 ```bash
