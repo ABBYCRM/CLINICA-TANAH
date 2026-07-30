@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+data/
+*.db
+.git/
+.gitignore
+.env
+.env.local
+backend/data/
+test/screenshots/
+README.md
+*.log
