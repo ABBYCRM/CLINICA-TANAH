@@ -39,6 +39,15 @@ run('npx', ['tsx', 'src/db/seed.ts'], { cwd: backendDir });
 
 console.log(`▸ Starting Clínica Tanah on http://127.0.0.1:${port} …`);
 const server = spawn('npx', ['tsx', 'src/server.ts'], { cwd: backendDir, env, stdio: 'inherit' });
+
+// Playwright terminates THIS process — make sure the tsx child dies with us,
+// otherwise a stale server (old code, old DB) keeps holding the port.
+function shutdown(code = 0) {
+  if (!server.killed) server.kill('SIGTERM');
+  setTimeout(() => { if (!server.killed) server.kill('SIGKILL'); }, 1500).unref();
+  process.exit(code);
+}
 server.on('exit', (code) => process.exit(code ?? 0));
-process.on('SIGINT', () => server.kill('SIGINT'));
-process.on('SIGTERM', () => server.kill('SIGTERM'));
+process.on('SIGINT', () => shutdown(0));
+process.on('SIGTERM', () => shutdown(0));
+process.on('exit', () => { if (!server.killed) server.kill('SIGKILL'); });

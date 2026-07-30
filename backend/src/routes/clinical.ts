@@ -80,6 +80,49 @@ router.get('/encounters/:id', (req: Request, res: Response) => {
   res.json({ encounter: e });
 });
 
+// Amend an encounter (SOAP corrections are legitimate; every change is audited)
+router.put('/encounters/:id', requireRole('doctor', 'nurse'), (req: Request, res: Response) => {
+  const before = db.prepare(`SELECT * FROM encounters WHERE id = ?`).get(req.params.id) as any;
+  if (!before) { res.status(404).json({ error: 'not_found' }); return; }
+  const parsed = encounterSchema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  const d = parsed.data;
+  const allowed = ['appointment_id','started_at','ended_at','subjective','objective','assessment','plan','icd10_codes','cid10_codes','notes'];
+  const sets: string[] = [];
+  const args: any[] = [];
+  for (const k of allowed) {
+    if ((d as any)[k] !== undefined) {
+      sets.push(`${k} = ?`);
+      let v = (d as any)[k];
+      if (['icd10_codes','cid10_codes'].includes(k) && Array.isArray(v)) v = JSON.stringify(v);
+      args.push(v);
+    }
+  }
+  if (sets.length === 0) { res.json({ ok: true, noop: true }); return; }
+  args.push(req.params.id);
+  db.prepare(`UPDATE encounters SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'update_encounter_phi', resourceType: 'encounter', resourceId: req.params.id,
+    beforeValue: { assessment: before.assessment }, afterValue: { assessment: d.assessment ?? before.assessment },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({ ok: true });
+});
+
+// Delete an encounter — admin only; prescriptions under it cascade
+router.delete('/encounters/:id', requireRole('admin'), (req: Request, res: Response) => {
+  const e = db.prepare(`SELECT id FROM encounters WHERE id = ?`).get(req.params.id) as any;
+  if (!e) { res.status(404).json({ error: 'not_found' }); return; }
+  db.prepare(`DELETE FROM encounters WHERE id = ?`).run(req.params.id);
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'delete_encounter_phi', resourceType: 'encounter', resourceId: req.params.id,
+    legalBasis: 'legal_obligation_art7_II',
+  });
+  res.json({ ok: true, deleted_id: req.params.id });
+});
+
 // PRESCRIPTIONS
 router.get('/prescriptions', (req: Request, res: Response) => {
   const patientId = req.query.patient_id as string | undefined;
@@ -108,6 +151,35 @@ router.post('/prescriptions', requireRole('doctor'), (req: Request, res: Respons
     legalBasis: 'health_protection_art7_VIII',
   });
   res.status(201).json({ id, sent_via_whatsapp: d.send_via_whatsapp });
+});
+
+// Update prescription items (e.g. dosage correction) — doctor only
+router.put('/prescriptions/:id', requireRole('doctor'), (req: Request, res: Response) => {
+  const before = db.prepare(`SELECT * FROM prescriptions WHERE id = ?`).get(req.params.id) as any;
+  if (!before) { res.status(404).json({ error: 'not_found' }); return; }
+  const parsed = prescriptionSchema.pick({ items: true }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  db.prepare(`UPDATE prescriptions SET items = ? WHERE id = ?`)
+    .run(JSON.stringify(parsed.data.items), req.params.id);
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'update_prescription', resourceType: 'prescription', resourceId: req.params.id,
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({ ok: true });
+});
+
+// Cancel (delete) a prescription — doctor or admin
+router.delete('/prescriptions/:id', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM prescriptions WHERE id = ?`).get(req.params.id) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  db.prepare(`DELETE FROM prescriptions WHERE id = ?`).run(req.params.id);
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'delete_prescription', resourceType: 'prescription', resourceId: req.params.id,
+    legalBasis: 'legal_obligation_art7_II',
+  });
+  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 export default router;

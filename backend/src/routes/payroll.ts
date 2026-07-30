@@ -118,6 +118,22 @@ router.put('/employees/:id', requireRole('admin','accountant'), (req: Request, r
   res.json({ ok: true });
 });
 
+// Terminate/deactivate an employee (keeps payslip history; eSocial-style
+// termination date can be set via PUT). Hard delete only if never paid.
+router.delete('/employees/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const emp = db.prepare(`SELECT id, full_name FROM employees WHERE id = ?`).get(req.params.id) as any;
+  if (!emp) { res.status(404).json({ error: 'not_found' }); return; }
+  const slips = (db.prepare(`SELECT COUNT(*) AS c FROM payslips WHERE employee_id = ?`).get(req.params.id) as any).c;
+  if (slips > 0) {
+    db.prepare(`UPDATE employees SET active = 0, termination_date = COALESCE(termination_date, date('now')), updated_at = ? WHERE id = ?`)
+      .run(new Date().toISOString(), req.params.id);
+    res.json({ ok: true, soft_deleted: true });
+    return;
+  }
+  db.prepare(`DELETE FROM employees WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true, soft_deleted: false });
+});
+
 router.post('/run', requireRole('admin','accountant'), (req: Request, res: Response) => {
   const period = req.body.period as string; // 'YYYY-MM'
   if (!/^\d{4}-\d{2}$/.test(period)) { res.status(400).json({ error: 'invalid_period' }); return; }
@@ -173,13 +189,29 @@ router.get('/runs/:id', (req: Request, res: Response) => {
 });
 
 router.put('/runs/:id/approve', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const run = db.prepare(`SELECT id FROM payroll_runs WHERE id = ?`).get(req.params.id) as any;
+  if (!run) { res.status(404).json({ error: 'not_found' }); return; }
   db.prepare(`UPDATE payroll_runs SET status = 'approved' WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
 });
 
 router.put('/runs/:id/pay', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const run = db.prepare(`SELECT id FROM payroll_runs WHERE id = ?`).get(req.params.id) as any;
+  if (!run) { res.status(404).json({ error: 'not_found' }); return; }
   db.prepare(`UPDATE payroll_runs SET status = 'paid', paid_at = datetime('now') WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
+});
+
+// Delete a payroll run — drafts only; approved/paid runs are labor records
+router.delete('/runs/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const run = db.prepare(`SELECT id, status, period FROM payroll_runs WHERE id = ?`).get(req.params.id) as any;
+  if (!run) { res.status(404).json({ error: 'not_found' }); return; }
+  if (run.status !== 'draft') {
+    res.status(409).json({ error: 'not_draft', message: 'Only draft payroll runs can be deleted.' });
+    return;
+  }
+  db.prepare(`DELETE FROM payroll_runs WHERE id = ?`).run(req.params.id); // payslips cascade
+  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 export { calcINSS, calcIRRF, INSS_BRACKETS, IRRF_BRACKETS };

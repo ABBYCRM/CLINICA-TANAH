@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { v4 as uuid } from 'uuid';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
@@ -32,7 +33,33 @@ router.get('/data-requests', requireRole('admin','dpo','receptionist'), (req: Re
   res.json({ requests: db.prepare(sql).all(...args) });
 });
 
+// Staff registers a data-subject request on behalf of the subject
+// (e.g. patient calls the reception asking for deletion — LGPD art. 18)
+router.post('/data-requests', requireRole('admin','dpo','receptionist'), (req: Request, res: Response) => {
+  const { request_type, subject_type, subject_id, notes } = req.body ?? {};
+  const types = ['access','rectification','deletion','portability','opposition'];
+  const subjectTypes = ['patient','employee','vendor'];
+  if (!types.includes(request_type) || !subjectTypes.includes(subject_type) || !subject_id) {
+    res.status(400).json({ error: 'validation', allowed_types: types, allowed_subject_types: subjectTypes });
+    return;
+  }
+  const id = uuid();
+  db.prepare(`
+    INSERT INTO lgpd_data_requests (id, request_type, subject_type, subject_id, status)
+    VALUES (?, ?, ?, ?, 'open')
+  `).run(id, request_type, subject_type, subject_id);
+  if (notes) {
+    db.prepare(`UPDATE lgpd_data_requests SET response_notes = ? WHERE id = ?`).run(notes, id);
+  }
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_registered',
+             resourceType: 'lgpd_data_request', resourceId: id,
+             afterValue: { request_type, subject_type, subject_id }, legalBasis: 'legal_obligation_art7_II' });
+  res.status(201).json({ id });
+});
+
 router.put('/data-requests/:id/fulfill', requireRole('admin','dpo'), (req: Request, res: Response) => {
+  const existing = db.prepare(`SELECT id FROM lgpd_data_requests WHERE id = ?`).get(req.params.id) as any;
+  if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
   db.prepare(`UPDATE lgpd_data_requests SET status = 'fulfilled', fulfilled_at = datetime('now'), handled_by = ?, response_notes = ? WHERE id = ?`)
     .run(req.user!.id, req.body.notes ?? null, req.params.id);
   logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_fulfilled',

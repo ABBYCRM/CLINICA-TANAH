@@ -22,7 +22,8 @@
     "whatsapp": "WhatsApp",
     "lgpd": "LGPD",
     "audit": "Audit",
-    "logout": "Logout"
+    "logout": "Logout",
+    "team": "Team"
   },
   "common": {
     "save": "Save",
@@ -114,27 +115,49 @@
     "patient": "Patient",
     "practitioner": "Practitioner",
     "scheduled_at": "Date and time",
-    "duration": "Duration",
+    "duration": "Duration (min)",
     "type": "Type",
     "status": "Status",
     "source": "Source",
     "confirm": "Confirm",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "edit": "Edit Appointment",
+    "date": "Date",
+    "time": "Time",
+    "notes": "Notes",
+    "types": {
+      "consultation": "Consultation",
+      "return": "Follow-up",
+      "exam": "Exam",
+      "procedure": "Procedure",
+      "teleconsultation": "Teleconsultation"
+    }
   },
   "encounters": {
     "title": "Encounters",
     "new": "New Encounter",
-    "subjective": "Subjective",
-    "objective": "Objective",
+    "subjective": "Subjective (S)",
+    "objective": "Objective (O)",
     "assessment": "Assessment",
-    "plan": "Plan",
-    "icd10": "ICD-10"
+    "plan": "Plan (P)",
+    "icd10": "ICD-10",
+    "edit": "Edit Encounter",
+    "started_at": "Started at",
+    "notes": "Notes",
+    "icd10_hint": "Comma-separated codes"
   },
   "prescriptions": {
     "title": "Prescriptions",
     "new": "New Prescription",
     "send_via_whatsapp": "Send via WhatsApp",
-    "sent": "Prescription sent"
+    "sent": "Prescription sent",
+    "medication": "Medication",
+    "dosage": "Dosage",
+    "frequency": "Frequency",
+    "duration": "Duration",
+    "instructions": "Instructions",
+    "add_item": "Add item",
+    "encounter": "Encounter"
   },
   "inventory": {
     "title": "Inventory",
@@ -144,16 +167,34 @@
     "category": "Category",
     "unit": "Unit",
     "anvisa_registry": "ANVISA registry",
-    "controlled": "Controlled",
-    "min_stock": "Min",
-    "max_stock": "Max",
+    "controlled": "Controlled (Portaria 344/98)",
+    "min_stock": "Min stock",
+    "max_stock": "Max stock",
     "current_stock": "Current",
     "batch": "Batch",
     "expiry_date": "Expiry",
     "expiring_soon": "Expires in {{days}} days",
     "expired": "EXPIRED",
     "low_stock_alert": "Low stock",
-    "alerts": "Alerts"
+    "alerts": "Alerts",
+    "edit_item": "Edit Item",
+    "new_batch": "New Batch",
+    "edit_batch": "Edit Batch",
+    "new_movement": "New Movement",
+    "movements": "Movements",
+    "movement_type": "Type",
+    "movement_in": "Stock in",
+    "movement_out": "Stock out",
+    "movement_adjust": "Adjustment",
+    "movement_discard": "Discard",
+    "select_item": "Select the item",
+    "select_batch": "Batch (empty = automatic FEFO)",
+    "batch_number": "Batch number",
+    "cost_per_unit": "Cost per unit",
+    "reason": "Reason",
+    "unit_cost": "Unit cost",
+    "sale_price": "Sale price",
+    "anvisa": "ANVISA registry"
   },
   "vendors": {
     "title": "Vendors",
@@ -164,13 +205,14 @@
     "phone": "Phone",
     "email": "Email",
     "contact_name": "Contact",
-    "anvisa_license": "ANVISA"
+    "anvisa_license": "ANVISA",
+    "edit": "Edit Vendor"
   },
   "accounting": {
     "title": "Accounting",
     "chart_of_accounts": "Chart of accounts",
-    "journal": "Journal",
-    "new_entry": "New entry",
+    "journal": "Journal Entries",
+    "new_entry": "New Entry",
     "debit": "Debit",
     "credit": "Credit",
     "balance": "Balance",
@@ -178,7 +220,24 @@
     "income_statement": "Income statement",
     "revenue": "Revenue",
     "expenses": "Expenses",
-    "net_income": "Net income"
+    "net_income": "Net income",
+    "accounts": "Chart of Accounts",
+    "new_account": "New Account",
+    "edit_account": "Edit Account",
+    "code": "Code",
+    "type": "Type",
+    "entry_date": "Date",
+    "description": "Description",
+    "add_line": "Add line",
+    "account": "Account",
+    "unbalanced": "Debits and credits must be equal",
+    "types": {
+      "asset": "Asset",
+      "liability": "Liability",
+      "equity": "Equity",
+      "revenue": "Revenue",
+      "expense": "Expense"
+    }
   },
   "invoices": {
     "title": "Invoices",
@@ -186,9 +245,17 @@
     "number": "Number",
     "issue_date": "Issue date",
     "due_date": "Due date",
-    "patient": "Patient",
+    "patient": "Patient (optional)",
     "status": "Status",
-    "mark_paid": "Mark as paid"
+    "mark_paid": "Mark as paid",
+    "edit": "Edit Invoice",
+    "add_line": "Add item",
+    "description": "Description",
+    "unit_price": "Unit price",
+    "tax_rate": "Tax %",
+    "status_draft": "Draft",
+    "status_issued": "Issued",
+    "status_cancelled": "Cancelled"
   },
   "payroll": {
     "title": "Payroll",
@@ -209,7 +276,13 @@
     "fgts": "FGTS",
     "approve": "Approve",
     "pay": "Pay",
-    "run_for_period": "Run payroll for period"
+    "run_for_period": "Run payroll for period",
+    "new_employee": "New Employee",
+    "edit_employee": "Edit Employee",
+    "delete_run": "Delete draft",
+    "weekly_hours": "Weekly hours",
+    "health_insurance_discount": "Health insurance discount",
+    "other_discounts": "Other discounts"
   },
   "whatsapp": {
     "title": "WhatsApp",
@@ -224,7 +297,16 @@
     "send": "Send",
     "type_message": "Type a message...",
     "live": "Live",
-    "dry_run": "Simulated"
+    "dry_run": "Simulated",
+    "send_as_clinic": "Send as clinic",
+    "simulate_patient": "Simulate patient",
+    "delete_conversation": "Delete conversation",
+    "test_connection": "Test connection",
+    "connection_ok": "Meta API reachable",
+    "connection_failed": "Meta connection failed",
+    "opted_out_error": "This number has opted out (LGPD). Message not sent.",
+    "new_chat": "New conversation",
+    "phone_number": "Number (e.g. +5511999999999)"
   },
   "lgpd": {
     "title": "LGPD — Data Protection",
@@ -238,7 +320,18 @@
     "request_access": "Request access",
     "request_deletion": "Request deletion",
     "fulfilled": "Fulfilled",
-    "open": "Open"
+    "open": "Open",
+    "new_request": "New Request",
+    "request_type": "Request type",
+    "subject": "Data subject",
+    "fulfill": "Fulfill",
+    "types": {
+      "access": "Access",
+      "rectification": "Rectification",
+      "deletion": "Deletion",
+      "portability": "Portability",
+      "opposition": "Opposition"
+    }
   },
   "errors": {
     "generic": "An error occurred. Please try again.",
@@ -246,5 +339,27 @@
     "not_found": "Resource not found",
     "unauthorized": "Unauthorized",
     "server_error": "Server error"
+  },
+  "crud": {
+    "edit": "Edit",
+    "confirm_delete_title": "Confirm deletion",
+    "confirm_delete_body": "This action cannot be undone.",
+    "deactivated_notice": "The record has history and was deactivated instead of deleted.",
+    "delete_error_clinical": "Patient has clinical records (CFM 20-year retention). Use the LGPD request flow instead.",
+    "new": "New"
+  },
+  "team": {
+    "title": "Team",
+    "new_user": "New User",
+    "edit_user": "Edit User",
+    "role": "Role",
+    "password": "Password",
+    "password_new_hint": "Leave blank to keep the current password",
+    "password_min": "Minimum 8 characters",
+    "council_number": "Professional registry (CRM/COREN/...)",
+    "council_state": "Registry state (UF)",
+    "cpf": "CPF",
+    "full_name": "Full name",
+    "cannot_delete_self": "You cannot remove your own user"
   }
 }

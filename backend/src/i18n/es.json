@@ -296,7 +296,8 @@
     "booking_confirmed": "✅ ¡Cita agendada!\n\n📅 {{date}} a las {{time}}\n👨‍⚕️ {{practitioner}}\n📍 {{address}}\n\nRecibirá un recordatorio 24h antes. Para cancelar, responda CANCELAR.",
     "no_slots": "No hay horarios disponibles en esa fecha. Por favor elija otro día.",
     "not_found": "No encontré su registro. Le transferiré a recepción. Espere.",
-    "transfer_to_human": "👩‍💼 Un agente le responderá en instantes. ¡Gracias por la paciencia!"
+    "transfer_to_human": "👩‍💼 Un agente le responderá en instantes. ¡Gracias por la paciencia!",
+    "unsupported_type": "Recibí tu archivo, pero por ahora solo puedo leer mensajes de texto. Por favor, escribe tu solicitud. 🙏"
   },
   "lgpd": {
     "title": "LGPD — Ley General de Protección de Datos",

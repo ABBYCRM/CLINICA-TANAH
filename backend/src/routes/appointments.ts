@@ -104,6 +104,9 @@ router.put('/:id', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req
 });
 
 router.delete('/:id', requireRole('admin', 'receptionist'), (req: Request, res: Response) => {
+  const appt = db.prepare(`SELECT id FROM appointments WHERE id = ?`).get(req.params.id) as any;
+  if (!appt) { res.status(404).json({ error: 'not_found' }); return; }
+  db.prepare(`UPDATE encounters SET appointment_id = NULL WHERE appointment_id = ?`).run(req.params.id);
   db.prepare(`DELETE FROM appointments WHERE id = ?`).run(req.params.id);
   logAudit({
     actorId: req.user!.id, actorEmail: req.user!.email,

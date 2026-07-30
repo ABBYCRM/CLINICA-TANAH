@@ -296,7 +296,8 @@
     "booking_confirmed": "✅ Appointment booked!\n\n📅 {{date}} at {{time}}\n👨‍⚕️ {{practitioner}}\n📍 {{address}}\n\nYou'll receive a reminder 24h before. To cancel, reply CANCEL.",
     "no_slots": "No slots available on that date. Please choose another day.",
     "not_found": "I couldn't find your registration. I'll transfer you to reception. Please wait.",
-    "transfer_to_human": "👩‍💼 A receptionist will reply shortly. Thank you for your patience!"
+    "transfer_to_human": "👩‍💼 A receptionist will reply shortly. Thank you for your patience!",
+    "unsupported_type": "I received your attachment, but I can only read text messages for now. Please type your request. 🙏"
   },
   "lgpd": {
     "title": "LGPD — General Data Protection Law",

@@ -296,7 +296,8 @@
     "booking_confirmed": "✅ Consulta agendada!\n\n📅 {{date}} às {{time}}\n👨‍⚕️ {{practitioner}}\n📍 {{address}}\n\nVocê receberá um lembrete 24h antes. Para cancelar, responda CANCELAR.",
     "no_slots": "Não há horários disponíveis nessa data. Por favor escolha outro dia.",
     "not_found": "Não encontrei seu cadastro. Vou transferir para a recepção. Aguarde.",
-    "transfer_to_human": "👩‍💼 Um atendente vai te responder em instantes. Obrigado pela paciência!"
+    "transfer_to_human": "👩‍💼 Um atendente vai te responder em instantes. Obrigado pela paciência!",
+    "unsupported_type": "Recebi seu arquivo, mas no momento só consigo ler mensagens de texto. Por favor, escreva sua solicitação. 🙏"
   },
   "lgpd": {
     "title": "LGPD — Lei Geral de Proteção de Dados",

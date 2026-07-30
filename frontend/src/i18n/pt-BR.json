@@ -22,7 +22,8 @@
     "whatsapp": "WhatsApp",
     "lgpd": "LGPD",
     "audit": "Auditoria",
-    "logout": "Sair"
+    "logout": "Sair",
+    "team": "Equipe"
   },
   "common": {
     "save": "Salvar",
@@ -114,27 +115,49 @@
     "patient": "Paciente",
     "practitioner": "Profissional",
     "scheduled_at": "Data e hora",
-    "duration": "Duração",
+    "duration": "Duração (min)",
     "type": "Tipo",
     "status": "Status",
     "source": "Origem",
     "confirm": "Confirmar",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "edit": "Editar Consulta",
+    "date": "Data",
+    "time": "Hora",
+    "notes": "Observações",
+    "types": {
+      "consultation": "Consulta",
+      "return": "Retorno",
+      "exam": "Exame",
+      "procedure": "Procedimento",
+      "teleconsultation": "Teleconsulta"
+    }
   },
   "encounters": {
     "title": "Atendimentos",
     "new": "Novo Atendimento",
-    "subjective": "Subjetivo",
-    "objective": "Objetivo",
+    "subjective": "Subjetivo (S)",
+    "objective": "Objetivo (O)",
     "assessment": "Avaliação",
-    "plan": "Plano",
-    "icd10": "CID-10"
+    "plan": "Plano (P)",
+    "icd10": "CID-10",
+    "edit": "Editar Atendimento",
+    "started_at": "Início",
+    "notes": "Notas",
+    "icd10_hint": "Códigos separados por vírgula"
   },
   "prescriptions": {
     "title": "Receitas",
     "new": "Nova Receita",
     "send_via_whatsapp": "Enviar por WhatsApp",
-    "sent": "Receita enviada"
+    "sent": "Receita enviada",
+    "medication": "Medicamento",
+    "dosage": "Dosagem",
+    "frequency": "Frequência",
+    "duration": "Duração",
+    "instructions": "Instruções",
+    "add_item": "Adicionar item",
+    "encounter": "Atendimento"
   },
   "inventory": {
     "title": "Estoque",
@@ -144,16 +167,34 @@
     "category": "Categoria",
     "unit": "Unidade",
     "anvisa_registry": "Registro ANVISA",
-    "controlled": "Controlado",
-    "min_stock": "Mín",
-    "max_stock": "Máx",
+    "controlled": "Controlado (Portaria 344/98)",
+    "min_stock": "Estoque mínimo",
+    "max_stock": "Estoque máximo",
     "current_stock": "Atual",
     "batch": "Lote",
     "expiry_date": "Validade",
     "expiring_soon": "Vence em {{days}} dias",
     "expired": "VENCIDO",
     "low_stock_alert": "Estoque baixo",
-    "alerts": "Alertas"
+    "alerts": "Alertas",
+    "edit_item": "Editar Item",
+    "new_batch": "Novo Lote",
+    "edit_batch": "Editar Lote",
+    "new_movement": "Nova Movimentação",
+    "movements": "Movimentações",
+    "movement_type": "Tipo",
+    "movement_in": "Entrada",
+    "movement_out": "Saída",
+    "movement_adjust": "Ajuste",
+    "movement_discard": "Descarte",
+    "select_item": "Selecione o item",
+    "select_batch": "Lote (vazio = FEFO automático)",
+    "batch_number": "Número do lote",
+    "cost_per_unit": "Custo por unidade",
+    "reason": "Motivo",
+    "unit_cost": "Custo unitário",
+    "sale_price": "Preço de venda",
+    "anvisa": "Registro ANVISA"
   },
   "vendors": {
     "title": "Fornecedores",
@@ -164,13 +205,14 @@
     "phone": "Telefone",
     "email": "E-mail",
     "contact_name": "Contato",
-    "anvisa_license": "ANVISA"
+    "anvisa_license": "ANVISA",
+    "edit": "Editar Fornecedor"
   },
   "accounting": {
     "title": "Contabilidade",
     "chart_of_accounts": "Plano de contas",
-    "journal": "Diário",
-    "new_entry": "Novo lançamento",
+    "journal": "Lançamentos",
+    "new_entry": "Novo Lançamento",
     "debit": "Débito",
     "credit": "Crédito",
     "balance": "Saldo",
@@ -178,7 +220,24 @@
     "income_statement": "DRE",
     "revenue": "Receitas",
     "expenses": "Despesas",
-    "net_income": "Lucro líquido"
+    "net_income": "Lucro líquido",
+    "accounts": "Plano de Contas",
+    "new_account": "Nova Conta",
+    "edit_account": "Editar Conta",
+    "code": "Código",
+    "type": "Tipo",
+    "entry_date": "Data",
+    "description": "Descrição",
+    "add_line": "Adicionar linha",
+    "account": "Conta",
+    "unbalanced": "Débitos e créditos devem ser iguais",
+    "types": {
+      "asset": "Ativo",
+      "liability": "Passivo",
+      "equity": "Patrimônio",
+      "revenue": "Receita",
+      "expense": "Despesa"
+    }
   },
   "invoices": {
     "title": "Faturas",
@@ -186,9 +245,17 @@
     "number": "Número",
     "issue_date": "Emissão",
     "due_date": "Vencimento",
-    "patient": "Paciente",
+    "patient": "Paciente (opcional)",
     "status": "Status",
-    "mark_paid": "Marcar como paga"
+    "mark_paid": "Marcar como paga",
+    "edit": "Editar Fatura",
+    "add_line": "Adicionar item",
+    "description": "Descrição",
+    "unit_price": "Preço unit.",
+    "tax_rate": "Imposto %",
+    "status_draft": "Rascunho",
+    "status_issued": "Emitida",
+    "status_cancelled": "Cancelada"
   },
   "payroll": {
     "title": "Folha de Pagamento",
@@ -209,7 +276,13 @@
     "fgts": "FGTS",
     "approve": "Aprovar",
     "pay": "Pagar",
-    "run_for_period": "Rodar folha do período"
+    "run_for_period": "Rodar folha do período",
+    "new_employee": "Novo Funcionário",
+    "edit_employee": "Editar Funcionário",
+    "delete_run": "Excluir rascunho",
+    "weekly_hours": "Horas semanais",
+    "health_insurance_discount": "Desconto plano de saúde",
+    "other_discounts": "Outros descontos"
   },
   "whatsapp": {
     "title": "WhatsApp",
@@ -224,7 +297,16 @@
     "send": "Enviar",
     "type_message": "Digite uma mensagem...",
     "live": "Produção",
-    "dry_run": "Simulação"
+    "dry_run": "Simulação",
+    "send_as_clinic": "Enviar como clínica",
+    "simulate_patient": "Simular paciente",
+    "delete_conversation": "Excluir conversa",
+    "test_connection": "Testar conexão",
+    "connection_ok": "Meta API acessível",
+    "connection_failed": "Falha na conexão com a Meta",
+    "opted_out_error": "Este número optou por sair (LGPD). Mensagem não enviada.",
+    "new_chat": "Nova conversa",
+    "phone_number": "Número (ex: +5511999999999)"
   },
   "lgpd": {
     "title": "LGPD — Proteção de Dados",
@@ -238,7 +320,18 @@
     "request_access": "Solicitar acesso",
     "request_deletion": "Solicitar exclusão",
     "fulfilled": "Atendida",
-    "open": "Em aberto"
+    "open": "Em aberto",
+    "new_request": "Nova Solicitação",
+    "request_type": "Tipo de solicitação",
+    "subject": "Titular",
+    "fulfill": "Atender",
+    "types": {
+      "access": "Acesso",
+      "rectification": "Retificação",
+      "deletion": "Eliminação",
+      "portability": "Portabilidade",
+      "opposition": "Oposição"
+    }
   },
   "errors": {
     "generic": "Ocorreu um erro. Tente novamente.",
@@ -246,5 +339,27 @@
     "not_found": "Recurso não encontrado",
     "unauthorized": "Não autorizado",
     "server_error": "Erro do servidor"
+  },
+  "crud": {
+    "edit": "Editar",
+    "confirm_delete_title": "Confirmar exclusão",
+    "confirm_delete_body": "Esta ação não pode ser desfeita.",
+    "deactivated_notice": "O registro possui histórico e foi desativado em vez de excluído.",
+    "delete_error_clinical": "Paciente possui prontuários (retenção CFM de 20 anos). Use o fluxo de solicitação LGPD.",
+    "new": "Novo"
+  },
+  "team": {
+    "title": "Equipe",
+    "new_user": "Novo Usuário",
+    "edit_user": "Editar Usuário",
+    "role": "Função",
+    "password": "Senha",
+    "password_new_hint": "Deixe em branco para manter a senha atual",
+    "password_min": "Mínimo 8 caracteres",
+    "council_number": "Registro profissional (CRM/COREN/...)",
+    "council_state": "UF do registro",
+    "cpf": "CPF",
+    "full_name": "Nome completo",
+    "cannot_delete_self": "Você não pode remover seu próprio usuário"
   }
 }

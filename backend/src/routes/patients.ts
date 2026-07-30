@@ -7,30 +7,34 @@ import { logAudit, recordConsent, hasActiveConsent } from '../services/audit';
 
 const router = Router();
 
+// HTML forms submit empty strings for untouched optional fields — treat them as null
+const optStr = (schema: z.ZodString) =>
+  z.preprocess((v) => (v === '' || v === undefined ? null : v), schema.nullable());
+
 const patientSchema = z.object({
   full_name: z.string().min(1),
-  social_name: z.string().optional().nullable(),
+  social_name: optStr(z.string()),
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  cpf: z.string().regex(/^\d{11}$/).optional().nullable(),
-  rg: z.string().optional().nullable(),
-  gender: z.string().optional().nullable(),
+  cpf: optStr(z.string().regex(/^\d{11}$/)),
+  rg: optStr(z.string()),
+  gender: optStr(z.string()),
   phone: z.string().min(8),
-  email: z.string().email().optional().nullable(),
-  address_zip: z.string().optional().nullable(),
-  address_street: z.string().optional().nullable(),
-  address_number: z.string().optional().nullable(),
-  address_complement: z.string().optional().nullable(),
-  address_neighborhood: z.string().optional().nullable(),
-  address_city: z.string().optional().nullable(),
-  address_state: z.string().optional().nullable(),
-  health_insurance: z.string().optional().nullable(),
-  health_insurance_number: z.string().optional().nullable(),
-  blood_type: z.string().optional().nullable(),
+  email: optStr(z.string().email()),
+  address_zip: optStr(z.string()),
+  address_street: optStr(z.string()),
+  address_number: optStr(z.string()),
+  address_complement: optStr(z.string()),
+  address_neighborhood: optStr(z.string()),
+  address_city: optStr(z.string()),
+  address_state: optStr(z.string()),
+  health_insurance: optStr(z.string()),
+  health_insurance_number: optStr(z.string()),
+  blood_type: optStr(z.string()),
   allergies: z.array(z.string()).optional().default([]),
   chronic_conditions: z.array(z.string()).optional().default([]),
   medications_in_use: z.array(z.string()).optional().default([]),
-  emergency_contact_name: z.string().optional().nullable(),
-  emergency_contact_phone: z.string().optional().nullable(),
+  emergency_contact_name: optStr(z.string()),
+  emergency_contact_phone: optStr(z.string()),
   lgpd_consent_granted: z.boolean().optional().default(false),
   lgpd_policy_version: z.string().optional().default('1.0'),
 });
@@ -177,6 +181,37 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
     legalBasis: 'health_protection_art7_VIII',
   });
   res.json({ ok: true });
+});
+
+// Delete patient — admin only.
+// Hard delete is only allowed when the patient has NO clinical records
+// (CFM 1.821/2007 mandates 20-year retention of medical records; those
+// patients must go through the LGPD deletion/anonymization flow instead).
+router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id, full_name FROM patients WHERE id = ?`).get(req.params.id) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const clinical = (db.prepare(`
+    SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ?) +
+           (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ?) AS c
+  `).get(req.params.id, req.params.id) as any).c;
+  if (clinical > 0) {
+    res.status(409).json({
+      error: 'has_clinical_records',
+      message: 'Patient has clinical records (CFM 20-year retention). Use the LGPD deletion request flow instead.',
+    });
+    return;
+  }
+  db.prepare(`DELETE FROM invoices WHERE patient_id = ? AND status != 'paid'`).run(req.params.id);
+  db.prepare(`UPDATE whatsapp_conversations SET patient_id = NULL WHERE patient_id = ?`).run(req.params.id);
+  db.prepare(`DELETE FROM patients WHERE id = ?`).run(req.params.id); // appointments cascade
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'delete_patient', resourceType: 'patient', resourceId: req.params.id,
+    beforeValue: { full_name: p.full_name },
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: 'legal_obligation_art7_II',
+  });
+  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 // Patient LGPD data export (portability)

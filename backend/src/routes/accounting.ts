@@ -79,6 +79,63 @@ router.get('/chart', (req: Request, res: Response) => {
   res.json({ accounts: db.prepare(`SELECT * FROM chart_of_accounts ORDER BY code`).all() });
 });
 
+const accountSchema = z.object({
+  code: z.string().min(1).regex(/^[\d.]+$/),
+  name: z.string().min(1),
+  type: z.enum(['asset','liability','equity','revenue','expense']),
+});
+
+router.post('/chart', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const parsed = accountSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+  const d = parsed.data;
+  const id = uuid();
+  try {
+    db.prepare(`INSERT INTO chart_of_accounts (id, code, name, type) VALUES (?,?,?,?)`).run(id, d.code, d.name, d.type);
+  } catch (e: any) {
+    res.status(409).json({ error: 'duplicate_code', message: e.message });
+    return;
+  }
+  res.status(201).json({ id });
+});
+
+router.put('/chart/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const acc = db.prepare(`SELECT id FROM chart_of_accounts WHERE id = ?`).get(req.params.id) as any;
+  if (!acc) { res.status(404).json({ error: 'not_found' }); return; }
+  const parsed = accountSchema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  const d = parsed.data;
+  const sets: string[] = [];
+  const args: any[] = [];
+  for (const k of ['code','name','type'] as const) {
+    if (d[k] !== undefined) { sets.push(`${k} = ?`); args.push(d[k]); }
+  }
+  if (!sets.length) { res.json({ ok: true, noop: true }); return; }
+  try {
+    args.push(req.params.id);
+    db.prepare(`UPDATE chart_of_accounts SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+  } catch (e: any) {
+    res.status(409).json({ error: 'duplicate_code', message: e.message });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+// Deactivate when the account already has journal lines (ledger history),
+// hard delete only when never posted to.
+router.delete('/chart/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const acc = db.prepare(`SELECT id, name FROM chart_of_accounts WHERE id = ?`).get(req.params.id) as any;
+  if (!acc) { res.status(404).json({ error: 'not_found' }); return; }
+  const used = (db.prepare(`SELECT COUNT(*) AS c FROM journal_lines WHERE account_id = ?`).get(req.params.id) as any).c;
+  if (used > 0) {
+    db.prepare(`UPDATE chart_of_accounts SET active = 0 WHERE id = ?`).run(req.params.id);
+    res.json({ ok: true, soft_deleted: true });
+    return;
+  }
+  db.prepare(`DELETE FROM chart_of_accounts WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true, soft_deleted: false });
+});
+
 router.get('/journal', (req: Request, res: Response) => {
   const from = (req.query.from as string) || new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
   const to = (req.query.to as string) || new Date().toISOString().slice(0,10);
@@ -191,8 +248,51 @@ router.post('/invoices', requireRole('admin','accountant','receptionist'), (req:
 });
 
 router.put('/invoices/:id/mark-paid', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const inv = db.prepare(`SELECT id, status FROM invoices WHERE id = ?`).get(req.params.id) as any;
+  if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
   db.prepare(`UPDATE invoices SET status = 'paid', paid_at = datetime('now') WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
+});
+
+// Edit an invoice — only while unpaid (paid invoices are fiscal records)
+router.put('/invoices/:id', requireRole('admin','accountant','receptionist'), (req: Request, res: Response) => {
+  const inv = db.prepare(`SELECT * FROM invoices WHERE id = ?`).get(req.params.id) as any;
+  if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
+  if (inv.status === 'paid') { res.status(409).json({ error: 'already_paid' }); return; }
+  const parsed = invoiceSchema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+  const d = parsed.data;
+  const tx = db.transaction(() => {
+    const sets: string[] = [];
+    const args: any[] = [];
+    for (const k of ['patient_id','vendor_id','encounter_id','issue_date','due_date','total','status','payment_method'] as const) {
+      if (d[k] !== undefined) { sets.push(`${k} = ?`); args.push(d[k]); }
+    }
+    if (sets.length) {
+      args.push(req.params.id);
+      db.prepare(`UPDATE invoices SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+    }
+    if (d.lines) {
+      db.prepare(`DELETE FROM invoice_lines WHERE invoice_id = ?`).run(req.params.id);
+      for (const ln of d.lines) {
+        db.prepare(`
+          INSERT INTO invoice_lines (id, invoice_id, description, quantity, unit_price, tax_rate)
+          VALUES (?,?,?,?,?,?)
+        `).run(uuid(), req.params.id, ln.description, ln.quantity, ln.unit_price, ln.tax_rate);
+      }
+    }
+  });
+  tx();
+  res.json({ ok: true });
+});
+
+// Delete/cancel an invoice — paid invoices are kept for fiscal retention (CTN 5 years)
+router.delete('/invoices/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  const inv = db.prepare(`SELECT id, invoice_number, status FROM invoices WHERE id = ?`).get(req.params.id) as any;
+  if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
+  if (inv.status === 'paid') { res.status(409).json({ error: 'already_paid', message: 'Paid invoices are fiscal records and cannot be deleted.' }); return; }
+  db.prepare(`DELETE FROM invoices WHERE id = ?`).run(req.params.id); // lines cascade
+  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 // Auto-seed chart of accounts on first access

@@ -7,8 +7,11 @@ import { v4 as uuid } from 'uuid';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { recordConsent, logAudit } from '../services/audit';
-import { detectLocale, t, type Locale } from '../services/i18n';
-import { sendTextMessage, persistIncoming, getOrCreateConversation, updateConversation } from '../services/whatsapp';
+import { t, type Locale } from '../services/i18n';
+import {
+  sendTextMessage, persistIncoming, getOrCreateConversation, updateConversation,
+  verifyWebhookSignature, markAsRead, applyStatusUpdate, pingMeta,
+} from '../services/whatsapp';
 
 const router = Router();
 
@@ -220,16 +223,38 @@ router.get('/webhook', (req: Request, res: Response) => {
   res.status(403).send('Forbidden');
 });
 
-// Webhook for incoming messages
+// Webhook for incoming messages + delivery status callbacks (Meta POST).
+// Signature (X-Hub-Signature-256) is verified against META_WA_APP_SECRET when configured.
 router.post('/webhook', async (req: Request, res: Response) => {
-  res.status(200).send('ok'); // acknowledge immediately
+  const raw = (req as any).rawBody ?? JSON.stringify(req.body ?? {});
+  if (!verifyWebhookSignature(raw, req.headers['x-hub-signature-256'] as string | undefined)) {
+    logAudit({ action: 'whatsapp_webhook_bad_signature', ipAddress: req.ip, legalBasis: 'legal_obligation_art7_II' });
+    res.status(401).send('invalid signature');
+    return;
+  }
+  res.status(200).send('ok'); // acknowledge immediately so Meta doesn't retry
   try {
     const entries = req.body?.entry || [];
     for (const entry of entries) {
       for (const change of entry.changes || []) {
         if (change.field !== 'messages') continue;
+
+        // Delivery status callbacks: sent / delivered / read / failed
+        for (const st of change.value?.statuses || []) {
+          if (st.id && st.status) applyStatusUpdate(st.id, st.status);
+        }
+
         for (const msg of change.value?.messages || []) {
           const phone = msg.from;
+          if (!phone) continue;
+          if (msg.id) markAsRead(msg.id).catch(() => undefined);
+          if (msg.type && msg.type !== 'text') {
+            // Real-life: patients send audio/images — answer politely instead of ignoring
+            persistIncoming(phone, `[${msg.type}]`, msg.id);
+            const locale = detectUserLocale('');
+            await reply(phone, locale, 'unsupported_type');
+            continue;
+          }
           const body = msg.text?.body || '';
           const locale = detectUserLocale(body);
           persistIncoming(phone, body, msg.id);
@@ -264,8 +289,25 @@ router.post('/send', authenticate, requireRole('admin','receptionist','doctor','
   const phone = req.body.phone as string;
   const body = req.body.body as string;
   if (!phone || !body) { res.status(400).json({ error: 'phone and body required' }); return; }
+  const conv = db.prepare(`SELECT opted_out FROM whatsapp_conversations WHERE phone = ?`).get(phone) as any;
+  if (conv?.opted_out) {
+    res.status(409).json({ error: 'opted_out', message: 'This number has opted out (LGPD). Message not sent.' });
+    return;
+  }
   const result = await sendTextMessage(phone, body);
-  res.json(result);
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'whatsapp_staff_send', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
+  res.status(result.ok ? 200 : 502).json(result);
+});
+
+// Delete a conversation + its messages (staff inbox cleanup; LGPD minimization)
+router.delete('/conversations/:phone', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const phone = req.params.phone;
+  const conv = db.prepare(`SELECT id FROM whatsapp_conversations WHERE phone = ?`).get(phone) as any;
+  if (!conv) { res.status(404).json({ error: 'not_found' }); return; }
+  db.prepare(`DELETE FROM whatsapp_messages WHERE phone = ?`).run(phone);
+  db.prepare(`DELETE FROM whatsapp_conversations WHERE phone = ?`).run(phone);
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'whatsapp_conversation_deleted', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'legal_obligation_art7_II' });
+  res.json({ ok: true, deleted_phone: phone });
 });
 
 // Simulator — for testing without Meta
@@ -287,9 +329,16 @@ router.get('/status', authenticate, (_req, res) => {
   res.json({
     live,
     phone_id: process.env.META_WA_PHONE_ID ? '***configured***' : null,
+    app_secret_configured: !!process.env.META_WA_APP_SECRET,
+    verify_token_configured: !!process.env.META_WA_VERIFY_TOKEN,
     conversations_count: (db.prepare(`SELECT COUNT(*) as c FROM whatsapp_conversations`).get() as any).c,
     messages_count: (db.prepare(`SELECT COUNT(*) as c FROM whatsapp_messages`).get() as any).c,
   });
+});
+
+// Live connectivity check — actually calls the Meta Graph API
+router.get('/ping', authenticate, requireRole('admin','receptionist'), async (_req, res) => {
+  res.json(await pingMeta());
 });
 
 export { handleMessage, detectUserLocale, SPECIALTIES };

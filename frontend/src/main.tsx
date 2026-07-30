@@ -16,6 +16,7 @@ import Invoices from './pages/Invoices';
 import Payroll from './pages/Payroll';
 import WhatsApp from './pages/WhatsApp';
 import LGPD from './pages/LGPD';
+import Team from './pages/Team';
 import './index.css';
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path="payroll" element={<Payroll />} />
         <Route path="whatsapp" element={<WhatsApp />} />
         <Route path="lgpd" element={<LGPD />} />
+        <Route path="team" element={<Team />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
