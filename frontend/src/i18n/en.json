@@ -61,7 +61,19 @@
     "email": "Email",
     "password": "Password",
     "sign_in": "Sign in to the system",
-    "invalid_credentials": "Invalid email or password"
+    "invalid_credentials": "Invalid email or password",
+    "welcome": "Welcome back",
+    "subtitle": "Access the clinic dashboard with your credentials",
+    "show_password": "Show password",
+    "hide_password": "Hide password",
+    "demo_accounts": "Demo accounts",
+    "demo_password_hint": "password for all: clinica2026",
+    "secure_notice": "Protected access · LGPD compliant",
+    "brand_title": "Clinical management, perfected",
+    "brand_subtitle": "Health records, scheduling, inventory and finance on a single secure platform.",
+    "feature_records": "Complete electronic health records",
+    "feature_whatsapp": "Smart scheduling via WhatsApp",
+    "feature_lgpd": "Native LGPD compliance"
   },
   "dashboard": {
     "welcome": "Welcome back",

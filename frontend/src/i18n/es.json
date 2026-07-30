@@ -61,7 +61,19 @@
     "email": "Correo",
     "password": "Contraseña",
     "sign_in": "Entrar al sistema",
-    "invalid_credentials": "Correo o contraseña inválidos"
+    "invalid_credentials": "Correo o contraseña inválidos",
+    "welcome": "Te damos la bienvenida de nuevo",
+    "subtitle": "Accede al panel de la clínica con tus credenciales",
+    "show_password": "Mostrar contraseña",
+    "hide_password": "Ocultar contraseña",
+    "demo_accounts": "Cuentas de demostración",
+    "demo_password_hint": "contraseña para todas: clinica2026",
+    "secure_notice": "Acceso protegido · Conforme a la LGPD",
+    "brand_title": "Gestión clínica de excelencia",
+    "brand_subtitle": "Historias clínicas, agenda, inventario y finanzas en una única plataforma segura.",
+    "feature_records": "Historia clínica electrónica completa",
+    "feature_whatsapp": "Programación inteligente por WhatsApp",
+    "feature_lgpd": "Cumplimiento nativo de la LGPD"
   },
   "dashboard": {
     "welcome": "Bienvenido de nuevo",
