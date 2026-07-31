@@ -161,11 +161,12 @@ export default function Patients() {
               <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2}><path d="m6 9 6 6 6-6" /></svg>
             </button>
             {actionsOpen && (
-              <div className="absolute right-0 mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1 animate-scale-in">
-                <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={exportCsv}>
+              <div className="absolute right-0 mt-1 z-20 w-48 rounded-lg border border-[rgba(139,115,85,0.45)] py-1 animate-scale-in"
+                style={{ background: 'linear-gradient(180deg, #f7f2ea, #efe6d8)', boxShadow: 'var(--shadow-menu)' }}>
+                <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-[#efe6d8] text-[#2c2118]" onClick={exportCsv}>
                   {t('patients.export')}
                 </button>
-                <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 text-slate-400 cursor-not-allowed" disabled>
+                <button type="button" className="w-full text-left px-3 py-2 text-sm text-[#5c4a3c] cursor-not-allowed opacity-60" disabled>
                   {t('patients.import')}
                 </button>
               </div>

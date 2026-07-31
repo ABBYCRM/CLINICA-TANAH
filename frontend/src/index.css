@@ -31,8 +31,8 @@
   --gold-deep: var(--brass-deep);
   --clay: #9a6548;
   --moss: #4a5c42;
-  --shade: rgba(30, 18, 10, 0.22);
-  --shade-deep: rgba(20, 10, 4, 0.38);
+  --shade: rgba(30, 18, 10, 0.18);
+  --shade-deep: rgba(20, 10, 4, 0.32);
   --lift: rgba(255, 245, 220, 0.55);
 
   /* Compat aliases used across the app */
@@ -60,10 +60,37 @@
   --font-display: 'Fraunces', Georgia, serif;
   --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
 
-  /* Soft elevation scale */
-  --elev-1: 0 1px 2px var(--shade), 0 4px 10px rgba(20, 10, 4, 0.12);
-  --elev-2: 0 2px 4px var(--shade), 0 10px 22px rgba(20, 10, 4, 0.2);
-  --elev-3: 0 4px 8px var(--shade), 0 18px 36px rgba(20, 10, 4, 0.28);
+  /*
+   * Harmonized desk shadows — one light from above-left.
+   * raised = buttons / chips / cards
+   * field  = inputs / selects (softly recessed)
+   * pressed = active / clicked
+   */
+  --shadow-raised:
+    inset 0 1px 0 var(--lift),
+    0 1px 2px rgba(30, 18, 10, 0.16),
+    0 3px 8px rgba(20, 10, 4, 0.1);
+  --shadow-raised-brass:
+    inset 0 1px 0 rgba(255, 245, 200, 0.55),
+    0 1px 0 #6e5528,
+    0 1px 2px rgba(30, 18, 10, 0.16),
+    0 3px 8px rgba(20, 10, 4, 0.1);
+  --shadow-field:
+    inset 0 1px 2px rgba(30, 18, 10, 0.2),
+    inset 0 -1px 0 rgba(255, 245, 220, 0.28);
+  --shadow-pressed:
+    inset 0 2px 4px rgba(30, 18, 10, 0.28);
+  --shadow-card:
+    inset 0 1px 0 var(--lift),
+    0 2px 4px rgba(30, 18, 10, 0.14),
+    0 8px 18px rgba(20, 10, 4, 0.14);
+  --shadow-menu:
+    inset 0 1px 0 var(--lift),
+    0 4px 14px rgba(20, 10, 4, 0.2);
+
+  --elev-1: 0 1px 2px rgba(30, 18, 10, 0.16), 0 3px 8px rgba(20, 10, 4, 0.1);
+  --elev-2: 0 2px 4px rgba(30, 18, 10, 0.14), 0 8px 18px rgba(20, 10, 4, 0.14);
+  --elev-3: 0 3px 6px rgba(30, 18, 10, 0.16), 0 12px 24px rgba(20, 10, 4, 0.18);
 
   /* Desk — warm walnut, restrained grain */
   --tex-wood:
@@ -150,26 +177,23 @@ h1, h2, .font-display {
     @apply btn text-[#2c2118];
     background: var(--tex-brass);
     border: 1px solid var(--brass-deep);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 245, 200, 0.55),
-      0 1px 0 #6e5528,
-      var(--elev-1);
+    box-shadow: var(--shadow-raised-brass);
   }
   .btn-primary:hover { filter: brightness(1.05); }
   .btn-primary:active {
     transform: translateY(1px);
-    box-shadow: inset 0 2px 6px rgba(60, 35, 5, 0.4), 0 1px 0 #6e5528;
+    box-shadow: var(--shadow-pressed), 0 1px 0 #6e5528;
   }
   .btn-secondary {
     @apply btn text-[color:var(--ink)];
     background: var(--tex-cardstock);
     border: 1px solid var(--edge);
-    box-shadow: inset 0 1px 0 var(--lift), var(--elev-1);
+    box-shadow: var(--shadow-raised);
   }
   .btn-secondary:hover { filter: brightness(1.03); }
   .btn-secondary:active {
     transform: translateY(1px);
-    box-shadow: inset 0 2px 5px var(--shade);
+    box-shadow: var(--shadow-pressed);
   }
   .btn-danger {
     @apply btn text-[#f8ece4];
@@ -179,7 +203,7 @@ h1, h2, .font-display {
   }
   .btn-danger:active {
     transform: translateY(1px);
-    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-pressed);
   }
 
   .input {
@@ -187,13 +211,13 @@ h1, h2, .font-display {
     color: var(--ink);
     background: linear-gradient(180deg, #d4c4a4 0%, #efe4cc 40%, #f4ead2 100%);
     border: 1px solid var(--edge);
-    box-shadow: inset 0 2px 6px var(--shade);
+    box-shadow: var(--shadow-field);
   }
   .input:hover { border-color: #6e5840; }
   .input:focus {
     outline: none;
     border-color: var(--brass-deep);
-    box-shadow: inset 0 2px 6px var(--shade), 0 0 0 3px rgba(201, 162, 90, 0.3);
+    box-shadow: var(--shadow-field), 0 0 0 3px rgba(201, 162, 90, 0.28);
   }
   .label {
     @apply mb-1.5 block text-sm font-semibold tracking-wide;
@@ -204,7 +228,7 @@ h1, h2, .font-display {
     @apply rounded-panel transition-shadow duration-200 relative;
     background: var(--tex-cardstock);
     border: 1px solid var(--edge-soft);
-    box-shadow: inset 0 1px 0 var(--lift), var(--elev-2);
+    box-shadow: var(--shadow-card);
   }
   .card::after {
     content: '';
@@ -221,7 +245,7 @@ h1, h2, .font-display {
 
   .badge {
     @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold tracking-wide;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 1px 2px var(--shade);
+    box-shadow: var(--shadow-raised);
   }
   .badge-green { @apply badge text-[#1e301c]; background: linear-gradient(180deg, #c8dbc4, #9fbf98); }
   .badge-yellow { @apply badge text-[#4a3818]; background: linear-gradient(180deg, #f0dca0, #d4b86a); }
@@ -297,8 +321,8 @@ h1, h2, .font-display {
   .nav-chip-active {
     background: linear-gradient(180deg, #1e140e 0%, #322218 50%, #241810 100%);
     box-shadow:
-      inset 2px 2px 6px rgba(0, 0, 0, 0.55),
-      inset -1px -1px 2px rgba(201, 162, 90, 0.12);
+      inset 0 2px 5px rgba(0, 0, 0, 0.45),
+      inset 0 -1px 0 rgba(201, 162, 90, 0.18);
     border-radius: 10px;
     border: 1px solid #1a120c;
     color: var(--brass) !important;
@@ -306,7 +330,7 @@ h1, h2, .font-display {
   .menu-item-active svg,
   .nav-chip-active svg {
     color: var(--brass);
-    filter: drop-shadow(0 0 3px rgba(201, 162, 90, 0.4));
+    filter: drop-shadow(0 0 2px rgba(201, 162, 90, 0.35));
   }
   .nav-chip {
     @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150;
@@ -333,53 +357,50 @@ h1, h2, .font-display {
     color: var(--ink);
     background: var(--tex-brass);
     border: 1px solid var(--brass-deep);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 245, 200, 0.6),
-      inset 0 -2px 4px rgba(80, 50, 10, 0.3),
-      0 2px 6px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--shadow-raised-brass);
   }
 
   .crm-view-tab {
-    @apply px-3 py-2.5 text-sm font-semibold border-b-2 border-transparent -mb-px transition-colors;
+    @apply px-3 py-2.5 text-sm font-semibold border-b-2 border-transparent -mb-px transition-all duration-150;
     color: var(--ink-muted);
   }
   .crm-view-tab:hover { color: var(--ink); }
   .crm-view-tab.is-active {
     color: var(--ink);
     border-color: var(--brass-deep);
-    background: linear-gradient(180deg, rgba(255,255,255,0.35), transparent);
+    background: var(--tex-cardstock);
+    border-radius: 0.65rem 0.65rem 0 0;
+    box-shadow: var(--shadow-raised);
   }
   .crm-filter {
     @apply rounded-lg px-2.5 py-1.5 text-sm;
     color: var(--ink);
-    background: var(--tex-cardstock);
+    background: linear-gradient(180deg, #d4c4a4 0%, #efe4cc 40%, #f4ead2 100%);
     border: 1px solid var(--edge);
-    box-shadow: inset 0 1px 0 var(--lift), 0 1px 2px var(--shade);
+    box-shadow: var(--shadow-field);
   }
   .crm-avatar {
     @apply inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold;
     color: var(--ink);
     background: var(--tex-brass);
-    box-shadow: inset 0 1px 0 rgba(255,245,200,0.5), 0 1px 3px var(--shade);
+    box-shadow: var(--shadow-raised-brass);
   }
   .crm-avatar-lg {
     @apply inline-flex items-center justify-center w-20 h-20 rounded-full text-2xl font-bold;
     color: var(--ink);
     background: var(--tex-brass);
-    box-shadow:
-      inset 0 1px 0 rgba(255,245,200,0.55),
-      inset 0 -2px 6px rgba(80,50,10,0.28),
-      var(--elev-2);
+    box-shadow: var(--shadow-raised-brass);
   }
   .crm-quick-btn {
     @apply inline-flex items-center justify-center w-9 h-9 rounded-full transition-all;
     color: var(--ink);
     background: var(--tex-metal);
     border: 1px solid var(--metal-lo);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 1px 3px var(--shade);
+    box-shadow: var(--shadow-raised);
   }
   .crm-quick-btn:hover {
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), var(--elev-1);
+    box-shadow: var(--shadow-raised);
+    filter: brightness(1.04);
   }
   .crm-prop dt { @apply text-[11px] font-bold uppercase tracking-wide; color: #8a7458; }
   .crm-prop dd { @apply text-sm mt-0.5 break-words; color: var(--ink); }
@@ -393,13 +414,13 @@ h1, h2, .font-display {
     @apply rounded-xl px-3 py-2.5 transition-colors relative;
     background: var(--tex-paper);
     border: 1px solid var(--edge-soft);
-    box-shadow: inset 0 1px 0 var(--lift), var(--elev-1);
+    box-shadow: var(--shadow-raised);
   }
   .crm-timeline-icon {
     @apply inline-flex items-center justify-center w-8 h-8 rounded-full shrink-0;
     color: var(--ink);
     background: var(--tex-metal);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 1px 2px var(--shade);
+    box-shadow: var(--shadow-raised);
   }
   .crm-record-grid {
     display: grid;
@@ -463,7 +484,7 @@ h1, h2, .font-display {
     color: var(--ink);
     background: linear-gradient(135deg, #E5E7EB, #D1D5DB);
     border: 1px solid #9CA3AF;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.12);
+    box-shadow: var(--shadow-raised);
     transition: filter 0.15s ease;
   }
   .appt-drawer-close:hover { filter: brightness(1.05); }
@@ -520,7 +541,7 @@ h1, h2, .font-display {
     @apply rounded-panel;
     background: var(--tex-cardstock);
     border: 1px solid var(--edge-soft);
-    box-shadow: inset 0 1px 0 var(--lift), var(--elev-3);
+    box-shadow: var(--shadow-card);
   }
 
   .login-desk {
@@ -542,7 +563,7 @@ h1, h2, .font-display {
     @apply inline-flex items-center gap-0.5 p-1 rounded-xl overflow-x-auto max-w-full;
     background: linear-gradient(180deg, #b89868 0%, #dfcba0 100%);
     border: 1px solid var(--edge);
-    box-shadow: inset 0 2px 5px var(--shade);
+    box-shadow: var(--shadow-field);
   }
   .seg-item {
     @apply shrink-0 px-3 py-2 text-sm font-semibold rounded-lg whitespace-nowrap transition-all duration-150;
@@ -554,7 +575,7 @@ h1, h2, .font-display {
     color: var(--ink);
     background: var(--tex-cardstock);
     border-color: var(--edge);
-    box-shadow: inset 0 1px 0 var(--lift), var(--elev-1);
+    box-shadow: var(--shadow-raised);
   }
 
   .page-title {
@@ -573,17 +594,17 @@ h1, h2, .font-display {
   .well {
     @apply rounded-panel overflow-hidden;
     background:
-      linear-gradient(180deg, rgba(30,18,10,0.08), transparent 35%),
+      linear-gradient(180deg, rgba(30,18,10,0.06), transparent 35%),
       var(--tex-cardstock);
     border: 1px solid var(--edge-soft);
-    box-shadow: inset 0 2px 8px var(--shade);
+    box-shadow: var(--shadow-field);
   }
 
   .appt-block {
     @apply w-full text-left rounded-lg px-1.5 py-1 text-[11px] leading-snug transition-all;
     background: var(--tex-paper);
     border: 1px solid var(--edge-soft);
-    box-shadow: inset 0 1px 0 var(--lift), 0 1px 2px var(--shade);
+    box-shadow: var(--shadow-raised);
     color: var(--ink);
   }
   .appt-block:hover {
@@ -592,10 +613,7 @@ h1, h2, .font-display {
   }
   .appt-block.is-selected {
     border-color: var(--brass-deep);
-    box-shadow:
-      inset 0 1px 0 var(--lift),
-      0 0 0 2px rgba(201, 162, 90, 0.3),
-      var(--elev-1);
+    box-shadow: var(--shadow-raised), 0 0 0 2px rgba(201, 162, 90, 0.28);
   }
 
   .mat-leather {

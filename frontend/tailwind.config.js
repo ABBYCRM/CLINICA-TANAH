@@ -65,13 +65,17 @@ export default {
       },
       boxShadow: {
         raised:
-          'inset 0 1px 0 rgba(255,245,220,0.55), 0 2px 4px rgba(30,18,10,0.22), 0 10px 22px rgba(20,10,4,0.2)',
+          'inset 0 1px 0 rgba(255,245,220,0.55), 0 1px 2px rgba(30,18,10,0.16), 0 3px 8px rgba(20,10,4,0.1)',
         pressed:
-          'inset 2px 2px 6px rgba(0,0,0,0.55), inset -1px -1px 2px rgba(201,162,90,0.12)',
+          'inset 0 2px 4px rgba(30,18,10,0.28)',
+        field:
+          'inset 0 1px 2px rgba(30,18,10,0.2), inset 0 -1px 0 rgba(255,245,220,0.28)',
         knob:
-          'inset 0 1px 0 rgba(255,245,200,0.55), 0 1px 0 #6e5528, 0 4px 10px rgba(20,10,4,0.12)',
+          'inset 0 1px 0 rgba(255,245,200,0.55), 0 1px 0 #6e5528, 0 1px 2px rgba(30,18,10,0.16), 0 3px 8px rgba(20,10,4,0.1)',
         wood:
           '4px 0 20px rgba(0,0,0,0.28)',
+        menu:
+          'inset 0 1px 0 rgba(255,245,220,0.55), 0 4px 14px rgba(20,10,4,0.2)',
       },
       borderRadius: {
         panel: '1rem',

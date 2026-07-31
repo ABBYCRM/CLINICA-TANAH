@@ -171,7 +171,7 @@ export default function Layout() {
     'inline-flex items-center justify-center rounded-xl p-2.5 text-[#3a342c] transition-all hover:brightness-105 min-h-11 min-w-11';
   const chromeBtnStyle = {
     background: 'linear-gradient(135deg, #E5E7EB, #D1D5DB)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.12)',
+    boxShadow: 'var(--shadow-raised)',
     border: '1px solid #9CA3AF',
   } as const;
 
