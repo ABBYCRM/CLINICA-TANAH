@@ -91,7 +91,7 @@ export default function Team() {
     <div className="space-y-4" data-testid="team-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('team.title')}</h1>
+          <h1 className="page-title">{t('team.title')}</h1>
           <p className="text-sm text-[#6b645a] mt-0.5">{t('team.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

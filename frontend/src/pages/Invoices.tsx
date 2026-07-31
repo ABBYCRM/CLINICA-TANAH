@@ -85,7 +85,7 @@ export default function Invoices() {
     <div className="space-y-4" data-testid="invoices-page">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('invoices.title')}</h1>
+          <h1 className="page-title">{t('invoices.title')}</h1>
           <p className="text-sm text-[#6b645a] mt-0.5">
             {ocrReady ? t('invoices.ocr_ready') : t('invoices.ocr_not_configured')}
           </p>

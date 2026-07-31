@@ -133,7 +133,7 @@ export default function Payroll() {
     <div className="space-y-4" data-testid="payroll-page">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('payroll.title')}</h1>
+          <h1 className="page-title">{t('payroll.title')}</h1>
           <p className="text-sm text-[#6b645a] mt-0.5">
             {t('payroll.legal_banner', { year: meta?.year || 2026, wage: money(meta?.minimum_wage || 1621, locale) })}
           </p>

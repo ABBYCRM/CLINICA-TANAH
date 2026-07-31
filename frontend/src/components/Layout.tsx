@@ -87,8 +87,8 @@ export default function Layout() {
       </div>
       {!compact && (
         <div className="overflow-hidden min-w-0">
-          <div className="font-display font-semibold text-[#3a342c] truncate tracking-tight text-[15px]">{tenantLabel}</div>
-          <div className="text-[11px] text-[#5c564c] truncate">{t('app.tagline')}</div>
+          <div className="font-display font-semibold text-[#2a1f16] truncate tracking-tight text-[15px]">{tenantLabel}</div>
+          <div className="text-[11px] text-[#5c6570] truncate">{t('app.tagline')}</div>
         </div>
       )}
     </div>
@@ -115,16 +115,16 @@ export default function Layout() {
   );
 
   const sidebarFooter = (compact: boolean) => (
-    <div className="p-3 border-t border-[#B0B7C0] text-xs space-y-2">
+    <div className="p-3 border-t border-[#1a1008] text-xs space-y-2 relative z-[1]">
       {!compact && (
         <>
           <div>
-            <div className="text-[#6b645a] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
+            <div className="text-[#c9b896] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
             <div
-              className="inline-flex rounded-xl p-0.5 border border-[#B0B7C0]"
+              className="inline-flex rounded-xl p-0.5 border border-[#1a1008]"
               style={{
-                background: 'linear-gradient(180deg, #ddd4c6, #e8dfd1)',
-                boxShadow: 'inset 0 2px 4px rgba(58,52,44,0.16)',
+                background: 'linear-gradient(180deg, #2a1a12, #3a2618)',
+                boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.45)',
               }}
             >
               {locales.map((l) => (
@@ -134,13 +134,13 @@ export default function Layout() {
                   aria-pressed={l === locale}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
                     l === locale
-                      ? 'text-white'
-                      : 'text-[#6b645a] hover:text-[#3a342c]'
+                      ? 'text-[#2a1f16]'
+                      : 'text-[#c9b896] hover:text-[#f0e2c8]'
                   }`}
                   style={l === locale
                     ? {
-                        background: 'linear-gradient(180deg, #9CA3AF, #6B7280)',
-                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.2)',
+                        background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)',
+                        boxShadow: 'inset 0 1px 0 rgba(255,245,200,0.55), 0 1px 3px rgba(0,0,0,0.35)',
                       }
                     : undefined}
                 >
@@ -149,12 +149,12 @@ export default function Layout() {
               ))}
             </div>
           </div>
-          <div className="pt-2 border-t border-[#B0B7C0]">
-            <div className="text-[#3a342c] font-semibold truncate">{user?.full_name}</div>
-            <div className="text-[#6b645a] truncate capitalize">{user?.role}</div>
+          <div className="pt-2 border-t border-[#1a1008]/70">
+            <div className="text-[#f0e2c8] font-semibold truncate">{user?.full_name}</div>
+            <div className="text-[#c9b896] truncate capitalize">{user?.role}</div>
             <button
               onClick={handleLogout}
-              className="mt-2 inline-flex items-center gap-1.5 text-[#8f4a3d] transition-colors hover:text-[#6e372d]"
+              className="mt-2 inline-flex items-center gap-1.5 text-[#e8b8a8] transition-colors hover:text-[#f0d0c0]"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" />
@@ -177,7 +177,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Desktop sidebar — parchment skeuo */}
+      {/* Desktop sidebar — leather folder */}
       <aside
         data-testid="sidebar"
         className={`${sidebarOpen ? 'w-64' : 'w-[4.5rem]'} hidden lg:flex transition-[width] duration-300 ease-fluid skeuo-sidebar flex-col shrink-0`}
@@ -208,7 +208,7 @@ export default function Layout() {
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
-            className="absolute top-4 right-4 rounded-lg p-1.5 text-[#5c564c] transition-colors hover:bg-black/5 hover:text-[#3a342c]"
+            className="absolute top-4 right-4 rounded-lg p-1.5 text-[#c9b896] transition-colors hover:bg-black/20 hover:text-[#f0e2c8]"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" />

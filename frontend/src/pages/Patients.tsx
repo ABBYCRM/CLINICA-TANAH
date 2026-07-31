@@ -149,8 +149,8 @@ export default function Patients() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('patients.title')}</h1>
-          <p className="text-sm text-[#6b645a] mt-0.5" data-testid="patients-count">
+          <h1 className="page-title">{t('patients.title')}</h1>
+          <p className="page-subtitle" data-testid="patients-count">
             {total === 1 ? t('patients.record_one') : t('patients.record_many', { n: total })}
           </p>
         </div>

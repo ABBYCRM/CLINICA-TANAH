@@ -43,7 +43,7 @@ export default function Vendors() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('vendors.title')}</h1>
+        <h1 className="page-title">{t('vendors.title')}</h1>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-vendor">
           + {t('vendors.new')}
         </button>

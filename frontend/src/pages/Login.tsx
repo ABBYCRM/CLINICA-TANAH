@@ -69,38 +69,39 @@ export default function Login() {
 
   return (
     <div className="login-desk min-h-screen flex">
-      {/* Brand panel — parchment skeuo */}
-      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden skeuo-sidebar p-12 text-[#3a342c]">
+      {/* Brand panel — leather + wood desk */}
+      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden skeuo-sidebar p-12 text-[#f0e2c8]">
         <div
-          className="pointer-events-none absolute inset-0 opacity-50 animate-drift"
+          className="pointer-events-none absolute inset-0 opacity-40 animate-drift"
           style={{
             background:
-              'radial-gradient(ellipse 70% 50% at 15% 20%, rgba(255,255,255,0.55), transparent 55%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(156,163,175,0.35), transparent 50%)',
+              'radial-gradient(ellipse 70% 50% at 15% 20%, rgba(212,175,106,0.25), transparent 55%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(0,0,0,0.45), transparent 50%)',
           }}
           aria-hidden="true"
         />
 
-        <div className="relative animate-fade-in-down">
+        <div className="relative animate-fade-in-down z-[1]">
           <div className="flex items-center gap-4">
             <LogoMark className="w-12 h-12" />
-            <div className="text-sm text-[#6b645a]">{t('app.tagline')}</div>
+            <div className="text-sm text-[#c9b896]">{t('app.tagline')}</div>
           </div>
         </div>
 
-        <div className="relative space-y-6">
-          <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight animate-fade-in-up delay-100">
+        <div className="relative space-y-6 z-[1]">
+          <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight text-[#f0e2c8] animate-fade-in-up delay-100"
+            style={{ textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
             {t('app.name')}
           </h1>
-          <p className="max-w-md text-[1.05rem] text-[#5c564c] leading-relaxed animate-fade-in-up delay-200">
+          <p className="max-w-md text-[1.05rem] text-[#c9b896] leading-relaxed animate-fade-in-up delay-200">
             {t('auth.brand_subtitle')}
           </p>
           <ul className="space-y-3.5 animate-fade-in-up delay-300">
             {features.map((f) => (
-              <li key={f.label} className="flex items-center gap-3 text-sm text-[#3a342c]">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#3a342c] border border-[#B0B7C0]"
+              <li key={f.label} className="flex items-center gap-3 text-sm text-[#f0e2c8]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#2a1f16] border border-[#7a5a22]"
                   style={{
-                    background: 'linear-gradient(135deg, #E5E7EB, #D1D5DB)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.12)',
+                    background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,245,200,0.65), 0 2px 8px rgba(0,0,0,0.35)',
                   }}
                 >
                   {f.icon}
@@ -111,12 +112,12 @@ export default function Login() {
           </ul>
         </div>
 
-        <div className="relative flex items-center gap-2 text-xs text-[#6b645a] animate-fade-in delay-300">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+        <div className="relative z-[1] flex items-center gap-2 text-xs text-[#c9b896] animate-fade-in delay-300">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-[#d4af6a]" aria-hidden="true">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
           <span>{t('auth.secure_notice')}</span>
-          <span className="text-[#9a9184]">·</span>
+          <span className="text-[#a8843d]">·</span>
           <span className="truncate">{t('app.address')}</span>
         </div>
       </aside>
@@ -129,17 +130,17 @@ export default function Login() {
         </div>
 
         <div className="relative w-full max-w-md max-lg:self-start px-4 sm:px-8 pb-8 lg:px-0 lg:pb-0">
-          {/* Mobile brand header — full-bleed parchment */}
-          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden skeuo-sidebar px-6 pt-12 pb-24 text-center text-[#3a342c] lg:hidden">
+          {/* Mobile brand header — leather */}
+          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden skeuo-sidebar px-6 pt-12 pb-24 text-center text-[#f0e2c8] lg:hidden">
             <div
-              className="pointer-events-none absolute inset-0 opacity-50 animate-leaf"
-              style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(255,255,255,0.55), transparent 55%)' }}
+              className="pointer-events-none absolute inset-0 opacity-40 animate-leaf"
+              style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(212,175,106,0.3), transparent 55%)' }}
               aria-hidden="true"
             />
-            <div className="relative flex flex-col items-center animate-fade-in-down">
+            <div className="relative flex flex-col items-center animate-fade-in-down z-[1]">
               <LogoMark className="w-14 h-14" />
-              <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight">{t('app.name')}</h1>
-              <p className="mt-1 text-sm text-[#6b645a]">{t('app.tagline')}</p>
+              <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight text-[#f0e2c8]">{t('app.name')}</h1>
+              <p className="mt-1 text-sm text-[#c9b896]">{t('app.tagline')}</p>
             </div>
           </div>
 
@@ -153,9 +154,9 @@ export default function Login() {
               <div
                 className="inline-flex rounded-xl p-0.5"
                 style={{
-                  background: 'linear-gradient(180deg, #ddd4c6, #f0e8dc)',
-                  border: '1px solid #b8ac99',
-                  boxShadow: 'inset 0 2px 4px rgba(58,52,44,0.12)',
+                  background: 'linear-gradient(180deg, #c8b896, #ebe0c4)',
+                  border: '1px solid #8a7048',
+                  boxShadow: 'inset 0 2px 5px rgba(40,25,10,0.25)',
                 }}
               >
                 {locales.map((l) => (
@@ -166,10 +167,10 @@ export default function Login() {
                     aria-pressed={l === locale}
                     className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
                       l === locale
-                        ? 'text-white shadow-knob'
-                        : 'text-[#6b645a] hover:text-[#3a342c]'
+                        ? 'text-[#2a1f16] shadow-knob'
+                        : 'text-[#6b5646] hover:text-[#2a1f16]'
                     }`}
-                    style={l === locale ? { background: 'linear-gradient(180deg, #9CA3AF, #6B7280)' } : undefined}
+                    style={l === locale ? { background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)' } : undefined}
                   >
                     {localeLabels[l]}
                   </button>

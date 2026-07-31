@@ -87,10 +87,10 @@ export default function Dashboard() {
   return (
     <div className="space-y-7" data-testid="dashboard">
       <header className="max-w-2xl animate-fade-in-down">
-        <h1 className="font-display text-[1.85rem] font-semibold tracking-tight text-[#3a342c] sm:text-[2.05rem]">
+        <h1 className="page-title">
           {t('dashboard.welcome')}
         </h1>
-        <p className="mt-1.5 text-sm text-[#6b645a]">
+        <p className="page-subtitle">
           {t('app.name')} — {t('app.address')}
         </p>
       </header>
