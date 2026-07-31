@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
+import { isValidCpf } from '../services/brazilianPayroll';
 
 const router = Router();
 
@@ -26,6 +27,10 @@ router.get('/directory', authenticate, (req: Request, res: Response) => {
 router.use(authenticate, requireRole('admin'));
 
 const ROLES = ['admin','doctor','nurse','receptionist','accountant','pharmacist','dpo'] as const;
+const CLINICAL_ROLES = new Set(['doctor', 'nurse', 'pharmacist']);
+const UF = new Set([
+  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
+]);
 
 const userSchema = z.object({
   email: z.string().email(),
@@ -37,7 +42,28 @@ const userSchema = z.object({
   council_state: z.string().length(2).optional().nullable(),
 });
 
-const createSchema = userSchema.extend({ password: z.string().min(8) });
+const createSchema = userSchema.extend({
+  password: z.string().min(8),
+  cpf: z.string().regex(/^\d{11}$/),
+});
+
+function assertStaffLegal(d: {
+  role?: string;
+  cpf?: string | null;
+  council_number?: string | null;
+  council_state?: string | null;
+}, { requireCpf }: { requireCpf: boolean }): string | null {
+  if (requireCpf || d.cpf) {
+    if (!d.cpf || !isValidCpf(d.cpf)) return 'invalid_cpf';
+  }
+  if (d.council_state && !UF.has(d.council_state.toUpperCase())) return 'invalid_council_state';
+  const role = d.role;
+  if (role && CLINICAL_ROLES.has(role)) {
+    if (!d.council_number || !String(d.council_number).trim()) return 'council_required';
+    if (!d.council_state || !UF.has(d.council_state.toUpperCase())) return 'council_state_required';
+  }
+  return null;
+}
 
 const publicCols = `id, email, full_name, role, cpf, council_number, council_state, active, created_at, updated_at`;
 
@@ -53,14 +79,21 @@ router.post('/', (req: Request, res: Response) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
+  const legal = assertStaffLegal(d, { requireCpf: true });
+  if (legal) { res.status(400).json({ error: legal }); return; }
   const id = uuid();
   try {
     db.prepare(`
       INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, cpf, council_number, council_state)
       VALUES (?,?,?,?,?,?,?,?,?)
     `).run(id, req.tenantId, d.email.toLowerCase(), bcrypt.hashSync(d.password, 10), d.full_name, d.role,
-           d.cpf ?? null, d.council_number ?? null, d.council_state ?? null);
+           d.cpf, d.council_number ?? null, d.council_state ? d.council_state.toUpperCase() : null);
   } catch (e: any) {
+    const msg = String(e.message || '');
+    if (msg.toLowerCase().includes('cpf')) {
+      res.status(409).json({ error: 'duplicate_cpf' });
+      return;
+    }
     res.status(409).json({ error: 'duplicate_email', message: e.message });
     return;
   }
@@ -73,16 +106,43 @@ router.post('/', (req: Request, res: Response) => {
   res.status(201).json({ id });
 });
 
+router.put('/:id/reactivate', (req: Request, res: Response) => {
+  const target = db.prepare(`SELECT id, email, active FROM users WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+  db.prepare(`UPDATE users SET active = 1, updated_at = ? WHERE id = ? AND tenant_id = ?`)
+    .run(new Date().toISOString(), target.id, req.tenantId);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'reactivate_staff_user', resourceType: 'user', resourceId: target.id,
+    afterValue: { email: target.email }, legalBasis: 'legal_obligation_art7_II',
+  });
+  res.json({ ok: true });
+});
+
 router.put('/:id', (req: Request, res: Response) => {
   const target = db.prepare(`SELECT * FROM users WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!target) { res.status(404).json({ error: 'not_found' }); return; }
   const parsed = userSchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
+  const merged = {
+    role: d.role ?? target.role,
+    cpf: d.cpf !== undefined ? d.cpf : target.cpf,
+    council_number: d.council_number !== undefined ? d.council_number : target.council_number,
+    council_state: d.council_state !== undefined ? d.council_state : target.council_state,
+  };
+  const legal = assertStaffLegal(merged, { requireCpf: true });
+  if (legal) { res.status(400).json({ error: legal }); return; }
   const sets: string[] = [];
   const args: any[] = [];
   for (const k of ['email','full_name','role','cpf','council_number','council_state'] as const) {
-    if (d[k] !== undefined) { sets.push(`${k} = ?`); args.push(k === 'email' ? (d[k] as string).toLowerCase() : d[k]); }
+    if (d[k] !== undefined) {
+      let v: any = d[k];
+      if (k === 'email') v = (d[k] as string).toLowerCase();
+      if (k === 'council_state' && v) v = String(v).toUpperCase();
+      sets.push(`${k} = ?`); args.push(v);
+    }
   }
   if (d.password) { sets.push(`password_hash = ?`); args.push(bcrypt.hashSync(d.password, 10)); }
   if (!sets.length) { res.json({ ok: true, noop: true }); return; }

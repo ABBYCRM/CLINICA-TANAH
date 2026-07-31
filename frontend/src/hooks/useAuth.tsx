@@ -28,13 +28,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [effectiveTenantId, setEffectiveTenantIdState] = useState<string | null>(getTenantOverride());
 
   useEffect(() => {
+    const clearSession = () => {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
+      setTenantOverride(null);
+      setEffectiveTenantIdState(null);
+      setUser(null);
+    };
+
+    const onExpired = () => clearSession();
+    window.addEventListener('auth:session-expired', onExpired);
+
     const stored = localStorage.getItem('auth_user');
     if (stored) {
       try { setUser(JSON.parse(stored)); } catch { /* ignore */ }
     }
     // Refresh from /me so upgrades (tenant_id, is_superadmin) apply without re-login
     const token = localStorage.getItem('auth_token');
-    if (!token) { setLoading(false); return; }
+    if (!token) { setLoading(false); return () => window.removeEventListener('auth:session-expired', onExpired); }
     api.get('/api/auth/me')
       .then((d) => {
         const u = d.user;
@@ -56,13 +67,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const status = e?.status;
         const code = e?.body?.error || e?.message;
         if (status === 401 || code === 'invalid_token' || code === 'unauthorized') {
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('auth_user');
-          setTenantOverride(null);
-          setUser(null);
+          clearSession();
         }
       })
       .finally(() => setLoading(false));
+
+    return () => window.removeEventListener('auth:session-expired', onExpired);
   }, []);
 
   const setEffectiveTenantId = (id: string | null) => {

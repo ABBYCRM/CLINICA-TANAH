@@ -336,6 +336,13 @@ export function initSchema(): void {
       other_discounts REAL NOT NULL DEFAULT 0,
       dependents INTEGER NOT NULL DEFAULT 0,
       bank_account TEXT,                 -- JSON
+      vale_transporte INTEGER NOT NULL DEFAULT 0,
+      vt_monthly_cost REAL NOT NULL DEFAULT 0,
+      night_shift INTEGER NOT NULL DEFAULT 0,
+      cbo_code TEXT,
+      esocial_category TEXT DEFAULT '101',
+      contract_type TEXT DEFAULT 'clt',
+      registration_number TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -597,6 +604,13 @@ function migrate(): void {
     } catch { /* column already exists */ }
   }
   try { openDb().exec(`ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN vale_transporte INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN vt_monthly_cost REAL NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN night_shift INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN cbo_code TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN esocial_category TEXT DEFAULT '101'`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN contract_type TEXT DEFAULT 'clt'`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN registration_number TEXT`); } catch { /* exists */ }
   try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_patients_tenant ON patients(tenant_id)`); } catch { /* exists */ }
   try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_appt_tenant ON appointments(tenant_id)`); } catch { /* exists */ }
 

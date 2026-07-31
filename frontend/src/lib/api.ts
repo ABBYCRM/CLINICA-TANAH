@@ -47,6 +47,10 @@ async function request(path: string, init: RequestInit = {}): Promise<any> {
     if (res.status === 401 && (code === 'invalid_token' || code === 'unauthorized') && !path.includes('/auth/login')) {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('auth_user');
+      // Keep React auth state in sync — otherwise Equipe/settings keep showing chrome but every call is unauthorized
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:session-expired', { detail: { code } }));
+      }
     }
     throw new ApiError(code, res.status, body);
   }
@@ -64,6 +68,15 @@ export function apiErrorKey(err: unknown): string {
   if (code === 'nvidia_api_key_missing') return 'invoices.ocr_not_configured';
   if (code === 'nvidia_ocr_failed' || code === 'nvidia_rate_limited' || code === 'ocr_unsupported_type') return 'invoices.ocr_failed';
   if (code === 'file_too_large') return 'invoices.file_too_large';
+  if (code === 'invalid_cpf') return 'errors.invalid_cpf';
+  if (code === 'council_required' || code === 'council_state_required') return 'errors.council_required';
+  if (code === 'below_minimum_wage') return 'payroll.below_minimum_wage';
+  if (code === 'duplicate_run') return 'payroll.duplicate_run';
+  if (code === 'no_employees') return 'payroll.no_employees';
+  if (code === 'duplicate_email') return 'errors.duplicate_email';
+  if (code === 'duplicate_cpf') return 'errors.duplicate_cpf';
+  if (code === 'last_admin') return 'team.last_admin';
+  if (code === 'cannot_delete_self') return 'team.cannot_delete_self';
   return 'errors.generic';
 }
 

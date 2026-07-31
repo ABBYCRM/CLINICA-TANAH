@@ -60,13 +60,13 @@ const T = DEFAULT_TENANT_ID;
 const staffData = [
   { email: 'admin@clinica-tanah.com.br', full_name: 'Dra. Helena Tanaka', role: 'admin', cpf: '11122233396', council_number: 'CRM-SP 123456', council_state: 'SP' },
   { email: 'dpo@clinica-tanah.com.br', full_name: 'Dr. Marcos Vieira (DPO)', role: 'dpo', cpf: '22233344405', council_number: 'OAB-SP 234567', council_state: 'SP' },
-  { email: 'silva@clinica-tanah.com.br', full_name: 'Dr. Roberto Silva', role: 'doctor', cpf: '33344455514', council_number: 'CRM-SP 145678', council_state: 'SP' },
-  { email: 'santos@clinica-tanah.com.br', full_name: 'Dra. Beatriz Santos', role: 'doctor', cpf: '44455566623', council_number: 'CRM-SP 156789', council_state: 'SP' },
-  { email: 'oliveira@clinica-tanah.com.br', full_name: 'Dr. Carlos Oliveira', role: 'doctor', cpf: '55566677732', council_number: 'CRM-SP 167890', council_state: 'SP' },
-  { email: 'ana.enf@clinica-tanah.com.br', full_name: 'Ana Paula Ferreira', role: 'nurse', cpf: '66677788841', council_number: 'COREN-SP 234567', council_state: 'SP' },
-  { email: 'mariana@clinica-tanah.com.br', full_name: 'Mariana Costa', role: 'receptionist', cpf: '77788899950', council_number: null, council_state: null },
-  { email: 'contabil@clinica-tanah.com.br', full_name: 'João Mendes', role: 'accountant', cpf: '88899900069', council_number: 'CRC-SP 1SP234567', council_state: 'SP' },
-  { email: 'farmacia@clinica-tanah.com.br', full_name: 'Patrícia Almeida', role: 'pharmacist', cpf: '99900011178', council_number: 'CRF-SP 45678', council_state: 'SP' },
+  { email: 'silva@clinica-tanah.com.br', full_name: 'Dr. Roberto Silva', role: 'doctor', cpf: '33344455508', council_number: 'CRM-SP 145678', council_state: 'SP' },
+  { email: 'santos@clinica-tanah.com.br', full_name: 'Dra. Beatriz Santos', role: 'doctor', cpf: '44455566619', council_number: 'CRM-SP 156789', council_state: 'SP' },
+  { email: 'oliveira@clinica-tanah.com.br', full_name: 'Dr. Carlos Oliveira', role: 'doctor', cpf: '55566677720', council_number: 'CRM-SP 167890', council_state: 'SP' },
+  { email: 'ana.enf@clinica-tanah.com.br', full_name: 'Ana Paula Ferreira', role: 'nurse', cpf: '66677788830', council_number: 'COREN-SP 234567', council_state: 'SP' },
+  { email: 'mariana@clinica-tanah.com.br', full_name: 'Mariana Costa', role: 'receptionist', cpf: '77788899941', council_number: null, council_state: null },
+  { email: 'contabil@clinica-tanah.com.br', full_name: 'João Mendes', role: 'accountant', cpf: '88899900078', council_number: 'CRC-SP 1SP234567', council_state: 'SP' },
+  { email: 'farmacia@clinica-tanah.com.br', full_name: 'Patrícia Almeida', role: 'pharmacist', cpf: '99900011112', council_number: 'CRF-SP 45678', council_state: 'SP' },
 ];
 
 const userIds: Record<string, string> = {};
@@ -208,14 +208,14 @@ console.log(`  ✓ Inventory batches created`);
 // EMPLOYEES + PAYROLL
 const employeeData = [
   { full_name: 'Dra. Helena Tanaka', cpf: '11122233396', pis: '123.45678.90-1', role: 'admin', base_salary: 22000.00, dependents: 2 },
-  { full_name: 'Dr. Roberto Silva', cpf: '33344455514', pis: '234.56789.01-2', role: 'doctor', base_salary: 18500.00, dependents: 1 },
-  { full_name: 'Dra. Beatriz Santos', cpf: '44455566623', pis: '345.67890.12-3', role: 'doctor', base_salary: 19200.00, dependents: 0 },
-  { full_name: 'Dr. Carlos Oliveira', cpf: '55566677732', pis: '456.78901.23-4', role: 'doctor', base_salary: 17800.00, dependents: 3 },
-  { full_name: 'Ana Paula Ferreira', cpf: '66677788841', pis: '567.89012.34-5', role: 'nurse', base_salary: 4800.00, dependents: 1 },
-  { full_name: 'Mariana Costa', cpf: '77788899950', pis: '678.90123.45-6', role: 'receptionist', base_salary: 3200.00, dependents: 0 },
-  { full_name: 'João Mendes', cpf: '88899900069', pis: '789.01234.56-7', role: 'accountant', base_salary: 6500.00, dependents: 2 },
-  { full_name: 'Patrícia Almeida', cpf: '99900011178', pis: '890.12345.67-8', role: 'pharmacist', base_salary: 5800.00, dependents: 1 },
-  { full_name: 'Roberto Lima Santos', cpf: '12312312345', pis: '111.22233.44-5', role: 'cleaner', base_salary: 2200.00, dependents: 0 },
+  { full_name: 'Dr. Roberto Silva', cpf: '33344455508', pis: '234.56789.01-2', role: 'doctor', base_salary: 18500.00, dependents: 1 },
+  { full_name: 'Dra. Beatriz Santos', cpf: '44455566619', pis: '345.67890.12-3', role: 'doctor', base_salary: 19200.00, dependents: 0 },
+  { full_name: 'Dr. Carlos Oliveira', cpf: '55566677720', pis: '456.78901.23-4', role: 'doctor', base_salary: 17800.00, dependents: 3 },
+  { full_name: 'Ana Paula Ferreira', cpf: '66677788830', pis: '567.89012.34-5', role: 'nurse', base_salary: 4800.00, dependents: 1 },
+  { full_name: 'Mariana Costa', cpf: '77788899941', pis: '678.90123.45-6', role: 'receptionist', base_salary: 3200.00, dependents: 0 },
+  { full_name: 'João Mendes', cpf: '88899900078', pis: '789.01234.56-7', role: 'accountant', base_salary: 6500.00, dependents: 2 },
+  { full_name: 'Patrícia Almeida', cpf: '99900011112', pis: '890.12345.67-8', role: 'pharmacist', base_salary: 5800.00, dependents: 1 },
+  { full_name: 'Roberto Lima Santos', cpf: '12312312387', pis: '111.22233.44-5', role: 'cleaner', base_salary: 2200.00, dependents: 0 },
 ];
 const insertEmployee = db.prepare(`
   INSERT INTO employees (id, tenant_id, full_name, cpf, pis, ctps_number, ctps_series, role, admission_date, base_salary, weekly_hours, dependents)

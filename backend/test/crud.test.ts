@@ -86,11 +86,12 @@ describe('staff users', () => {
   it('creates, updates and removes a staff user', async () => {
     const created = await api('POST', '/users', {
       email: 'nurse@test.com', password: 'nursepass123', full_name: 'Nurse Test', role: 'nurse',
+      cpf: '39053344705', council_number: 'COREN-SP 123', council_state: 'SP',
     });
     expect(created.status).toBe(201);
     userId = created.body.id;
 
-    const updated = await api('PUT', `/users/${userId}`, { full_name: 'Nurse Updated', council_number: 'COREN-SP 999' });
+    const updated = await api('PUT', `/users/${userId}`, { full_name: 'Nurse Updated', council_number: 'COREN-SP 999', council_state: 'SP' });
     expect(updated.status).toBe(200);
 
     const list = await api('GET', '/users');
@@ -271,8 +272,13 @@ describe('accounting', () => {
 
 describe('payroll', () => {
   it('employee lifecycle + draft run deletion', async () => {
+    db.prepare(`DELETE FROM payslips`).run();
+    db.prepare(`DELETE FROM payroll_runs`).run();
+    db.prepare(`DELETE FROM employees`).run();
+    const cpf1 = '86487532010';
+    const cpf2 = '86487532100';
     const emp = await api('POST', '/payroll/employees', {
-      full_name: 'Func Teste', cpf: '93512345000', role: 'Recepção',
+      full_name: 'Func Teste', cpf: cpf1, role: 'Recepção',
       admission_date: '2026-01-10', base_salary: 3000, weekly_hours: 44, dependents: 1,
     });
     expect(emp.status).toBe(201);
@@ -292,7 +298,7 @@ describe('payroll', () => {
 
     // need an active employee for the next run
     const emp2 = await api('POST', '/payroll/employees', {
-      full_name: 'Func Teste 2', cpf: '93512345001', role: 'Recepção',
+      full_name: 'Func Teste 2', cpf: cpf2, role: 'Recepção',
       admission_date: '2026-02-01', base_salary: 2500, weekly_hours: 44, dependents: 0,
     });
     expect(emp2.status).toBe(201);

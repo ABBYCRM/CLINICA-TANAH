@@ -1,11 +1,29 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { Navigate } from 'react-router-dom';
+import { api, apiErrorKey } from '../lib/api';
+import { useAuth } from '../hooks/useAuth';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
 
-const ROLES = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'pharmacist', 'dpo'];
+const ROLES = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'pharmacist', 'dpo'] as const;
+const CLINICAL = new Set(['doctor', 'nurse', 'pharmacist']);
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+function isValidCpf(cpf: string): boolean {
+  const d = cpf.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(d[i]) * (10 - i);
+  let r = (sum * 10) % 11; if (r === 10) r = 0;
+  if (r !== Number(d[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += Number(d[i]) * (11 - i);
+  r = (sum * 10) % 11; if (r === 10) r = 0;
+  return r === Number(d[10]);
+}
 
 export default function Team() {
+  const { user } = useAuth();
   const { t, locale } = useI18n();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -15,16 +33,23 @@ export default function Team() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+  const isAdmin = user?.role === 'admin';
 
   const load = () => {
+    if (!isAdmin) return;
     setLoading(true);
+    setError('');
     api.get(`/api/users${showInactive ? '?include_inactive=true' : ''}`)
-      .then((d) => setUsers(d.users))
-      .catch((e) => setError(e.message))
+      .then((d) => setUsers(d.users || []))
+      .catch((e) => setError(t(apiErrorKey(e))))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [locale, showInactive]);
+  useEffect(load, [locale, showInactive, isAdmin]);
+
+  if (user && !isAdmin) {
+    return <Navigate to="/" replace />;
+  }
 
   const remove = async () => {
     if (!deleting) return;
@@ -36,23 +61,42 @@ export default function Team() {
       load();
       if (res.soft_deleted) setError(t('crud.deactivated_notice'));
     } catch (e: any) {
-      setError(e.body?.error === 'cannot_delete_self' ? t('team.cannot_delete_self') : (e.message || t('errors.generic')));
+      setError(t(apiErrorKey(e)));
       setDeleting(null);
     } finally {
       setBusy(false);
     }
   };
 
+  const reactivate = async (u: any) => {
+    setError('');
+    try {
+      await api.put(`/api/users/${u.id}/reactivate`, {});
+      load();
+    } catch (e: any) {
+      setError(t(apiErrorKey(e)));
+    }
+  };
+
   const roleBadge = (role: string) =>
     role === 'admin' ? 'badge-red' : role === 'doctor' ? 'badge-blue' : role === 'dpo' ? 'badge-yellow' : 'badge-slate';
 
+  const roleLabel = (role: string) => {
+    const key = `team.roles.${role}`;
+    const translated = t(key);
+    return translated === key ? role : translated;
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="team-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('team.title')}</h1>
+        <div>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('team.title')}</h1>
+          <p className="text-sm text-[#5c6558] mt-0.5">{t('team.subtitle')}</p>
+        </div>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          <label className="flex items-center gap-2 text-sm text-[#5c6558] cursor-pointer">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} data-testid="show-inactive" />
             {t('team.show_inactive')}
           </label>
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-user">
@@ -70,28 +114,44 @@ export default function Team() {
               <tr>
                 <th className="table-th">{t('team.full_name')}</th>
                 <th className="table-th">{t('common.email')}</th>
+                <th className="table-th">{t('team.cpf')}</th>
                 <th className="table-th">{t('team.role')}</th>
                 <th className="table-th">{t('team.council_number')}</th>
                 <th className="table-th text-right">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={5} className="table-td text-center py-6 text-slate-400">{t('common.loading')}</td></tr>}
-              {!loading && users.length === 0 && <tr><td colSpan={5} className="table-td text-center py-6 text-slate-400">{t('common.no_data')}</td></tr>}
+              {loading && <tr><td colSpan={6} className="table-td text-center py-6 text-slate-400">{t('common.loading')}</td></tr>}
+              {!loading && users.length === 0 && <tr><td colSpan={6} className="table-td text-center py-6 text-slate-400">{t('common.no_data')}</td></tr>}
               {users.map((u) => (
-                <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.active ? '' : 'opacity-50'}`}>
+                <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.active ? '' : 'opacity-50'}`} data-testid={`user-row-${u.id}`}>
                   <td className="table-td font-medium">
                     {u.full_name}
                     {!u.active && <span className="ml-2 badge-slate">{t('team.inactive')}</span>}
                   </td>
                   <td className="table-td">{u.email}</td>
-                  <td className="table-td"><span className={roleBadge(u.role)}>{u.role}</span></td>
-                  <td className="table-td text-xs text-slate-500">{u.council_number ? `${u.council_number}${u.council_state ? `/${u.council_state}` : ''}` : '—'}</td>
+                  <td className="table-td font-mono text-xs">{u.cpf || '—'}</td>
+                  <td className="table-td"><span className={roleBadge(u.role)}>{roleLabel(u.role)}</span></td>
+                  <td className="table-td text-xs text-slate-500">
+                    {u.council_number ? `${u.council_number}${u.council_state ? `/${u.council_state}` : ''}` : '—'}
+                  </td>
                   <td className="table-td">
-                    <RowActions
-                      onEdit={() => { setEditing(u); setShowForm(true); }}
-                      onDelete={() => setDeleting(u)}
-                    />
+                    <div className="flex items-center justify-end gap-1">
+                      {!u.active && (
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[#3f5c42] hover:underline px-1.5"
+                          onClick={() => reactivate(u)}
+                          data-testid={`reactivate-${u.id}`}
+                        >
+                          {t('team.reactivate')}
+                        </button>
+                      )}
+                      <RowActions
+                        onEdit={() => { setEditing(u); setShowForm(true); }}
+                        onDelete={() => setDeleting(u)}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -130,16 +190,22 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+  const clinical = CLINICAL.has(form.role);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!initial && form.password.length < 8) { setError(t('team.password_min')); return; }
     if (form.password && form.password.length < 8) { setError(t('team.password_min')); return; }
+    if (!isValidCpf(form.cpf)) { setError(t('errors.invalid_cpf')); return; }
+    if (clinical && (!form.council_number.trim() || !form.council_state)) {
+      setError(t('errors.council_required'));
+      return;
+    }
     setSaving(true);
     const payload: any = {
       email: form.email, full_name: form.full_name, role: form.role,
-      cpf: form.cpf || null, council_number: form.council_number || null, council_state: form.council_state || null,
+      cpf: form.cpf, council_number: form.council_number || null, council_state: form.council_state || null,
     };
     if (form.password) payload.password = form.password;
     try {
@@ -147,16 +213,23 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
       else await api.post('/api/users', payload);
       onSaved();
     } catch (err: any) {
-      setError(err.message || t('errors.generic'));
+      setError(t(apiErrorKey(err)));
     } finally {
       setSaving(false);
     }
   };
 
+  const roleLabel = (role: string) => {
+    const key = `team.roles.${role}`;
+    const translated = t(key);
+    return translated === key ? role : translated;
+  };
+
   return (
-    <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('team.new_user')} onClose={onClose}>
+    <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('team.new_user')} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <FormError message={error} />
+        <p className="text-xs text-[#5c6558]">{t('team.legal_hint')}</p>
         <div>
           <label className="label">{t('team.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required data-testid="user-name" />
@@ -168,8 +241,8 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className="label">{t('team.role')} *</label>
-            <select className="input" value={form.role} onChange={(e) => set('role', e.target.value)}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            <select className="input" value={form.role} onChange={(e) => set('role', e.target.value)} data-testid="user-role">
+              {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </div>
           <div className="col-span-2">
@@ -178,18 +251,21 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
               value={form.password} onChange={(e) => set('password', e.target.value)} required={!initial} minLength={initial ? 0 : 8} />
           </div>
           <div>
-            <label className="label">{t('team.cpf')}</label>
-            <input className="input" maxLength={11} placeholder="12345678900" value={form.cpf}
-              onChange={(e) => set('cpf', e.target.value.replace(/\D/g, ''))} />
+            <label className="label">{t('team.cpf')} *</label>
+            <input className="input" maxLength={11} placeholder="00000000000" value={form.cpf}
+              onChange={(e) => set('cpf', e.target.value.replace(/\D/g, ''))} required data-testid="user-cpf" />
           </div>
           <div>
-            <label className="label">{t('team.council_number')}</label>
-            <input className="input" placeholder="CRM-SP 123456" value={form.council_number} onChange={(e) => set('council_number', e.target.value)} />
+            <label className="label">{t('team.council_number')}{clinical ? ' *' : ''}</label>
+            <input className="input" placeholder="CRM / COREN / CRF" value={form.council_number}
+              onChange={(e) => set('council_number', e.target.value)} required={clinical} data-testid="user-council" />
           </div>
           <div>
-            <label className="label">{t('team.council_state')}</label>
-            <input className="input" maxLength={2} placeholder="SP" value={form.council_state}
-              onChange={(e) => set('council_state', e.target.value.toUpperCase())} />
+            <label className="label">{t('team.council_state')}{clinical ? ' *' : ''}</label>
+            <select className="input" value={form.council_state} onChange={(e) => set('council_state', e.target.value)} required={clinical}>
+              <option value="">—</option>
+              {UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+            </select>
           </div>
         </div>
         <FormActions saving={saving} onCancel={onClose} />
