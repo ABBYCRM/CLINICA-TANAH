@@ -6,13 +6,13 @@ const START_HOUR = 8;
 const END_HOUR = 18;
 
 export const STATUS_COLORS: Record<string, string> = {
-  scheduled: 'bg-sky-100 text-sky-800 border-sky-300',
-  confirmed: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-  arrived: 'bg-violet-100 text-violet-800 border-violet-300',
-  in_progress: 'bg-amber-100 text-amber-800 border-amber-300',
-  completed: 'bg-slate-200 text-slate-600 border-slate-300',
-  cancelled: 'bg-rose-100 text-rose-700 border-rose-300 line-through opacity-70',
-  no_show: 'bg-rose-100 text-rose-700 border-rose-300 opacity-70',
+  scheduled: 'appt-block',
+  confirmed: 'appt-block',
+  arrived: 'appt-block',
+  in_progress: 'appt-block',
+  completed: 'appt-block opacity-70',
+  cancelled: 'appt-block opacity-50 line-through',
+  no_show: 'appt-block opacity-50',
 };
 
 function toISO(d: Date): string {
@@ -83,7 +83,7 @@ export function CalendarView({ onSelect, refreshKey }: {
       key={a.id}
       onClick={() => onSelect(a)}
       data-testid={`appt-chip-${a.id}`}
-      className={`w-full text-left rounded-md border px-1.5 py-1 text-[11px] leading-tight transition-all hover:shadow-md hover:scale-[1.02] ${STATUS_COLORS[a.status] || 'bg-slate-100 border-slate-300'}`}
+      className={`${STATUS_COLORS[a.status] || 'appt-block'}`}
     >
       <div className="font-semibold truncate">{a.patient_name}</div>
       {!compact && <div className="truncate opacity-80">{a.practitioner_name}</div>}
@@ -222,12 +222,12 @@ export function AppointmentDrawer({ appointment, onClose, onStatusChange, onEdit
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col animate-slide-in-left" data-testid="appointment-drawer" style={{ animationName: 'slide-in-right' }}>
+      <div className="fixed inset-0 z-40 bg-[#141c16]/45 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md panel-inset flex flex-col animate-slide-in-left !rounded-none border-l border-[rgba(63,92,66,0.28)]" data-testid="appointment-drawer" style={{ animationName: 'slide-in-right' }}>
         <style>{`@keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+        <div className="flex items-start justify-between border-b border-[rgba(63,92,66,0.16)] px-5 py-4">
           <div>
-            <div className="font-semibold text-slate-900 text-lg leading-tight">{appointment.patient_name}</div>
+            <div className="font-display font-semibold text-slate-900 text-lg leading-tight">{appointment.patient_name}</div>
             <div className="text-sm text-slate-500">
               {new Date(appointment.scheduled_at.replace(' ', 'T')).toLocaleString(tag, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
               {' · '}{appointment.practitioner_name}

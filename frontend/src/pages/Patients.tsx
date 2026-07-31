@@ -228,8 +228,8 @@ export default function Patients() {
           data-testid="filter-gender"
         >
           <option value="">{t('patients.filters.gender')}</option>
-          <option value="female">{t('patients.gender_options.female')}</option>
-          <option value="male">{t('patients.gender_options.male')}</option>
+          <option value="F">{t('patients.gender_options.F')}</option>
+          <option value="M">{t('patients.gender_options.M')}</option>
           <option value="other">{t('patients.gender_options.other')}</option>
         </select>
         <label className="crm-filter inline-flex items-center gap-1.5 !py-1.5">

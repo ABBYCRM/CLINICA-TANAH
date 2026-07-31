@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, FormError, FormActions } from './crud';
 
-const GENDERS = ['female', 'male', 'other'];
+const GENDERS = ['F', 'M', 'other'];
 const MARITAL = ['single', 'married', 'divorced', 'widowed', 'stable_union'];
 const RACES = ['branca', 'preta', 'parda', 'amarela', 'indigena', 'not_informed'];
 const REFERRALS = ['indicacao', 'google', 'instagram', 'convenio', 'whatsapp', 'other'];

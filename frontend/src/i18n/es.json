@@ -119,7 +119,10 @@
     "gender_options": {
       "female": "Femenino",
       "male": "Masculino",
-      "other": "Otro"
+      "other": "Otro",
+      "F": "Femenino",
+      "M": "Masculino",
+      "O": "Otro"
     },
     "marital_status": "Estado civil",
     "marital_options": {

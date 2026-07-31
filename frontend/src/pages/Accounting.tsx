@@ -55,7 +55,7 @@ export default function Accounting() {
 
   const tabBtn = (k: Tab, label: string) => (
     <button onClick={() => setTab(k)}
-      className={`px-3 py-1.5 text-sm rounded-md transition-all ${tab === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}>
+      className={`seg-item !py-1.5 ${tab === k ? 'is-active' : ''}`}>
       {label}
     </button>
   );
@@ -63,9 +63,9 @@ export default function Accounting() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('accounting.title')}</h1>
+        <h1 className="page-title">{t('accounting.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+          <div className="seg-track">
             {tabBtn('tb', t('accounting.trial_balance'))}
             {tabBtn('pl', t('accounting.income_statement'))}
             {tabBtn('accounts', t('accounting.accounts'))}

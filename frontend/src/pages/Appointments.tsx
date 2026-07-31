@@ -64,12 +64,12 @@ export default function Appointments() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('appointments.title')}</h1>
+        <h1 className="page-title">{t('appointments.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+          <div className="seg-track" data-testid="appointments-view-toggle">
             {(['calendar', 'list'] as const).map((k) => (
               <button key={k} onClick={() => setView(k)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${view === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`seg-item !py-1.5 ${view === k ? 'is-active' : ''}`}
                 data-testid={`view-${k}`}>
                 {k === 'calendar' ? t('appointments.calendar') : t('appointments.list_view')}
               </button>

@@ -1,9 +1,30 @@
 /** @type {import('tailwindcss').Config} */
+
+/** Warm moss / stone neutrals — replace cool default slate/gray so skeuomorphism stays earthly. */
+const earthSlate = {
+  50: '#f3f7f2',
+  100: '#e4ebe0',
+  200: '#cdd8cb',
+  300: '#b0bfae',
+  400: '#8a9686',
+  500: '#6d796a',
+  600: '#5c6558',
+  700: '#3a463c',
+  800: '#2c382e',
+  900: '#243328',
+  950: '#141c16',
+};
+
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
+        // Override cool defaults → earthly stone (all existing slate-* / gray-* classes)
+        slate: earthSlate,
+        gray: earthSlate,
+        zinc: earthSlate,
+        neutral: earthSlate,
         // Earthly moss / stone / clay — remapped clinic tokens for skeuomorphism
         primary: {
           50: '#f3f7f2', 100: '#e2ebe0', 200: '#c5d6c3', 300: '#9bb89a',

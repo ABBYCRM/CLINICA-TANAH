@@ -257,7 +257,15 @@ export default function PatientRecord() {
                 {prop(t('patients.phone_secondary'), patient.phone_secondary)}
                 {prop(t('patients.cpf'), patient.cpf)}
                 {prop(t('patients.birth_date'), fmtDate(patient.birth_date, locale))}
-                {prop(t('patients.gender'), patient.gender ? t(`patients.gender_options.${patient.gender}`) : null)}
+                {prop(t('patients.gender'), (() => {
+                  if (!patient.gender) return null;
+                  const key = `patients.gender_options.${patient.gender}`;
+                  const label = t(key);
+                  if (label !== key) return label;
+                  const map: Record<string, string> = { female: 'F', male: 'M', F: 'F', M: 'M', other: 'other', O: 'other' };
+                  const norm = map[patient.gender];
+                  return norm ? t(`patients.gender_options.${norm}`) : patient.gender;
+                })())}
                 {prop(t('patients.health_insurance'), patient.health_insurance)}
                 {prop(t('patients.health_insurance_number'), patient.health_insurance_number)}
                 {prop(t('patients.blood_type'), patient.blood_type)}
