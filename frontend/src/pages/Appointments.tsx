@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
 import { CalendarView, AppointmentDrawer } from '../components/AppointmentCalendar';
+import { PatientPicker, StaffPicker } from '../components/PatientPicker';
 
 const STATUS_COLORS: Record<string, string> = {
   confirmed: 'badge-green', completed: 'badge-green',
@@ -156,8 +157,6 @@ export default function Appointments() {
 
 function AppointmentForm({ initial, onClose, onSaved }: { initial: any | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [patients, setPatients] = useState<any[]>([]);
-  const [practitioners, setPractitioners] = useState<any[]>([]);
   const toLocal = (iso: string | undefined) => iso ? iso.slice(0, 16).replace(' ', 'T') : '';
   const [form, setForm] = useState(() => initial ? {
     patient_id: initial.patient_id, practitioner_id: initial.practitioner_id,
@@ -169,13 +168,8 @@ function AppointmentForm({ initial, onClose, onSaved }: { initial: any | null; o
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    api.get('/api/patients?limit=200').then((d) => setPatients(d.patients)).catch(console.error);
-    api.get('/api/users/directory')
-      .then((d) => setPractitioners(d.users.filter((u: any) => ['doctor', 'nurse', 'admin'].includes(u.role))))
-      .catch(console.error);
-  }, []);
+  const patientLabel = initial?.patient_name || '';
+  const practitionerLabel = initial?.practitioner_name || '';
 
   // API-driven scheduler: free slots for the chosen practitioner + day,
   // from the same availability service the WhatsApp bot books through.
@@ -197,6 +191,10 @@ function AppointmentForm({ initial, onClose, onSaved }: { initial: any | null; o
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!form.patient_id || !form.practitioner_id) {
+      setError(t('picker.required_patient_staff'));
+      return;
+    }
     setSaving(true);
     const payload = { ...form, scheduled_at: form.scheduled_at.replace('T', ' ') + ':00', duration_minutes: Number(form.duration_minutes) };
     try {
@@ -216,19 +214,23 @@ function AppointmentForm({ initial, onClose, onSaved }: { initial: any | null; o
         <FormError message={error} />
         <div>
           <label className="label">{t('appointments.patient')} *</label>
-          <select className="input" value={form.patient_id} onChange={(e) => set('patient_id', e.target.value)} required data-testid="appointment-patient">
-            <option value="">—</option>
-            {patients.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </select>
+          <PatientPicker
+            value={form.patient_id}
+            initialLabel={patientLabel}
+            required
+            hint={t('picker.patient_hint')}
+            testId="appointment-patient"
+            onChange={(id) => set('patient_id', id)}
+          />
         </div>
         <div>
           <label className="label">{t('appointments.practitioner')} *</label>
-          <select className="input" value={form.practitioner_id} onChange={(e) => set('practitioner_id', e.target.value)} required>
-            <option value="">—</option>
-            {practitioners.map((u) => (
-              <option key={u.id} value={u.id}>{u.full_name}{u.council_number ? ` (${u.council_number})` : ''}</option>
-            ))}
-          </select>
+          <StaffPicker
+            value={form.practitioner_id}
+            initialLabel={practitionerLabel}
+            required
+            onChange={(id) => set('practitioner_id', id)}
+          />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="col-span-2 sm:col-span-1">

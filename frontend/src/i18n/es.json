@@ -219,7 +219,9 @@
     "edit": "Editar Atención",
     "started_at": "Inicio",
     "notes": "Notas",
-    "icd10_hint": "Códigos separados por comas"
+    "icd10_hint": "Códigos separados por comas",
+    "from_today": "Citas de hoy",
+    "from_today_hint": "Toque para rellenar paciente, profesional y hora — el flujo más rápido del día."
   },
   "prescriptions": {
     "title": "Recetas",
@@ -694,5 +696,16 @@
     "tip3": "El Panel destaca stock bajo, lotes por vencer y facturas pendientes.",
     "tip4": "Instale la PWA en el móvil o Windows desde el navegador.",
     "tip5": "Vuelva a este Manual cuando lo necesite — el índice salta a cada sección."
+  },
+  "picker": {
+    "change": "Cambiar",
+    "patient_placeholder": "Buscar por nombre, CPF o teléfono…",
+    "patient_hint": "Escriba al menos 2 caracteres. No hace falta recorrer una lista de cientos de pacientes.",
+    "patient_results": "Resultados",
+    "patient_empty": "Ningún paciente encontrado",
+    "patient_selected": "Paciente seleccionado",
+    "staff_placeholder": "Buscar profesional…",
+    "required_patient_staff": "Seleccione el paciente y el profesional.",
+    "required_patient": "Seleccione el paciente."
   }
 }

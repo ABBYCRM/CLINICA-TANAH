@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, FormError, FormActions } from '../components/crud';
+import { PatientPicker } from '../components/PatientPicker';
 
 export default function LGPD() {
   const { t, locale } = useI18n();
@@ -178,18 +179,17 @@ const REQUEST_TYPES = ['access', 'rectification', 'deletion', 'portability', 'op
 
 function DataRequestForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [patients, setPatients] = useState<any[]>([]);
   const [form, setForm] = useState({ request_type: 'access', subject_id: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    api.get('/api/patients?limit=200').then((d) => setPatients(d.patients)).catch(console.error);
-  }, []);
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!form.subject_id) {
+      setError(t('picker.required_patient'));
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/api/lgpd/data-requests', {
@@ -218,10 +218,12 @@ function DataRequestForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
         </div>
         <div>
           <label className="label">{t('lgpd.subject')} *</label>
-          <select className="input" value={form.subject_id} onChange={(e) => setForm((f) => ({ ...f, subject_id: e.target.value }))} required>
-            <option value="">—</option>
-            {patients.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </select>
+          <PatientPicker
+            value={form.subject_id}
+            required
+            hint={t('picker.patient_hint')}
+            onChange={(id) => setForm((f) => ({ ...f, subject_id: id }))}
+          />
         </div>
         <div>
           <label className="label">{t('appointments.notes')}</label>

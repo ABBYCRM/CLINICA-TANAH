@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
+import { PatientPicker } from '../components/PatientPicker';
 
 interface InvLine { description: string; quantity: string; unit_price: string; tax_rate: string; }
 
@@ -130,7 +131,6 @@ export default function Invoices() {
 
 function InvoiceForm({ initial, onClose, onSaved }: { initial: any | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [patients, setPatients] = useState<any[]>([]);
   const [form, setForm] = useState(() => initial ? {
     patient_id: initial.patient_id ?? '', issue_date: initial.issue_date ?? '',
     due_date: initial.due_date ?? '', status: initial.status ?? 'issued',
@@ -140,10 +140,7 @@ function InvoiceForm({ initial, onClose, onSaved }: { initial: any | null; onClo
   const [lines, setLines] = useState<InvLine[]>([{ description: '', quantity: '1', unit_price: '', tax_rate: '0' }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    api.get('/api/patients?limit=200').then((d) => setPatients(d.patients)).catch(console.error);
-  }, []);
+  const patientLabel = initial?.patient_name || '';
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const setLine = (i: number, k: keyof InvLine, v: string) =>
@@ -195,10 +192,14 @@ function InvoiceForm({ initial, onClose, onSaved }: { initial: any | null; onClo
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">{t('invoices.patient')}</label>
-            <select className="input" value={form.patient_id} onChange={(e) => set('patient_id', e.target.value)}>
-              <option value="">—</option>
-              {patients.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-            </select>
+            <PatientPicker
+              value={form.patient_id}
+              initialLabel={patientLabel}
+              allowClear
+              required={false}
+              hint={t('picker.patient_hint')}
+              onChange={(id) => set('patient_id', id)}
+            />
           </div>
           <div>
             <label className="label">{t('invoices.status')}</label>

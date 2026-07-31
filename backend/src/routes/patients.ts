@@ -65,9 +65,12 @@ router.get('/', (req: Request, res: Response) => {
     rows = db.prepare(`
       SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
       FROM patients
-      WHERE tenant_id = ? AND (full_name LIKE ? OR cpf LIKE ? OR phone LIKE ?)
+      WHERE tenant_id = ? AND (
+        full_name LIKE ? OR social_name LIKE ? OR cpf LIKE ? OR phone LIKE ?
+        OR REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') LIKE ?
+      )
       ORDER BY full_name ASC LIMIT ? OFFSET ?
-    `).all(req.tenantId, like, like, like, limit, offset);
+    `).all(req.tenantId, like, like, like, like, `%${q.replace(/\D/g, '') || q}%`, limit, offset);
   } else {
     rows = db.prepare(`
       SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at

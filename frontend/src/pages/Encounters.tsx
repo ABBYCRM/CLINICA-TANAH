@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
+import { PatientPicker, StaffPicker } from '../components/PatientPicker';
 
 function parseCodes(v: any): string[] {
   if (Array.isArray(v)) return v;
@@ -114,37 +115,63 @@ export default function Encounters() {
 
 function EncounterForm({ initial, onClose, onSaved }: { initial: any | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [patients, setPatients] = useState<any[]>([]);
-  const [practitioners, setPractitioners] = useState<any[]>([]);
   const toLocal = (iso: string | undefined) => iso ? iso.slice(0, 16).replace(' ', 'T') : new Date().toISOString().slice(0, 16);
   const [form, setForm] = useState(() => initial ? {
     patient_id: initial.patient_id, practitioner_id: initial.practitioner_id,
+    appointment_id: initial.appointment_id ?? '',
     started_at: toLocal(initial.started_at),
     subjective: initial.subjective ?? '', objective: initial.objective ?? '',
     assessment: initial.assessment ?? '', plan: initial.plan ?? '',
     icd10_codes: parseCodes(initial.icd10_codes).join(', '), notes: initial.notes ?? '',
   } : {
-    patient_id: '', practitioner_id: '', started_at: toLocal(undefined),
+    patient_id: '', practitioner_id: '', appointment_id: '',
+    started_at: toLocal(undefined),
     subjective: '', objective: '', assessment: '', plan: '', icd10_codes: '', notes: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [todayAppts, setTodayAppts] = useState<any[]>([]);
+  const [patientLabel, setPatientLabel] = useState(initial?.patient_name || '');
+  const [practitionerLabel, setPractitionerLabel] = useState(initial?.practitioner_name || '');
 
   useEffect(() => {
-    api.get('/api/patients?limit=200').then((d) => setPatients(d.patients)).catch(console.error);
-    api.get('/api/users/directory')
-      .then((d) => setPractitioners(d.users.filter((u: any) => ['doctor', 'nurse', 'admin'].includes(u.role))))
+    if (initial) return;
+    const today = new Date().toISOString().slice(0, 10);
+    api.get(`/api/appointments?from=${today}&to=${today}`)
+      .then((d) => {
+        const rows = (d.appointments || []).filter((a: any) =>
+          !['cancelled', 'no_show', 'completed'].includes(a.status),
+        );
+        setTodayAppts(rows);
+      })
       .catch(console.error);
-  }, []);
+  }, [initial]);
 
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const pickToday = (a: any) => {
+    setForm((f) => ({
+      ...f,
+      patient_id: a.patient_id,
+      practitioner_id: a.practitioner_id,
+      appointment_id: a.id,
+      started_at: toLocal(a.scheduled_at),
+    }));
+    setPatientLabel(a.patient_name);
+    setPractitionerLabel(a.practitioner_name);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!form.patient_id || !form.practitioner_id) {
+      setError(t('picker.required_patient_staff'));
+      return;
+    }
     setSaving(true);
     const payload = {
       ...form,
+      appointment_id: form.appointment_id || null,
       started_at: form.started_at.replace('T', ' ') + ':00',
       icd10_codes: form.icd10_codes.split(',').map((s: string) => s.trim()).filter(Boolean),
     };
@@ -161,22 +188,66 @@ function EncounterForm({ initial, onClose, onSaved }: { initial: any | null; onC
 
   return (
     <Modal title={initial ? t('encounters.edit') : t('encounters.new')} onClose={onClose} wide>
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="space-y-4" data-testid="encounter-form">
         <FormError message={error} />
+
+        {!initial && todayAppts.length > 0 && (
+          <div className="rounded-xl border border-clinic-100 bg-clinic-50/60 p-3 space-y-2" data-testid="today-appointments">
+            <div className="text-xs font-semibold uppercase tracking-wide text-clinic-800">
+              {t('encounters.from_today')}
+            </div>
+            <p className="text-xs text-clinic-700/80">{t('encounters.from_today_hint')}</p>
+            <div className="flex flex-wrap gap-2">
+              {todayAppts.slice(0, 8).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => pickToday(a)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-left text-sm transition-all ${
+                    form.appointment_id === a.id
+                      ? 'border-clinic-500 bg-white text-clinic-900 shadow-sm ring-1 ring-clinic-200'
+                      : 'border-clinic-100 bg-white/80 text-slate-700 hover:border-clinic-300'
+                  }`}
+                  data-testid={`today-appt-${a.id}`}
+                >
+                  <span className="font-medium">{a.patient_name}</span>
+                  <span className="text-xs text-slate-500 ml-2">
+                    {String(a.scheduled_at).slice(11, 16)} · {a.practitioner_name?.split(' ').slice(0, 2).join(' ')}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">{t('appointments.patient')} *</label>
-            <select className="input" value={form.patient_id} onChange={(e) => set('patient_id', e.target.value)} required disabled={!!initial}>
-              <option value="">—</option>
-              {patients.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-            </select>
+            <PatientPicker
+              value={form.patient_id}
+              initialLabel={patientLabel}
+              disabled={!!initial}
+              required
+              hint={t('picker.patient_hint')}
+              onChange={(id, p) => {
+                set('patient_id', id);
+                setPatientLabel(p?.full_name || '');
+                if (!initial) set('appointment_id', '');
+              }}
+            />
           </div>
           <div>
             <label className="label">{t('appointments.practitioner')} *</label>
-            <select className="input" value={form.practitioner_id} onChange={(e) => set('practitioner_id', e.target.value)} required disabled={!!initial}>
-              <option value="">—</option>
-              {practitioners.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-            </select>
+            <StaffPicker
+              value={form.practitioner_id}
+              initialLabel={practitionerLabel}
+              disabled={!!initial}
+              required
+              onChange={(id, u) => {
+                set('practitioner_id', id);
+                setPractitionerLabel(u?.full_name || '');
+              }}
+            />
           </div>
           <div>
             <label className="label">{t('encounters.started_at')} *</label>

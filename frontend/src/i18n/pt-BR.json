@@ -219,7 +219,9 @@
     "edit": "Editar Atendimento",
     "started_at": "Início",
     "notes": "Notas",
-    "icd10_hint": "Códigos separados por vírgula"
+    "icd10_hint": "Códigos separados por vírgula",
+    "from_today": "Consultas de hoje",
+    "from_today_hint": "Toque para pré-preencher paciente, profissional e horário — o caminho mais rápido no dia a dia."
   },
   "prescriptions": {
     "title": "Receitas",
@@ -694,5 +696,16 @@
     "tip3": "O Painel mostra alertas de estoque baixo, lotes a vencer e faturas pendentes.",
     "tip4": "Instale o app (PWA) no celular ou Windows pelo navegador para acesso rápido.",
     "tip5": "Em dúvida, volte a este Manual pelo menu — o sumário leva a cada seção."
+  },
+  "picker": {
+    "change": "Trocar",
+    "patient_placeholder": "Buscar por nome, CPF ou telefone…",
+    "patient_hint": "Digite pelo menos 2 caracteres. Não é preciso rolar uma lista de centenas de pacientes.",
+    "patient_results": "Resultados",
+    "patient_empty": "Nenhum paciente encontrado",
+    "patient_selected": "Paciente selecionado",
+    "staff_placeholder": "Buscar profissional…",
+    "required_patient_staff": "Selecione o paciente e o profissional.",
+    "required_patient": "Selecione o paciente."
   }
 }

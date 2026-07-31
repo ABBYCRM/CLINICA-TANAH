@@ -36,11 +36,15 @@ test('scheduler: API slot picker books into the calendar grid', async ({ page, i
   await expect(page.getByTestId('calendar-view')).toBeVisible();
 
   await page.getByTestId('new-appointment').click();
-  const selects = page.locator('select');
-  await selects.nth(0).selectOption({ index: 1 }); // first patient
-  // first practitioner
-  const practitionerValue = await selects.nth(1).evaluate((s: HTMLSelectElement) => s.options[1]?.value ?? '');
-  await selects.nth(1).selectOption(practitionerValue);
+  // Searchable patient picker (not a 500-row select)
+  await page.getByTestId('appointment-patient-input').click();
+  await expect(page.getByTestId('appointment-patient-results')).toBeVisible();
+  await page.getByTestId('appointment-patient-results').locator('button').first().click();
+  await expect(page.getByTestId('appointment-patient-value')).not.toHaveValue('');
+  // Practitioner search picker
+  await page.getByTestId('staff-picker-input').click();
+  await expect(page.getByTestId('staff-picker-results')).toBeVisible();
+  await page.getByTestId('staff-picker-results').locator('button').first().click();
   await page.getByTestId('appointment-datetime').fill(`${todayISO()}T08:00`);
 
   // the slot picker responds to the availability API

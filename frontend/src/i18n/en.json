@@ -219,7 +219,9 @@
     "edit": "Edit Encounter",
     "started_at": "Started at",
     "notes": "Notes",
-    "icd10_hint": "Comma-separated codes"
+    "icd10_hint": "Comma-separated codes",
+    "from_today": "Today's appointments",
+    "from_today_hint": "Tap to prefill patient, practitioner and time — the fastest daily workflow."
   },
   "prescriptions": {
     "title": "Prescriptions",
@@ -694,5 +696,16 @@
     "tip3": "The Dashboard highlights low stock, expiring batches, and pending invoices.",
     "tip4": "Install the PWA on phone or Windows from the browser for quick access.",
     "tip5": "Come back to this Manual anytime — the contents jump to each section."
+  },
+  "picker": {
+    "change": "Change",
+    "patient_placeholder": "Search by name, CPF or phone…",
+    "patient_hint": "Type at least 2 characters. No need to scroll a list of hundreds of patients.",
+    "patient_results": "Results",
+    "patient_empty": "No patients found",
+    "patient_selected": "Patient selected",
+    "staff_placeholder": "Search practitioner…",
+    "required_patient_staff": "Select the patient and the practitioner.",
+    "required_patient": "Select the patient."
   }
 }
