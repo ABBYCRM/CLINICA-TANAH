@@ -1,0 +1,509 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { api } from '../lib/api';
+import { useI18n } from '../hooks/useI18n';
+import { useAuth } from '../hooks/useAuth';
+import { ConfirmDialog, FormError } from '../components/crud';
+import { PatientForm } from '../components/PatientForm';
+
+type WorkspaceTab =
+  | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'whatsapp'
+  | 'surveys' | 'billing' | 'privacy';
+
+const LIFECYCLES = [
+  'prospect', 'new_patient', 'active', 'in_treatment', 'follow_up_required',
+  'recall_due', 'inactive', 'do_not_contact', 'archived',
+] as const;
+
+const CONSENT_PURPOSES = [
+  'whatsapp_admin', 'appointment_reminders', 'post_visit_survey',
+  'marketing_news', 'promotions_events', 'email_communication', 'sms_communication',
+  'health_data_processing', 'data_processing',
+] as const;
+
+function initials(name: string) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase();
+}
+
+function fmtDate(v?: string | null, locale = 'pt-BR') {
+  if (!v) return '—';
+  const d = new Date(v.length === 10 ? `${v}T12:00:00` : v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtDateTime(v?: string | null, locale = 'pt-BR') {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString(locale, {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function monthKey(at: string, locale: string) {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return at?.slice(0, 7) || '';
+  return d.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+}
+
+function KindIcon({ kind }: { kind: string }) {
+  const cls = 'w-4 h-4';
+  if (kind === 'appointment') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg>;
+  }
+  if (kind === 'encounter' || kind === 'clinical') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M4.5 12.5 8 9l3 3 3.5-3.5L18 12" /><path d="M3 21h18" /></svg>;
+  }
+  if (kind === 'whatsapp' || kind === 'welcome') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>;
+  }
+  if (kind === 'survey' || kind === 'survey_sent') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" /></svg>;
+  }
+  if (kind === 'consent' || kind === 'lifecycle') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
+  }
+  if (kind === 'invoice') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M6 2h9l5 5v15H6z" /><path d="M9 9h6M9 13h6" /></svg>;
+  }
+  if (kind === 'note') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></svg>;
+  }
+  return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="9" /><path d="M12 8v4l2.5 2.5" /></svg>;
+}
+
+export default function PatientRecord() {
+  const { id } = useParams<{ id: string }>();
+  const { t, locale } = useI18n();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [data, setData] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState<WorkspaceTab>('overview');
+  const [showForm, setShowForm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [consentBusy, setConsentBusy] = useState<string | null>(null);
+  const [stageBusy, setStageBusy] = useState(false);
+
+  const load = () => {
+    if (!id) return;
+    setLoading(true);
+    setError('');
+    api.get(`/api/patients/${id}/record`)
+      .then((d) => {
+        setData(d);
+        setNoteDraft(d.patient?.notes || '');
+      })
+      .catch((e: any) => setError(e.message || t('errors.generic')))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [id, locale]);
+
+  const patient = data?.patient;
+  const workspace = data?.workspace || {};
+  const permissions = data?.permissions || {};
+  const timeline = data?.timeline || [];
+  const associations = data?.associations || {};
+  const upcoming = data?.upcoming_appointments || [];
+  const consentLedger = data?.consent_ledger || [];
+  const surveys = data?.surveys || [];
+  const clinicalOk = !!permissions.clinical;
+
+  const titleFor = (item: any) => {
+    const key = `patients.timeline.${item.title}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+    if (item.kind === 'appointment' && item.meta?.type) {
+      const tk = `appointments.types.${item.meta.type}`;
+      const tt = t(tk);
+      return tt !== tk ? tt : item.title;
+    }
+    return item.title;
+  };
+
+  const filteredTimeline = useMemo(() => {
+    if (tab === 'timeline' || tab === 'overview') return timeline;
+    if (tab === 'appointments') return timeline.filter((x: any) => x.kind === 'appointment');
+    if (tab === 'clinical') return timeline.filter((x: any) => x.kind === 'encounter' || x.kind === 'prescription');
+    if (tab === 'whatsapp') return timeline.filter((x: any) => x.kind === 'whatsapp' || x.kind === 'welcome');
+    if (tab === 'surveys') return timeline.filter((x: any) => x.kind === 'survey' || x.kind === 'survey_sent');
+    if (tab === 'billing') return timeline.filter((x: any) => x.kind === 'invoice');
+    if (tab === 'privacy') return timeline.filter((x: any) => x.kind === 'consent' || x.kind === 'lifecycle');
+    return timeline;
+  }, [tab, timeline]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const item of filteredTimeline) {
+      const k = monthKey(item.at, locale);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(item);
+    }
+    return [...map.entries()];
+  }, [filteredTimeline, locale]);
+
+  const saveNote = async () => {
+    if (!id) return;
+    setNoteBusy(true);
+    try {
+      await api.put(`/api/patients/${id}`, { notes: noteDraft });
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setNoteBusy(false);
+    }
+  };
+
+  const toggleConsent = async (purpose: string, granted: boolean) => {
+    if (!id) return;
+    setConsentBusy(purpose);
+    try {
+      const res = await api.put(`/api/patients/${id}/consents`, { purpose, granted });
+      setData((d: any) => d ? { ...d, consent_ledger: res.ledger } : d);
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setConsentBusy(null);
+    }
+  };
+
+  const changeLifecycle = async (stage: string) => {
+    if (!id) return;
+    setStageBusy(true);
+    try {
+      await api.put(`/api/patients/${id}/lifecycle`, { lifecycle_stage: stage });
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setStageBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!id) return;
+    setDeleteBusy(true);
+    try {
+      await api.del(`/api/patients/${id}`);
+      navigate('/patients');
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+      setDeleting(false);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  if (loading && !data) {
+    return <div className="panel-inset px-6 py-8 text-sm text-[#6b645a]">{t('common.loading')}</div>;
+  }
+  if (error && !patient) {
+    return (
+      <div className="space-y-3">
+        <FormError message={error} />
+        <Link to="/patients" className="text-sm font-medium text-[#4b5563] hover:underline">{t('patients.back_to_list')}</Link>
+      </div>
+    );
+  }
+  if (!patient) return null;
+
+  const displayName = patient.social_name || patient.full_name;
+  const stage = workspace.lifecycle_stage || patient.lifecycle_stage || 'new_patient';
+  const tabs: { id: WorkspaceTab; label: string; hide?: boolean }[] = [
+    { id: 'overview', label: t('patients.workspace.tab_overview') },
+    { id: 'timeline', label: t('patients.workspace.tab_timeline') },
+    { id: 'appointments', label: t('patients.workspace.tab_appointments') },
+    { id: 'clinical', label: t('patients.workspace.tab_clinical'), hide: !clinicalOk },
+    { id: 'whatsapp', label: t('patients.workspace.tab_whatsapp') },
+    { id: 'surveys', label: t('patients.workspace.tab_surveys') },
+    { id: 'billing', label: t('patients.workspace.tab_billing') },
+    { id: 'privacy', label: t('patients.workspace.tab_privacy') },
+  ];
+
+  const prop = (label: string, value: any) => (
+    <div className="crm-prop">
+      <dt>{label}</dt>
+      <dd>{value || '—'}</dd>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4" data-testid="patient-workspace">
+      {error && <FormError message={error} />}
+
+      {/* Sticky patient header */}
+      <header className="aluminum-header rounded-panel px-4 py-3 sm:px-5 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <Link to="/patients" className="text-sm text-[#4a453c] hover:underline shrink-0 mt-1">← {t('patients.back_to_list')}</Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link to="/appointments" className="btn-secondary text-xs">{t('patients.workspace.action_schedule')}</Link>
+            <Link to="/whatsapp" className="btn-secondary text-xs">{t('patients.workspace.action_whatsapp')}</Link>
+            <button type="button" className="btn-secondary text-xs" onClick={() => setShowForm(true)}>{t('common.edit')}</button>
+            {user?.role === 'admin' && (
+              <button type="button" className="btn-danger text-xs" onClick={() => setDeleting(true)}>{t('common.delete')}</button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="crm-avatar-lg shrink-0">{initials(displayName)}</div>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-display text-2xl font-semibold text-[#3a342c] truncate">{displayName}</h1>
+              {patient.social_name && (
+                <span className="text-sm text-[#6b645a]">({patient.full_name})</span>
+              )}
+              <span className="badge-slate font-mono text-[11px]">{patient.id?.slice(0, 12)}</span>
+              {workspace.open_complaint ? <span className="badge-red">{t('patients.workspace.open_complaint')}</span> : null}
+              {workspace.do_not_contact ? <span className="badge-red">{t('patients.lifecycle.do_not_contact')}</span> : null}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#4a453c]">
+              <span>{t('patients.birth_date')}: {fmtDate(patient.birth_date, locale)}</span>
+              <span>WhatsApp: <a className="font-mono hover:underline" href={`https://wa.me/${String(patient.phone || '').replace(/\D/g, '')}`}>{patient.phone || '—'}</a></span>
+              <span>{t('patients.col_owner')}: {workspace.assigned_professional?.full_name || data.owner_name || t('patients.unassigned')}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-[#6b645a]">{t('patients.workspace.lifecycle')}</label>
+              <select
+                className="crm-filter"
+                value={stage}
+                disabled={stageBusy}
+                onChange={(e) => changeLifecycle(e.target.value)}
+                data-testid="lifecycle-select"
+              >
+                {LIFECYCLES.map((s) => (
+                  <option key={s} value={s}>{t(`patients.lifecycle.${s}`)}</option>
+                ))}
+              </select>
+              <span className="text-xs text-[#6b645a]">
+                {t('patients.workspace.next_appt')}:{' '}
+                {workspace.next_appointment
+                  ? fmtDateTime(workspace.next_appointment.scheduled_at, locale)
+                  : '—'}
+              </span>
+              <span className="text-xs text-[#6b645a]">
+                {t('patients.workspace.last_visit')}:{' '}
+                {workspace.last_visit ? fmtDateTime(workspace.last_visit.scheduled_at, locale) : '—'}
+              </span>
+              <span className={`badge ${workspace.consent_ok ? 'badge-green' : 'badge-yellow'}`}>
+                {workspace.consent_ok ? t('patients.workspace.consent_ok') : t('patients.workspace.consent_missing')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-1 overflow-x-auto border-t border-[#9CA3AF]/50 pt-2" data-testid="workspace-tabs">
+          {tabs.filter((x) => !x.hide).map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              onClick={() => setTab(x.id)}
+              className={`crm-feed-tab ${tab === x.id ? 'is-active' : ''}`}
+              data-testid={`workspace-tab-${x.id}`}
+            >
+              {x.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <div className="crm-record-grid">
+        {/* LEFT — summary */}
+        <aside className="space-y-3">
+          <div className="card p-4 space-y-3">
+            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.summary')}</h2>
+            <dl className="space-y-3">
+              {prop(t('patients.email'), patient.email)}
+              {prop(t('patients.phone'), patient.phone)}
+              {prop(t('patients.phone_secondary'), patient.phone_secondary)}
+              {prop(t('patients.workspace.language'), patient.preferred_language || 'pt-BR')}
+              {prop(t('patients.cpf'), patient.cpf)}
+              {prop(t('patients.health_insurance'), patient.health_insurance)}
+              {prop(
+                t('patients.address_city'),
+                [patient.address_street, patient.address_number, patient.address_neighborhood, patient.address_city, patient.address_state].filter(Boolean).join(', '),
+              )}
+              {prop(t('patients.emergency_name'), patient.emergency_contact_name)}
+              {prop(t('patients.emergency_phone'), patient.emergency_contact_phone)}
+              {clinicalOk && prop(t('patients.allergies'), (patient.allergies || []).join(', '))}
+              {clinicalOk && prop(t('patients.chronic_conditions'), (patient.chronic_conditions || []).join(', '))}
+            </dl>
+          </div>
+
+          {(tab === 'overview' || tab === 'privacy') && (
+            <div className="card p-4 space-y-3" data-testid="consent-ledger">
+              <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.consents')}</h2>
+              <p className="text-xs text-[#6b645a]">{t('patients.workspace.consents_hint')}</p>
+              <ul className="space-y-2">
+                {CONSENT_PURPOSES.map((purpose) => {
+                  const row = consentLedger.find((c: any) => c.purpose === purpose);
+                  const on = !!row?.granted;
+                  return (
+                    <li key={purpose} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <div className="font-medium text-[#3a342c] truncate">{t(`patients.consent.${purpose}`)}</div>
+                        <div className="text-[11px] text-[#8a8174]">
+                          {on ? fmtDateTime(row?.granted_at, locale) : (row?.revoked_at ? fmtDateTime(row.revoked_at, locale) : '—')}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={consentBusy === purpose}
+                        className={`seg-item !py-1 !px-2.5 !text-xs ${on ? 'is-active' : ''}`}
+                        onClick={() => toggleConsent(purpose, !on)}
+                        data-testid={`consent-${purpose}`}
+                      >
+                        {consentBusy === purpose ? '…' : on ? t('common.yes') : t('common.no')}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </aside>
+
+        {/* CENTER — timeline / tab bodies */}
+        <section className="card overflow-hidden min-w-0">
+          {tab === 'overview' && upcoming.length > 0 && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)]" style={{ background: 'linear-gradient(180deg,#E5E7EB,#D1D5DB)' }}>
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#4a453c] mb-2">{t('patients.workspace.upcoming')}</div>
+              <div className="space-y-1.5">
+                {upcoming.slice(0, 3).map((a: any) => (
+                  <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="font-medium">{fmtDateTime(a.scheduled_at, locale)}</span>
+                    <span className="text-[#6b645a]">{a.practitioner_name}</span>
+                    <span className={`badge ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>{a.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab === 'clinical' && !clinicalOk && (
+            <div className="p-6 text-sm text-[#6b645a]">{t('patients.workspace.clinical_restricted')}</div>
+          )}
+
+          {tab === 'surveys' && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2">
+              <h3 className="font-semibold text-sm">{t('patients.workspace.survey_history')}</h3>
+              {surveys.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {surveys.map((s: any) => (
+                <div key={s.id} className="crm-timeline-card flex items-center justify-between gap-2">
+                  <span className="text-sm">{fmtDateTime(s.created_at, locale)}</span>
+                  <span className={`badge ${s.score >= 9 ? 'badge-green' : s.score <= 6 ? 'badge-red' : 'badge-yellow'}`}>
+                    {s.score}/10
+                  </span>
+                  <span className="text-xs text-[#6b645a] truncate flex-1">{s.comment || '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="p-4 space-y-5">
+            {grouped.length === 0 && (
+              <div className="text-center text-sm text-[#8a8174] py-10">{t('common.no_data')}</div>
+            )}
+            {grouped.map(([month, items]) => (
+              <div key={month}>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#8a8174] mb-2">{month}</div>
+                <ul className="space-y-2">
+                  {items.map((item: any) => (
+                    <li key={item.id} className="crm-timeline-card flex gap-3" data-testid={`timeline-${item.kind}`}>
+                      <span className="crm-timeline-icon"><KindIcon kind={item.kind} /></span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-sm text-[#3a342c]">{titleFor(item)}</span>
+                          {item.status && <span className="badge-slate text-[10px]">{item.status}</span>}
+                          {item.kind === 'survey' && item.meta?.score != null && (
+                            <span className={`badge ${item.meta.score >= 9 ? 'badge-green' : item.meta.score <= 6 ? 'badge-red' : 'badge-yellow'}`}>
+                              {item.meta.score}/10
+                            </span>
+                          )}
+                        </div>
+                        {item.subtitle && <div className="text-sm text-[#6b645a] mt-0.5 break-words">{item.subtitle}</div>}
+                        <div className="text-[11px] text-[#8a8174] mt-1">{fmtDateTime(item.at, locale)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* RIGHT — quick actions */}
+        <aside className="space-y-3">
+          <div className="card p-4 space-y-2">
+            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.quick_actions')}</h2>
+            <Link to="/whatsapp" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_whatsapp')}</Link>
+            <Link to="/appointments" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_schedule')}</Link>
+            <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('privacy')}>
+              {t('patients.workspace.action_consent')}
+            </button>
+            {clinicalOk && (
+              <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('clinical')}>
+                {t('patients.workspace.action_clinical')}
+              </button>
+            )}
+            <Link to="/invoices" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_billing')}</Link>
+          </div>
+
+          <div className="card p-4 space-y-2">
+            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.internal_note')}</h2>
+            <textarea className="input" rows={4} value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} />
+            <button type="button" className="btn-primary w-full text-sm" disabled={noteBusy} onClick={saveNote}>
+              {noteBusy ? '…' : t('common.save')}
+            </button>
+          </div>
+
+          <div className="card p-3 space-y-1">
+            {[
+              ['appointments', t('patients.assoc.appointments'), associations.appointments],
+              ['whatsapp', t('patients.assoc.whatsapp'), associations.whatsapp],
+              ['surveys', t('patients.workspace.tab_surveys'), associations.surveys],
+              ['invoices', t('patients.assoc.invoices'), associations.invoices],
+              ['consents', t('patients.assoc.consents'), associations.consents],
+            ].map(([key, label, assoc]: any) => (
+              <div key={key} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-lg hover:bg-[#efe6d8]">
+                <span className="flex items-center gap-2">
+                  <span className="w-1 h-4 rounded-full bg-[#9CA3AF]" />
+                  {label}
+                </span>
+                <span className="font-semibold text-[#3a342c]">{assoc?.count ?? 0}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </div>
+
+      {showForm && (
+        <PatientForm
+          initial={patient}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load(); }}
+        />
+      )}
+      {deleting && (
+        <ConfirmDialog
+          name={displayName}
+          busy={deleteBusy}
+          onCancel={() => setDeleting(false)}
+          onConfirm={remove}
+        />
+      )}
+    </div>
+  );
+}

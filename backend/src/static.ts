@@ -1,13 +1,22 @@
 /**
- * Production static serving: serve the React build from the same Express app.
+ * Production static serving: serve the React + PWA build from the same Express app.
  * Mounted at the end so /api routes take priority.
  */
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
 
+function isPwaControlFile(filePath: string): boolean {
+  const base = path.basename(filePath);
+  return (
+    base === 'sw.js' ||
+    base === 'registerSW.js' ||
+    base.endsWith('.webmanifest') ||
+    base.startsWith('workbox-')
+  );
+}
+
 export function mountStatic(app: express.Express): void {
-  // Look in backend/public, sibling frontend/dist, or env FRONTEND_DIST
   const candidates = [
     process.env.FRONTEND_DIST,
     path.join(__dirname, '..', 'public'),
@@ -20,9 +29,21 @@ export function mountStatic(app: express.Express): void {
     return;
   }
   console.log(`📦 Serving frontend from: ${dist}`);
-  app.use(express.static(dist));
-  // SPA fallback
-  app.get(/^(?!\/api).*/, (_req, res) => {
+
+  app.use(express.static(dist, {
+    setHeaders(res, filePath) {
+      if (isPwaControlFile(filePath)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Service-Worker-Allowed', '/');
+      }
+    },
+  }));
+
+  // SPA fallback — keep /api and asset files alone
+  app.get(/^(?!\/api).*/, (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const ext = path.extname(req.path);
+    if (ext && ext !== '.html') return next();
     res.sendFile(path.join(dist, 'index.html'));
   });
 }
