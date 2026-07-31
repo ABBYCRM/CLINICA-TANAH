@@ -19,7 +19,7 @@ RUN npm run build \
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-ENV PORT=8080
+ENV PORT=10000
 ENV DB_DIR=/data
 
 RUN mkdir -p /data /app/seed-data && chown -R node:node /data /app
@@ -33,7 +33,7 @@ COPY scripts/docker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && chown -R node:node /app
 
 USER node
-EXPOSE 8080
+EXPOSE 10000
 VOLUME ["/data"]
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "backend/dist/server.js"]

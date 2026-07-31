@@ -4,7 +4,7 @@ LGPD-compliant clinic management platform for **Clínica Tanah** in São Paulo /
 Trilingual (Português / Español / English), with WhatsApp bot for appointments, full inventory & vendor
 management, double-entry accounting, Brazilian payroll (INSS/IRRF/FGTS), and complete audit trail.
 
-🌐 **Live (DigitalOcean)**: create from [`.do/app.yaml`](.do/app.yaml) → `https://<app-name>-xxxxx.ondigitalocean.app`
+🌐 **Live (DigitalOcean)**: https://clinica-tanah-bbqu7.ondigitalocean.app
 📱 **PWA**: installable on Android, iOS (Safari → Add to Home Screen), and Windows (Edge/Chrome → Install)
 🔒 **LGPD Mode**: Strict (Lei 13.709/2018 + CFM 2.314/2022)
 💬 **WhatsApp Bot**: Trilingual, with appointment booking + opt-out
