@@ -11,7 +11,18 @@ import jwt from 'jsonwebtoken';
 import { db } from '../db/schema';
 import { verifyApiToken, TOKEN_PREFIX } from '../services/tokens';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'clinica-tanah-dev-secret-change-me-in-prod';
+function resolveJwtSecret(): string {
+  const fromEnv = process.env.JWT_SECRET || '';
+  if (process.env.NODE_ENV === 'production') {
+    if (!fromEnv || fromEnv === 'clinica-tanah-dev-secret-change-me-in-prod' || fromEnv.length < 32) {
+      throw new Error('FATAL: JWT_SECRET missing or weak in production');
+    }
+    return fromEnv;
+  }
+  return fromEnv || 'clinica-tanah-dev-secret-change-me-in-prod';
+}
+
+const JWT_SECRET = resolveJwtSecret();
 /** Clinic staff often leave a tab open through a shift — 24h beats 8h expiry surprises. */
 const TOKEN_TTL = '24h';
 

@@ -12,6 +12,7 @@ import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
+import { migratePhiAtRest } from '../services/phiCrypto';
 
 let _db: Database.Database | null = null;
 let _dbPath: string | null = null;
@@ -558,48 +559,62 @@ export function initSchema(): void {
 /** Fixed id of the tenant that owns all pre-multitenancy data. */
 export const DEFAULT_TENANT_ID = 't_clinica_tanah';
 
-/** Sole production login — username "Juliana", password "1234". */
+/** Sole production login — username "Juliana". Password from env in prod. */
 export const PRIMARY_USER_ID = 'u_juliana';
 export const PRIMARY_USER_EMAIL = 'juliana@clinica-tanah.com.br';
 export const PRIMARY_USER_NAME = 'Juliana';
-export const PRIMARY_USER_PASSWORD = '1234';
+/** Demo/e2e default only — never force-reset in production unless ALLOW_DEMO_PASSWORD_RESET=1 */
+export const PRIMARY_USER_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '1234';
 
 /**
- * Ensure the single primary account exists, reset its credentials, and
- * remove all other staff logins on the default tenant (demo/test accounts).
- * Safe to run on every boot against a persistent production DB.
+ * Ensure the primary admin account exists.
+ * In production: create if missing; do NOT reset password on every boot
+ * (LGPD art. 46 — credential integrity). Demo/e2e may reset when allowed.
  */
 export function ensurePrimaryAccount(): void {
   const db = openDb();
+  const allowReset =
+    process.env.ALLOW_DEMO_PASSWORD_RESET === '1'
+    || process.env.NODE_ENV !== 'production';
   const hash = bcrypt.hashSync(PRIMARY_USER_PASSWORD, 10);
 
   let keep = db.prepare(`
-    SELECT id FROM users
+    SELECT id, password_hash FROM users
     WHERE id = ? OR lower(email) = lower(?) OR lower(full_name) = lower(?)
     ORDER BY CASE WHEN id = ? THEN 0 WHEN lower(email) = lower(?) THEN 1 ELSE 2 END
     LIMIT 1
   `).get(
     PRIMARY_USER_ID, PRIMARY_USER_EMAIL, PRIMARY_USER_NAME,
     PRIMARY_USER_ID, PRIMARY_USER_EMAIL,
-  ) as { id: string } | undefined;
+  ) as { id: string; password_hash?: string } | undefined;
 
   if (!keep) {
     keep = db.prepare(`
-      SELECT id FROM users
+      SELECT id, password_hash FROM users
       WHERE tenant_id = ? AND (is_superadmin = 1 OR role = 'admin')
       ORDER BY is_superadmin DESC
       LIMIT 1
-    `).get(DEFAULT_TENANT_ID) as { id: string } | undefined;
+    `).get(DEFAULT_TENANT_ID) as { id: string; password_hash?: string } | undefined;
   }
 
   if (keep) {
-    db.prepare(`
-      UPDATE users SET
-        email = ?, password_hash = ?, full_name = ?,
-        role = 'admin', is_superadmin = 1, active = 1,
-        tenant_id = COALESCE(tenant_id, ?)
-      WHERE id = ?
-    `).run(PRIMARY_USER_EMAIL, hash, PRIMARY_USER_NAME, DEFAULT_TENANT_ID, keep.id);
+    if (allowReset) {
+      db.prepare(`
+        UPDATE users SET
+          email = ?, password_hash = ?, full_name = ?,
+          role = 'admin', is_superadmin = 1, active = 1,
+          tenant_id = COALESCE(tenant_id, ?)
+        WHERE id = ?
+      `).run(PRIMARY_USER_EMAIL, hash, PRIMARY_USER_NAME, DEFAULT_TENANT_ID, keep.id);
+    } else {
+      db.prepare(`
+        UPDATE users SET
+          email = ?, full_name = ?,
+          role = 'admin', is_superadmin = 1, active = 1,
+          tenant_id = COALESCE(tenant_id, ?)
+        WHERE id = ?
+      `).run(PRIMARY_USER_EMAIL, PRIMARY_USER_NAME, DEFAULT_TENANT_ID, keep.id);
+    }
   } else {
     db.prepare(`
       INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, active, is_superadmin)
@@ -915,6 +930,15 @@ function migrate(): void {
   seedMarketingDefaults(DEFAULT_TENANT_ID);
   ensureRecallAutomation(DEFAULT_TENANT_ID);
   ensurePrimaryAccount();
+
+  // Encrypt existing plaintext PHI at rest (idempotent) — LGPD art. 46
+  try {
+    const stats = migratePhiAtRest(openDb());
+    const n = stats.patients + stats.encounters + stats.prescriptions + stats.intake;
+    if (n > 0) console.log(`🔐 PHI at-rest encryption migrated: ${JSON.stringify(stats)}`);
+  } catch (e: any) {
+    console.warn('PHI encryption migrate skipped:', e?.message || e);
+  }
 }
 
 function ensureDefaultIntakeForm(tenantId: string): void {

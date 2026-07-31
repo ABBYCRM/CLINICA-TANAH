@@ -15,8 +15,29 @@ import {
   setPatientRecall,
   type ConsentPurpose,
 } from '../services/patientJourney';
+import {
+  blindIndex,
+  revealEncounterRow,
+  revealPatientRow,
+  revealPrescriptionItems,
+  seal,
+  sealJson,
+  sealPatientRow,
+} from '../services/phiCrypto';
 
 const router = Router();
+
+const CLINICAL_PATIENT_FIELDS = [
+  'allergies', 'chronic_conditions', 'medications_in_use', 'blood_type',
+  'notes', 'open_complaint', 'cns',
+] as const;
+
+function redactClinicalIfNeeded(patient: any, role?: string | null) {
+  if (canViewClinical(role)) return patient;
+  const out = { ...patient };
+  for (const f of CLINICAL_PATIENT_FIELDS) delete out[f];
+  return out;
+}
 
 // HTML forms submit empty strings for untouched optional fields — treat them as null
 const optStr = (schema: z.ZodString) =>
@@ -92,12 +113,22 @@ router.get('/', (req: Request, res: Response) => {
 
   if (q) {
     const like = `%${q}%`;
-    const digits = `%${q.replace(/\D/g, '') || q}%`;
-    where.push(`(
-      p.full_name LIKE ? OR p.social_name LIKE ? OR p.cpf LIKE ? OR p.phone LIKE ? OR p.email LIKE ?
-      OR REPLACE(REPLACE(REPLACE(COALESCE(p.cpf,''), '.', ''), '-', ''), ' ', '') LIKE ?
-    )`);
-    args.push(like, like, like, like, like, digits);
+    const digitsOnly = q.replace(/\D/g, '');
+    const digits = `%${digitsOnly || q}%`;
+    if (digitsOnly.length === 11) {
+      const blind = blindIndex(digitsOnly);
+      where.push(`(
+        p.full_name LIKE ? OR p.social_name LIKE ? OR p.phone LIKE ? OR p.email LIKE ?
+        OR p.cpf_blind = ?
+      )`);
+      args.push(like, like, like, like, blind);
+    } else {
+      where.push(`(
+        p.full_name LIKE ? OR p.social_name LIKE ? OR p.phone LIKE ?
+        OR REPLACE(REPLACE(REPLACE(COALESCE(p.phone,''), '+', ''), '-', ''), ' ', '') LIKE ?
+      )`);
+      args.push(like, like, like, digits);
+    }
   }
   if (insurance === '__none__') {
     where.push(`(p.health_insurance IS NULL OR TRIM(p.health_insurance) = '')`);
@@ -186,6 +217,8 @@ router.get('/', (req: Request, res: Response) => {
     LIMIT ? OFFSET ?
   `).all(...args, limit, offset);
 
+  const revealed = (rows as any[]).map((r) => revealPatientRow(r)!);
+
   const insurers = db.prepare(`
     SELECT DISTINCT health_insurance AS name FROM patients
     WHERE tenant_id = ? AND health_insurance IS NOT NULL AND TRIM(health_insurance) != ''
@@ -216,17 +249,18 @@ router.get('/', (req: Request, res: Response) => {
     `).get(req.tenantId) as any).c,
   };
 
-  res.json({ patients: rows, total, limit, offset, insurers, view_counts: viewCounts });
+  res.json({ patients: revealed, total, limit, offset, insurers, view_counts: viewCounts });
 });
 
-// Get single patient — audit logged (PHI access)
+// Get single patient — audit logged (PHI access); clinical fields RBAC
 router.get('/:id', (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
-  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const raw = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!raw) { res.status(404).json({ error: 'not_found' }); return; }
+  const p = redactClinicalIfNeeded(revealPatientRow(raw), req.user?.role);
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
-    action: 'view_patient_phi', resourceType: 'patient', resourceId: p.id,
+    action: 'view_patient_phi', resourceType: 'patient', resourceId: raw.id,
     ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
     legalBasis: 'health_protection_art7_VIII',
   });
@@ -247,8 +281,21 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
   }
   const id = uuid();
   const now = new Date().toISOString();
+  const sealed = sealPatientRow({
+    cpf: d.cpf ?? null,
+    rg: d.rg ?? null,
+    cns: d.cns ?? null,
+    email: d.email ?? null,
+    notes: d.notes ?? null,
+    allergies: JSON.stringify(d.allergies),
+    chronic_conditions: JSON.stringify(d.chronic_conditions),
+    medications_in_use: JSON.stringify(d.medications_in_use),
+    mother_name: d.mother_name ?? null,
+    father_name: d.father_name ?? null,
+    emergency_contact_phone: d.emergency_contact_phone ?? null,
+  });
   db.prepare(`
-    INSERT INTO patients (id, tenant_id, full_name, social_name, birth_date, cpf, rg, rg_issuer, gender, phone, phone_secondary, email,
+    INSERT INTO patients (id, tenant_id, full_name, social_name, birth_date, cpf, cpf_blind, rg, rg_issuer, gender, phone, phone_secondary, email,
                           address_zip, address_street, address_number, address_complement,
                           address_neighborhood, address_city, address_state,
                           marital_status, occupation, education_level, nationality, birthplace,
@@ -259,18 +306,19 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
                           lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version,
                           created_at, updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
-    id, req.tenantId, d.full_name, d.social_name ?? null, d.birth_date, d.cpf ?? null, d.rg ?? null,
-    d.rg_issuer ?? null, d.gender ?? null, d.phone, d.phone_secondary ?? null, d.email ?? null,
+    id, req.tenantId, d.full_name, d.social_name ?? null, d.birth_date,
+    sealed.cpf ?? null, sealed.cpf_blind ?? null, sealed.rg ?? null,
+    d.rg_issuer ?? null, d.gender ?? null, d.phone, d.phone_secondary ?? null, sealed.email ?? null,
     d.address_zip ?? null, d.address_street ?? null, d.address_number ?? null, d.address_complement ?? null,
     d.address_neighborhood ?? null, d.address_city ?? null, d.address_state ?? null,
     d.marital_status ?? null, d.occupation ?? null, d.education_level ?? null, d.nationality ?? null,
-    d.birthplace ?? null, d.mother_name ?? null, d.father_name ?? null, d.race_color ?? null,
-    d.cns ?? null, d.referral_source ?? null, d.notes ?? null,
+    d.birthplace ?? null, sealed.mother_name ?? null, sealed.father_name ?? null, d.race_color ?? null,
+    sealed.cns ?? null, d.referral_source ?? null, sealed.notes ?? null,
     d.health_insurance ?? null, d.health_insurance_number ?? null, d.blood_type ?? null,
-    JSON.stringify(d.allergies), JSON.stringify(d.chronic_conditions), JSON.stringify(d.medications_in_use),
-    d.emergency_contact_name ?? null, d.emergency_contact_phone ?? null,
+    sealed.allergies ?? null, sealed.chronic_conditions ?? null, sealed.medications_in_use ?? null,
+    d.emergency_contact_name ?? null, sealed.emergency_contact_phone ?? null,
     now, req.ip ?? null, d.lgpd_policy_version,
     now, now
   );
@@ -351,6 +399,16 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
       if (k === 'lifecycle_stage' && v && !(LIFECYCLE_STAGES as readonly string[]).includes(String(v))) {
         res.status(400).json({ error: 'invalid_lifecycle_stage' }); return;
       }
+      if (['cpf','rg','cns','email','notes','allergies','chronic_conditions','medications_in_use',
+           'mother_name','father_name','emergency_contact_phone','guardian_phone'].includes(k) && v != null && v !== '') {
+        v = typeof v === 'string' ? seal(String(v)) : sealJson(v);
+      }
+      if (k === 'cpf') {
+        sets.push('cpf_blind = ?');
+        args.push(v);
+        args.push(blindIndex(String((d as any).cpf || '')));
+        continue;
+      }
       args.push(v);
     }
   }
@@ -405,9 +463,13 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
 
 /** HubSpot-style patient workspace: header props + timeline + associations + consents. */
 router.get('/:id/record', (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
-  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
-  const parseArr = (v: any): string[] => { try { return v ? JSON.parse(v) : []; } catch { return []; } };
+  const raw = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!raw) { res.status(404).json({ error: 'not_found' }); return; }
+  const p = revealPatientRow(raw)!;
+  const parseArr = (v: any): string[] => {
+    if (Array.isArray(v)) return v;
+    try { return v ? JSON.parse(v) : []; } catch { return []; }
+  };
   const clinicalOk = canViewClinical(req.user?.role);
 
   const appointments = db.prepare(`
@@ -418,21 +480,24 @@ router.get('/:id/record', (req: Request, res: Response) => {
     ORDER BY a.scheduled_at DESC LIMIT 50
   `).all(req.params.id, req.tenantId) as any[];
 
-  const encounters = db.prepare(`
+  const encounters = (db.prepare(`
     SELECT e.id, e.started_at, e.ended_at, e.subjective, e.objective, e.assessment, e.plan,
            e.icd10_codes, u.full_name AS practitioner_name
     FROM encounters e JOIN users u ON u.id = e.practitioner_id
     WHERE e.patient_id = ? AND e.tenant_id = ?
     ORDER BY e.started_at DESC LIMIT 50
-  `).all(req.params.id, req.tenantId) as any[];
+  `).all(req.params.id, req.tenantId) as any[]).map((e) => revealEncounterRow(e)!);
 
-  const prescriptions = db.prepare(`
+  const prescriptions = (db.prepare(`
     SELECT pr.id, pr.created_at, pr.items, pr.sent_via_whatsapp, u.full_name AS practitioner_name
     FROM prescriptions pr
     LEFT JOIN users u ON u.id = pr.practitioner_id
     WHERE pr.patient_id = ? AND pr.tenant_id = ?
     ORDER BY pr.created_at DESC LIMIT 30
-  `).all(req.params.id, req.tenantId) as any[];
+  `).all(req.params.id, req.tenantId) as any[]).map((pr) => ({
+    ...pr,
+    items: revealPrescriptionItems(pr.items),
+  }));
 
   const invoices = db.prepare(`
     SELECT id, invoice_number, issue_date, due_date, total, status, payment_method, paid_at
@@ -1020,10 +1085,13 @@ router.get('/:id/summary', (req: Request, res: Response) => {
 
 // Patient LGPD data export (portability)
 router.get('/:id/data-export', requireRole('admin', 'patient', 'doctor'), (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId);
-  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
-  const encounters = db.prepare(`SELECT * FROM encounters WHERE patient_id = ? AND tenant_id = ? ORDER BY started_at DESC`).all(req.params.id, req.tenantId);
-  const prescriptions = db.prepare(`SELECT * FROM prescriptions WHERE patient_id = ? AND tenant_id = ? ORDER BY created_at DESC`).all(req.params.id, req.tenantId);
+  const raw = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId);
+  if (!raw) { res.status(404).json({ error: 'not_found' }); return; }
+  const p = revealPatientRow(raw as any);
+  const encounters = (db.prepare(`SELECT * FROM encounters WHERE patient_id = ? AND tenant_id = ? ORDER BY started_at DESC`).all(req.params.id, req.tenantId) as any[])
+    .map((e) => revealEncounterRow(e)!);
+  const prescriptions = (db.prepare(`SELECT * FROM prescriptions WHERE patient_id = ? AND tenant_id = ? ORDER BY created_at DESC`).all(req.params.id, req.tenantId) as any[])
+    .map((pr) => ({ ...pr, items: revealPrescriptionItems(pr.items) }));
   const appointments = db.prepare(`SELECT * FROM appointments WHERE patient_id = ? AND tenant_id = ? ORDER BY scheduled_at DESC`).all(req.params.id, req.tenantId);
   const consents = db.prepare(`SELECT * FROM lgpd_consents WHERE subject_type='patient' AND subject_id = ? ORDER BY granted_at DESC`).all(req.params.id);
   logAudit({
@@ -1037,6 +1105,7 @@ router.get('/:id/data-export', requireRole('admin', 'patient', 'doctor'), (req: 
     patient: p, encounters, prescriptions, appointments, consents,
     generated_at: new Date().toISOString(),
     legal_basis: 'LGPD art. 18, V — direito de portabilidade',
+    encryption_note: 'Dados armazenados com AES-256-GCM; exportação em claro apenas para o titular/autorizado.',
   });
 });
 

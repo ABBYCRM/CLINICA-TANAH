@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit, recordConsent } from '../services/audit';
+import { blindIndex, seal, sealJson } from '../services/phiCrypto';
 
 const PIXEL_GIF = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
@@ -238,6 +239,11 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   `).get(form.tenant_id, phone) as any;
 
   const now = new Date().toISOString();
+  const sealedEmail = email ? seal(email) : null;
+  const sealedCpf = cpf ? seal(cpf) : null;
+  const sealedNotes = d.notes ? seal(d.notes) : null;
+  const cpfBlind = cpf ? blindIndex(cpf) : null;
+
   if (existing) {
     patientId = existing.id;
     status = 'linked_existing';
@@ -249,20 +255,20 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
         email = COALESCE(email, ?),
         updated_at = datetime('now')
       WHERE id = ?
-    `).run(now, ip, form.policy_version, email, patientId);
+    `).run(now, ip, form.policy_version, sealedEmail, patientId);
   } else {
     patientId = uuid();
     try {
       db.prepare(`
         INSERT INTO patients (
-          id, tenant_id, full_name, birth_date, cpf, phone, email,
+          id, tenant_id, full_name, birth_date, cpf, cpf_blind, phone, email,
           address_city, address_state, notes, referral_source,
           lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version,
           lifecycle_stage, preferred_language, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'prospect', 'pt-BR', datetime('now'), datetime('now'))
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'prospect', 'pt-BR', datetime('now'), datetime('now'))
       `).run(
-        patientId, form.tenant_id, d.full_name.trim(), d.birth_date, cpf, phone, email,
-        d.city || null, d.state || null, d.notes || null, 'intake_form',
+        patientId, form.tenant_id, d.full_name.trim(), d.birth_date, sealedCpf, cpfBlind, phone, sealedEmail,
+        d.city || null, d.state || null, sealedNotes, 'intake_form',
         now, ip, form.policy_version,
       );
     } catch (e: any) {
@@ -271,19 +277,20 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
     }
   }
 
-  const evidence = JSON.stringify({
+  const evidenceObj = {
     source: 'public_intake_form',
     form_id: form.id,
     form_slug: form.slug,
     submission_id: session.id,
-    pixel_token: d.pixel_token,
     pixel_viewed_at: session.pixel_viewed_at || now,
     self_attested: true,
     consent_whatsapp: d.consent_whatsapp,
     consent_marketing: d.consent_marketing,
     consent_calls: d.consent_calls,
     compliance: 'LGPD_art7_I_TCPA_BR_equivalent',
-  });
+  };
+  const evidence = JSON.stringify(evidenceObj);
+  const sealedPayload = sealJson(evidenceObj);
 
   const consents: string[] = ['health_data_processing', 'data_processing'];
   if (d.consent_whatsapp) consents.push('whatsapp_communication', 'whatsapp_admin', 'appointment_reminders');
@@ -315,10 +322,10 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
       user_agent = COALESCE(?, user_agent)
     WHERE id = ?
   `).run(
-    patientId, d.full_name.trim(), d.birth_date, phone, email, cpf,
-    d.city || null, d.state || null, d.notes || null,
+    patientId, d.full_name.trim(), d.birth_date, phone, sealedEmail, sealedCpf,
+    d.city || null, d.state || null, sealedNotes,
     d.consent_whatsapp ? 1 : 0, d.consent_marketing ? 1 : 0, d.consent_calls ? 1 : 0,
-    evidence, status, ip, ua, session.id,
+    sealedPayload, status, ip, ua, session.id,
   );
 
   logAudit({
@@ -335,7 +342,6 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   res.status(201).json({
     ok: true,
     status,
-    patient_id: patientId,
     submission_id: session.id,
     message: 'Cadastro recebido. Obrigado!',
   });

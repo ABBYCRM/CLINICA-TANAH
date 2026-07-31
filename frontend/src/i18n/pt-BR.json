@@ -677,6 +677,8 @@
     "data_requests": "Solicitações dos titulares",
     "audit_trail": "Trilha de auditoria",
     "retention_policy": "Política de retenção",
+    "technical_measures": "Medidas técnicas (LGPD art. 46)",
+    "encrypted_at_rest": "Criptografado em repouso (AES-256-GCM)",
     "request_access": "Solicitar acesso",
     "request_deletion": "Solicitar exclusão",
     "fulfilled": "Atendida",

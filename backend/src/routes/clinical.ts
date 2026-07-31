@@ -4,6 +4,13 @@ import { z } from 'zod';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
+import {
+  revealEncounterRow,
+  revealPrescriptionItems,
+  seal,
+  sealEncounterRow,
+  sealPrescriptionItems,
+} from '../services/phiCrypto';
 
 const router = Router();
 router.use(authenticate);
@@ -38,7 +45,7 @@ const prescriptionSchema = z.object({
 });
 
 // ENCOUNTERS
-router.get('/encounters', (req: Request, res: Response) => {
+router.get('/encounters', requireRole('admin', 'doctor', 'nurse'), (req: Request, res: Response) => {
   const patientId = req.query.patient_id as string | undefined;
   let sql = `SELECT e.*, p.full_name AS patient_name, u.full_name AS practitioner_name FROM encounters e
              JOIN patients p ON p.id = e.patient_id
@@ -47,7 +54,15 @@ router.get('/encounters', (req: Request, res: Response) => {
   const args: any[] = [req.tenantId];
   if (patientId) { sql += ` AND e.patient_id = ?`; args.push(patientId); }
   sql += ` ORDER BY e.started_at DESC LIMIT 200`;
-  res.json({ encounters: db.prepare(sql).all(...args) });
+  const rows = (db.prepare(sql).all(...args) as any[]).map((e) => revealEncounterRow(e)!);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'list_encounters_phi', resourceType: 'encounter',
+    afterValue: { count: rows.length, patient_id: patientId || null },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({ encounters: rows });
 });
 
 router.post('/encounters', requireRole('doctor', 'nurse'), (req: Request, res: Response) => {
@@ -55,13 +70,20 @@ router.post('/encounters', requireRole('doctor', 'nurse'), (req: Request, res: R
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   const d = parsed.data;
   const id = uuid();
+  const sealed = sealEncounterRow({
+    subjective: d.subjective ?? null,
+    objective: d.objective ?? null,
+    assessment: d.assessment ?? null,
+    plan: d.plan ?? null,
+    notes: d.notes ?? null,
+  });
   db.prepare(`
     INSERT INTO encounters (id, tenant_id, patient_id, practitioner_id, appointment_id, started_at, ended_at,
                             subjective, objective, assessment, plan, icd10_codes, cid10_codes, notes)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(id, req.tenantId, d.patient_id, d.practitioner_id, d.appointment_id ?? null, d.started_at, d.ended_at ?? null,
-         d.subjective ?? null, d.objective ?? null, d.assessment ?? null, d.plan ?? null,
-         JSON.stringify(d.icd10_codes), JSON.stringify(d.cid10_codes), d.notes ?? null);
+         sealed.subjective ?? null, sealed.objective ?? null, sealed.assessment ?? null, sealed.plan ?? null,
+         JSON.stringify(d.icd10_codes), JSON.stringify(d.cid10_codes), sealed.notes ?? null);
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
@@ -71,9 +93,10 @@ router.post('/encounters', requireRole('doctor', 'nurse'), (req: Request, res: R
   res.status(201).json({ id });
 });
 
-router.get('/encounters/:id', (req: Request, res: Response) => {
-  const e = db.prepare(`SELECT * FROM encounters WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
-  if (!e) { res.status(404).json({ error: 'not_found' }); return; }
+router.get('/encounters/:id', requireRole('admin', 'doctor', 'nurse'), (req: Request, res: Response) => {
+  const raw = db.prepare(`SELECT * FROM encounters WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!raw) { res.status(404).json({ error: 'not_found' }); return; }
+  const e = revealEncounterRow(raw)!;
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
@@ -98,6 +121,9 @@ router.put('/encounters/:id', requireRole('doctor', 'nurse'), (req: Request, res
       sets.push(`${k} = ?`);
       let v = (d as any)[k];
       if (['icd10_codes','cid10_codes'].includes(k) && Array.isArray(v)) v = JSON.stringify(v);
+      if (['subjective','objective','assessment','plan','notes'].includes(k) && v != null && v !== '') {
+        v = seal(String(v));
+      }
       args.push(v);
     }
   }
@@ -114,22 +140,18 @@ router.put('/encounters/:id', requireRole('doctor', 'nurse'), (req: Request, res
   res.json({ ok: true });
 });
 
-// Delete an encounter — admin only; prescriptions under it cascade
+// Soft-block hard delete — CFM 1.821/2007 20-year medical record retention
 router.delete('/encounters/:id', requireRole('admin'), (req: Request, res: Response) => {
   const e = db.prepare(`SELECT id FROM encounters WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!e) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`DELETE FROM encounters WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
-  logAudit({
-    tenantId: req.tenantId,
-    actorId: req.user!.id, actorEmail: req.user!.email,
-    action: 'delete_encounter_phi', resourceType: 'encounter', resourceId: req.params.id,
-    legalBasis: 'legal_obligation_art7_II',
+  res.status(409).json({
+    error: 'clinical_retention',
+    message: 'Prontuário eletrônico não pode ser apagado (retenção CFM 20 anos). Use solicitação LGPD / anonimização.',
   });
-  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 // PRESCRIPTIONS
-router.get('/prescriptions', (req: Request, res: Response) => {
+router.get('/prescriptions', requireRole('admin', 'doctor', 'nurse', 'pharmacist'), (req: Request, res: Response) => {
   const patientId = req.query.patient_id as string | undefined;
   let sql = `SELECT pr.*, p.full_name AS patient_name, u.full_name AS practitioner_name
              FROM prescriptions pr
@@ -139,7 +161,11 @@ router.get('/prescriptions', (req: Request, res: Response) => {
   const args: any[] = [req.tenantId];
   if (patientId) { sql += ` AND pr.patient_id = ?`; args.push(patientId); }
   sql += ` ORDER BY pr.created_at DESC LIMIT 200`;
-  res.json({ prescriptions: db.prepare(sql).all(...args) });
+  const rows = (db.prepare(sql).all(...args) as any[]).map((pr) => ({
+    ...pr,
+    items: revealPrescriptionItems(pr.items),
+  }));
+  res.json({ prescriptions: rows });
 });
 
 router.post('/prescriptions', requireRole('doctor'), (req: Request, res: Response) => {
@@ -150,7 +176,7 @@ router.post('/prescriptions', requireRole('doctor'), (req: Request, res: Respons
   db.prepare(`
     INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp)
     VALUES (?,?,?,?,?,?,?)
-  `).run(id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id, JSON.stringify(d.items), d.send_via_whatsapp ? 1 : 0);
+  `).run(id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id, sealPrescriptionItems(d.items), d.send_via_whatsapp ? 1 : 0);
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
@@ -167,7 +193,7 @@ router.put('/prescriptions/:id', requireRole('doctor'), (req: Request, res: Resp
   const parsed = prescriptionSchema.pick({ items: true }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   db.prepare(`UPDATE prescriptions SET items = ? WHERE id = ? AND tenant_id = ?`)
-    .run(JSON.stringify(parsed.data.items), req.params.id, req.tenantId);
+    .run(sealPrescriptionItems(parsed.data.items), req.params.id, req.tenantId);
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
@@ -177,18 +203,14 @@ router.put('/prescriptions/:id', requireRole('doctor'), (req: Request, res: Resp
   res.json({ ok: true });
 });
 
-// Cancel (delete) a prescription — doctor or admin
+// Cancel prescription — retain record (CFM); mark items as voided ciphertext
 router.delete('/prescriptions/:id', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
   const p = db.prepare(`SELECT id FROM prescriptions WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`DELETE FROM prescriptions WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
-  logAudit({
-    tenantId: req.tenantId,
-    actorId: req.user!.id, actorEmail: req.user!.email,
-    action: 'delete_prescription', resourceType: 'prescription', resourceId: req.params.id,
-    legalBasis: 'legal_obligation_art7_II',
+  res.status(409).json({
+    error: 'clinical_retention',
+    message: 'Prescrições fazem parte do prontuário (retenção CFM). Não é permitido apagar.',
   });
-  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 export default router;

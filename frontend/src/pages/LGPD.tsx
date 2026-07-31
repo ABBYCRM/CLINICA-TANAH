@@ -67,10 +67,28 @@ export default function LGPD() {
                   <div className="font-medium">{c.name}</div>
                   <div className="text-xs text-slate-500">{c.examples.join(', ')}</div>
                   <div className="text-xs text-clinic-700">⏱ {c.retention}</div>
+                  {c.encrypted_at_rest ? (
+                    <div className="text-xs text-[var(--moss)] mt-0.5">🔒 {t('lgpd.encrypted_at_rest')}</div>
+                  ) : null}
                 </li>
               ))}
             </ul>
           </div>
+        </div>
+      )}
+
+      {policy?.technical_measures_art46 && (
+        <div className="card p-5">
+          <h3 className="font-semibold mb-2 text-clinic-700">{t('lgpd.technical_measures')}</h3>
+          <p className="text-xs text-[var(--ink-muted)] mb-3">{policy.technical_measures_art46.note}</p>
+          <ul className="text-sm space-y-1.5 list-disc pl-5">
+            <li>{policy.technical_measures_art46.encryption_in_transit}</li>
+            <li>{policy.technical_measures_art46.encryption_at_rest}</li>
+            <li>{policy.technical_measures_art46.access_control}</li>
+            <li>{policy.technical_measures_art46.audit_trail}</li>
+            <li>{policy.technical_measures_art46.consent_proof}</li>
+            <li>{policy.technical_measures_art46.retention}</li>
+          </ul>
         </div>
       )}
 

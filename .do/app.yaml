@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
     github:
       repo: ABBYCRM/CLINICA-TANAH
-      branch: cursor/intake-forms-tcpa-br-531c
+      branch: cursor/br-medical-encryption-531c
       deploy_on_push: true
     http_port: 10000
     instance_count: 1
@@ -33,6 +33,8 @@ services:
         value: "/data"
       - key: DEFAULT_LOCALE
         value: "pt-BR"
+      - key: APP_ORIGIN
+        value: "https://clinica-tanah-bbqu7.ondigitalocean.app"
       - key: META_WA_VERIFY_TOKEN
         value: "clinica-tanah-verify"
       - key: JWT_SECRET

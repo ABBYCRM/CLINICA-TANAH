@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
+import { encryptionStatus } from '../services/phiCrypto';
 
 const router = Router();
 router.use(authenticate);
@@ -81,8 +82,8 @@ router.get('/audit', requireRole('admin','dpo'), (req: Request, res: Response) =
 
 router.get('/policy', (_req, res) => {
   res.json({
-    version: '1.0',
-    effective_date: '2026-07-30',
+    version: '1.1',
+    effective_date: '2026-07-31',
     dpo: { name: 'Dr. Marcos Vieira', email: 'dpo@clinica-tanah.com.br', phone: '+55 11 3000-0001' },
     legal_bases: [
       { code: 'art7_I', name: 'Consentimento', description: 'Para tratamentos com base no consentimento explícito do titular.' },
@@ -90,9 +91,18 @@ router.get('/policy', (_req, res) => {
       { code: 'art7_II', name: 'Cumprimento de obrigação legal', description: 'CFM 2.314, ANVISA, SUS, obrigações fiscais e trabalhistas.' },
       { code: 'art7_VIII', name: 'Tutela da saúde', description: 'Tratamento de dados de saúde para assistência médica.' },
     ],
+    technical_measures_art46: {
+      encryption_in_transit: 'TLS terminado na borda (HTTPS obrigatório em produção)',
+      encryption_at_rest: 'AES-256-GCM em campos de PHI (CPF, prontuário SOAP, alergias, receitas, e-mail, notas)',
+      access_control: 'RBAC por papel clínico + isolamento multi-tenant + JWT',
+      audit_trail: 'Registro de acesso a PHI com base legal (LGPD art. 37 / CFM)',
+      consent_proof: 'Pixel + IP/UA + autoatestação em formulários públicos',
+      retention: 'Prontuário: 20 anos (CFM 1.821/2007) — exclusão física bloqueada',
+      note: 'Medidas técnicas alinhadas à LGPD art. 46 e boas práticas ANPD. Não constitui certificação SBIS/CFM.',
+    },
     data_categories: [
-      { name: 'Dados de identificação', examples: ['nome','CPF','RG'], retention: '20 anos (CFM)' },
-      { name: 'Dados de saúde', examples: ['prontuário','exames','prescrições'], retention: '20 anos (CFM 1.821/2007)' },
+      { name: 'Dados de identificação', examples: ['nome','CPF','RG'], retention: '20 anos (CFM)', encrypted_at_rest: true },
+      { name: 'Dados de saúde', examples: ['prontuário','exames','prescrições'], retention: '20 anos (CFM 1.821/2007)', encrypted_at_rest: true },
       { name: 'Dados financeiros', examples: ['faturas','pagamentos'], retention: '5 anos (CTN)' },
       { name: 'Dados de comunicação', examples: ['WhatsApp','e-mail'], retention: '2 anos após último contato' },
     ],
@@ -106,6 +116,33 @@ router.get('/policy', (_req, res) => {
       { code: 'art18_VII', name: 'Informação sobre entidades públicas e privadas com as quais houve compartilhamento' },
       { code: 'art18_IX', name: 'Revogação do consentimento' },
     ],
+  });
+});
+
+router.get('/security-posture', requireRole('admin', 'dpo'), (_req, res) => {
+  res.json({
+    framework: 'LGPD + CFM electronic record controls (HIPAA-analogous safeguards for Brazil)',
+    encryption: encryptionStatus(),
+    transport: {
+      https_required_in_production: true,
+      hsts: process.env.NODE_ENV === 'production',
+      security_headers: true,
+    },
+    access_control: {
+      jwt: true,
+      rbac: true,
+      tenant_isolation: true,
+      clinical_field_redaction: true,
+    },
+    audit: {
+      phi_access_logged: true,
+      audit_phi_redacted: true,
+      consent_ledger: true,
+    },
+    retention: {
+      clinical_hard_delete_blocked: true,
+      cfm_years: 20,
+    },
   });
 });
 

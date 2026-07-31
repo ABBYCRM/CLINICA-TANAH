@@ -677,6 +677,8 @@
     "data_requests": "Data subject requests",
     "audit_trail": "Audit trail",
     "retention_policy": "Retention policy",
+    "technical_measures": "Technical measures (LGPD art. 46)",
+    "encrypted_at_rest": "Encrypted at rest (AES-256-GCM)",
     "request_access": "Request access",
     "request_deletion": "Request deletion",
     "fulfilled": "Fulfilled",

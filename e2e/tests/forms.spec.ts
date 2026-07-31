@@ -29,7 +29,7 @@ test('public intake session → pixel → submit creates patient with consent pr
   expect(sessBody.pixel_token).toBeTruthy();
   expect(sessBody.pixel_url).toContain('pixel.gif');
 
-  const pixel = await request.get(sessBody.pixel_url.replace(baseURL!, '') || `/api/public/forms/pixel.gif?t=${sessBody.pixel_token}`);
+  const pixel = await request.get(`/api/public/forms/pixel.gif?t=${sessBody.pixel_token}`);
   expect(pixel.status()).toBe(200);
   expect(pixel.headers()['content-type']).toMatch(/image\/gif/);
 
@@ -53,7 +53,8 @@ test('public intake session → pixel → submit creates patient with consent pr
   expect(submit.status()).toBe(201);
   const submitBody = await submit.json();
   expect(submitBody.ok).toBe(true);
-  expect(submitBody.patient_id).toBeTruthy();
+  expect(submitBody.submission_id).toBeTruthy();
+  expect(submitBody.patient_id).toBeUndefined();
 
   const token = await login(request, baseURL!);
   const forms = await request.get(`${baseURL}/api/forms`, {

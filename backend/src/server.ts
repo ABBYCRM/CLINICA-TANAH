@@ -35,12 +35,20 @@ import tenantsRouter from './routes/tenants';
 import formsRouter, { publicFormsRouter } from './routes/forms';
 import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
+import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/security';
+import { assertSecurityConfig, encryptionStatus } from './services/phiCrypto';
 
+assertSecurityConfig();
 initSchema();
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(cors());
+app.use(securityHeaders);
+app.use(requireHttps);
+app.use(cors({
+  origin: corsOriginDelegate,
+  credentials: true,
+}));
 // Capture the raw body so the WhatsApp webhook can verify Meta's X-Hub-Signature-256
 // 12mb allows invoice document base64 uploads for NVIDIA OCR
 app.use(express.json({
@@ -64,12 +72,19 @@ app.use('/api/public/forms', publicFormsLimiter);
 
 // Health
 app.get('/api/health', (_req, res) => {
+  let enc: ReturnType<typeof encryptionStatus> | { enabled: false } = { enabled: false };
+  try { enc = encryptionStatus(); } catch { /* ignore */ }
   res.json({
     ok: true,
     service: 'clinica-tanah-backend',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    security: {
+      phi_encryption: enc,
+      https_enforced: process.env.NODE_ENV === 'production',
+      compliance: ['LGPD', 'CFM_1821_retention', 'ANPD_art46_measures'],
+    },
   });
 });
 
