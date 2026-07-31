@@ -9,7 +9,10 @@ data/
 .DS_Store
 test/screenshots/
 backend/public/
+backend/data-test*/
 playwright-report/
+test-results/
+e2e/.data/
 data/
 node_modules/
 dist/
