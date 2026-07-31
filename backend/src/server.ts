@@ -32,6 +32,7 @@ import payrollRouter from './routes/payroll';
 import whatsappRouter from './routes/whatsapp';
 import lgpdRouter from './routes/lgpd';
 import tenantsRouter from './routes/tenants';
+import formsRouter, { publicFormsRouter } from './routes/forms';
 import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
 
@@ -53,6 +54,13 @@ const isTest = process.env.NODE_ENV === 'test';
 const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 30, message: { error: 'rate_limited' }, skip: () => isTest });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/whatsapp/webhook', rateLimit({ windowMs: 1*60*1000, max: 120 }));
+const publicFormsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: 'rate_limited' },
+  skip: () => isTest,
+});
+app.use('/api/public/forms', publicFormsLimiter);
 
 // Health
 app.get('/api/health', (_req, res) => {
@@ -78,6 +86,8 @@ app.use('/api/payroll', payrollRouter);
 app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/tenants', tenantsRouter);
+app.use('/api/forms', formsRouter);
+app.use('/api/public/forms', publicFormsRouter);
 
 // Dashboard
 import { db } from './db/schema';
