@@ -7,9 +7,12 @@ import { logAudit, recordConsent, hasActiveConsent } from '../services/audit';
 import {
   canViewClinical,
   CONSENT_PURPOSES,
+  createPatientTask,
   getConsentLedger,
   LIFECYCLE_STAGES,
+  openServiceRecoveryTicket,
   setPatientConsent,
+  setPatientRecall,
   type ConsentPurpose,
 } from '../services/patientJourney';
 
@@ -330,6 +333,7 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
     'health_insurance','health_insurance_number','blood_type',
     'allergies','chronic_conditions','medications_in_use',
     'emergency_contact_name','emergency_contact_phone',
+    'guardian_name','guardian_phone','guardian_relationship',
     'lifecycle_stage','preferred_language','assigned_professional_id',
     'recall_due_at','do_not_contact','open_complaint','tags',
   ];
@@ -448,6 +452,48 @@ router.get('/:id/record', (req: Request, res: Response) => {
     ORDER BY created_at DESC LIMIT 20
   `).all(req.params.id, req.tenantId) as any[];
 
+  const tasks = db.prepare(`
+    SELECT id, title, description, category, priority, status, due_at, assigned_to,
+           related_ticket_id, created_at, resolved_at
+    FROM patient_tasks WHERE patient_id = ? AND tenant_id = ?
+    ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC LIMIT 40
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const tickets = db.prepare(`
+    SELECT id, category, priority, status, title, description, survey_score,
+           assigned_to, resolution, outcome, marketing_paused, created_at, resolved_at
+    FROM service_tickets WHERE patient_id = ? AND tenant_id = ?
+    ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC LIMIT 20
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const documents = db.prepare(`
+    SELECT id, doc_type, title, status, signed_at, notes, created_at
+    FROM patient_documents WHERE patient_id = ? AND tenant_id = ?
+    ORDER BY created_at DESC LIMIT 30
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const privacyRequests = db.prepare(`
+    SELECT id, request_type, status, requested_at AS created_at, fulfilled_at AS completed_at
+    FROM lgpd_data_requests WHERE subject_type = 'patient' AND subject_id = ? AND tenant_id = ?
+    ORDER BY requested_at DESC LIMIT 20
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const canSeeAudit = ['admin', 'dpo'].includes(req.user?.role || '');
+  const auditEvents = canSeeAudit
+    ? (db.prepare(`
+        SELECT id, actor_email, action, resource_type, resource_id, created_at,
+               lgpd_legal_basis AS legal_basis
+        FROM audit_log
+        WHERE tenant_id = ? AND (
+          (resource_type = 'patient' AND resource_id = ?)
+          OR resource_id IN (
+            SELECT id FROM appointments WHERE patient_id = ? AND tenant_id = ?
+          )
+        )
+        ORDER BY created_at DESC LIMIT 50
+      `).all(req.tenantId, req.params.id, req.params.id, req.tenantId) as any[])
+    : [];
+
   const durableEvents = db.prepare(`
     SELECT id, kind, title, subtitle, status, meta, occurred_at AS at
     FROM patient_timeline_events
@@ -547,6 +593,33 @@ router.get('/:id/record', (req: Request, res: Response) => {
       meta: { id: s.id, score: s.score, appointment_id: s.appointment_id },
     });
   }
+  for (const t of tasks) {
+    timeline.push({
+      id: `task-${t.id}`, kind: 'task', at: t.resolved_at || t.created_at,
+      title: t.status === 'done' ? 'task_resolved' : 'task_created',
+      subtitle: t.title,
+      status: t.status,
+      meta: { id: t.id, priority: t.priority, category: t.category },
+    });
+  }
+  for (const tk of tickets) {
+    timeline.push({
+      id: `ticket-${tk.id}`, kind: 'complaint', at: tk.resolved_at || tk.created_at,
+      title: tk.status === 'resolved' ? 'service_recovery_resolved' : 'service_recovery_opened',
+      subtitle: tk.title,
+      status: tk.priority,
+      meta: { id: tk.id, score: tk.survey_score },
+    });
+  }
+  for (const d of documents) {
+    timeline.push({
+      id: `doc-${d.id}`, kind: 'document', at: d.signed_at || d.created_at,
+      title: d.status === 'signed' ? 'document_signed' : 'document_pending',
+      subtitle: d.title,
+      status: d.status,
+      meta: { id: d.id, doc_type: d.doc_type },
+    });
+  }
   for (const c of consents.slice(0, 15)) {
     timeline.push({
       id: `consent-${c.id}`, kind: 'consent', at: c.revoked_at || c.granted_at,
@@ -633,12 +706,21 @@ router.get('/:id/record', (req: Request, res: Response) => {
       open_complaint: !!p.open_complaint,
       do_not_contact: !!p.do_not_contact,
       welcome_sent: !!p.welcome_message_sent_at,
+      recall_due_at: p.recall_due_at || null,
+      recall_interval_days: p.recall_interval_days ?? null,
+      open_tasks: tasks.filter((t) => t.status === 'open').length,
+      open_tickets: tickets.filter((t) => t.status === 'open').length,
     },
     owner_name: assignedProfessional?.full_name || null,
     upcoming_appointments: upcoming.slice(0, 8),
     timeline: deduped.slice(0, 100),
     consent_ledger: consentLedger,
     surveys,
+    tasks,
+    tickets,
+    documents,
+    privacy_requests: privacyRequests,
+    audit_events: auditEvents,
     associations: {
       appointments: { count: appointments.length, items: appointments.slice(0, 8) },
       encounters: {
@@ -666,6 +748,9 @@ router.get('/:id/record', (req: Request, res: Response) => {
       consents: { count: consents.length, items: consents.slice(0, 8) },
       whatsapp: { count: waMessages.length, items: waMessages.slice(0, 5) },
       surveys: { count: surveys.length, items: surveys.slice(0, 8) },
+      tasks: { count: tasks.length, items: tasks.slice(0, 8) },
+      tickets: { count: tickets.length, items: tickets.slice(0, 8) },
+      documents: { count: documents.length, items: documents.slice(0, 8) },
     },
   });
 });
@@ -727,6 +812,165 @@ router.put('/:id/lifecycle', requireRole('admin', 'doctor', 'nurse', 'receptioni
     JSON.stringify({ from: p.lifecycle_stage, to: stage }),
   );
   res.json({ ok: true, lifecycle_stage: stage });
+});
+
+/** Create follow-up / service task on patient workspace. */
+router.post('/:id/tasks', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const title = String(req.body?.title || '').trim();
+  if (!title) { res.status(400).json({ error: 'title_required' }); return; }
+  const taskId = createPatientTask({
+    tenantId: req.tenantId!,
+    patientId: req.params.id,
+    title,
+    description: req.body?.description ? String(req.body.description) : null,
+    category: String(req.body?.category || 'follow_up'),
+    priority: String(req.body?.priority || 'normal'),
+    dueAt: req.body?.due_at ? String(req.body.due_at) : null,
+    assignedTo: req.body?.assigned_to ? String(req.body.assigned_to) : null,
+    createdBy: req.user!.id,
+  });
+  res.status(201).json({ ok: true, id: taskId });
+});
+
+router.patch('/:id/tasks/:taskId', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const task = db.prepare(`
+    SELECT * FROM patient_tasks WHERE id = ? AND patient_id = ? AND tenant_id = ?
+  `).get(req.params.taskId, req.params.id, req.tenantId) as any;
+  if (!task) { res.status(404).json({ error: 'not_found' }); return; }
+  const status = req.body?.status ? String(req.body.status) : task.status;
+  const resolvedAt = status === 'done' || status === 'cancelled' ? new Date().toISOString() : null;
+  db.prepare(`
+    UPDATE patient_tasks SET status = ?, resolved_at = COALESCE(?, resolved_at),
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(status, resolvedAt, task.id);
+  if (status === 'done') {
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'task', 'task_resolved', ?, 'done', ?, datetime('now'))
+    `).run(
+      `pte_tr_${Date.now().toString(36)}`,
+      req.tenantId,
+      req.params.id,
+      task.title,
+      JSON.stringify({ task_id: task.id }),
+    );
+  }
+  res.json({ ok: true, status });
+});
+
+/** Open manual service-recovery ticket. */
+router.post('/:id/tickets', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const score = Number(req.body?.survey_score ?? 0);
+  const result = openServiceRecoveryTicket({
+    tenantId: req.tenantId!,
+    patientId: req.params.id,
+    surveyScore: Number.isFinite(score) ? score : 0,
+    comment: req.body?.description ? String(req.body.description) : String(req.body?.title || 'Ticket manual'),
+    createdBy: req.user!.id,
+  });
+  res.status(201).json({ ok: true, ...result });
+});
+
+router.patch('/:id/tickets/:ticketId', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const ticket = db.prepare(`
+    SELECT * FROM service_tickets WHERE id = ? AND patient_id = ? AND tenant_id = ?
+  `).get(req.params.ticketId, req.params.id, req.tenantId) as any;
+  if (!ticket) { res.status(404).json({ error: 'not_found' }); return; }
+  const status = req.body?.status ? String(req.body.status) : ticket.status;
+  const resolution = req.body?.resolution != null ? String(req.body.resolution) : ticket.resolution;
+  const outcome = req.body?.outcome != null ? String(req.body.outcome) : ticket.outcome;
+  const resolvedAt = status === 'resolved' || status === 'closed' ? new Date().toISOString() : null;
+  db.prepare(`
+    UPDATE service_tickets SET status = ?, resolution = ?, outcome = ?,
+      resolved_at = COALESCE(?, resolved_at), updated_at = datetime('now')
+    WHERE id = ?
+  `).run(status, resolution, outcome, resolvedAt, ticket.id);
+  if (status === 'resolved' || status === 'closed') {
+    const openLeft = (db.prepare(`
+      SELECT COUNT(*) AS c FROM service_tickets
+      WHERE patient_id = ? AND tenant_id = ? AND status = 'open'
+    `).get(req.params.id, req.tenantId) as any).c;
+    if (!openLeft) {
+      db.prepare(`UPDATE patients SET open_complaint = 0, updated_at = datetime('now') WHERE id = ? AND tenant_id = ?`)
+        .run(req.params.id, req.tenantId);
+    }
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'complaint', 'service_recovery_resolved', ?, ?, ?, datetime('now'))
+    `).run(
+      `pte_sr_${Date.now().toString(36)}`,
+      req.tenantId,
+      req.params.id,
+      resolution || ticket.title,
+      status,
+      JSON.stringify({ ticket_id: ticket.id, outcome }),
+    );
+  }
+  res.json({ ok: true, status });
+});
+
+/** Set recall interval (days from now). */
+router.put('/:id/recall', requireRole('admin', 'doctor', 'nurse'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const days = parseInt(String(req.body?.interval_days || 0), 10);
+  if (!days || days < 1 || days > 3650) {
+    res.status(400).json({ error: 'invalid_interval_days' }); return;
+  }
+  const result = setPatientRecall({
+    tenantId: req.tenantId!,
+    patientId: req.params.id,
+    intervalDays: days,
+    actorId: req.user!.id,
+  });
+  res.json({ ok: true, ...result });
+});
+
+/** Register a document / authorization on the patient workspace. */
+router.post('/:id/documents', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const title = String(req.body?.title || '').trim();
+  if (!title) { res.status(400).json({ error: 'title_required' }); return; }
+  const id = `doc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const status = String(req.body?.status || 'pending');
+  const signedAt = status === 'signed' ? new Date().toISOString() : null;
+  db.prepare(`
+    INSERT INTO patient_documents
+      (id, tenant_id, patient_id, doc_type, title, status, signed_at, notes, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    req.tenantId,
+    req.params.id,
+    String(req.body?.doc_type || 'form'),
+    title,
+    status,
+    signedAt,
+    req.body?.notes ? String(req.body.notes) : null,
+    req.user!.id,
+  );
+  db.prepare(`
+    INSERT INTO patient_timeline_events
+      (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+    VALUES (?, ?, ?, 'document', ?, ?, ?, ?, datetime('now'))
+  `).run(
+    `pte_doc_${Date.now().toString(36)}`,
+    req.tenantId,
+    req.params.id,
+    status === 'signed' ? 'document_signed' : 'document_pending',
+    title,
+    status,
+    JSON.stringify({ document_id: id }),
+  );
+  res.status(201).json({ ok: true, id });
 });
 
 // Clinical snapshot for the scheduler drawer — everything the medical team

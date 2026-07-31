@@ -305,6 +305,12 @@ export async function runAutomation(tenantId: string, automationId: string, loca
       else if (r.reason === 'send_failed') failed++;
       else skipped++;
     }
+  } else if (auto.key === 'recall') {
+    const { processDueRecalls } = await import('./patientJourney');
+    const daysBefore = config.days_before || 30;
+    const result = await processDueRecalls({ tenantId, daysBefore, locale });
+    sent += result.notified;
+    skipped += result.tasked;
   } else {
     return { ok: false, error: 'unknown_key' as const, key: auto.key };
   }

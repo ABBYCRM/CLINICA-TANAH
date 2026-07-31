@@ -285,7 +285,15 @@
     "lgpd_consent_request": "To continue, we need your consent to process your data under LGPD. Reply YES to accept or NO to refuse.",
     "lgpd_consent_granted": "Consent registered. Thank you!",
     "lgpd_optout_confirmed": "You have been removed from our lists. We respect your decision. To reactivate, just ask.",
-    "bot_menu": "Hello! I'm the {{clinic}} assistant. How can I help?\n\n1️⃣ Book appointment\n2️⃣ View my appointments\n3️⃣ Cancel appointment\n4️⃣ Talk to reception\n5️⃣ Remove my data (LGPD)\n\nReply with the option number.",
+    "bot_menu": "Hello! I'm the virtual assistant for {{clinic}}.\n\n1 — Book appointment\n2 — Confirm appointment\n3 — Reschedule\n4 — Cancel\n5 — Talk to an agent\n6 — Address and hours\n7 — Communication preferences\n8 — Privacy and personal data\n\nReply with the number or a command (AGENT, STOP, PRIVACY).",
+    "prefs_menu": "Communication preferences:\n\n• STOP — pause news and promotions\n• CANCEL MESSAGES — choose what to stop\n• AGENT — talk to the team\n\nAppointment reminders stay active if you have administrative consent.",
+    "privacy_menu": "Privacy and data (LGPD):\n\n• MY DATA — request access\n• Delete data — open a deletion request (clinical records may be legally retained)\n• AGENT — talk to reception/DPO\n\nMarketing deletion does not erase the medical record.",
+    "cancel_messages_clarify": "Do you want to:\n1 — Stop news/promotions only\n2 — Stop all clinic WhatsApp\n\nReply 1 or 2. Appointment reminders use a separate consent.",
+    "emergency_notice": "This channel does not provide emergency care. In an urgent situation, seek emergency services immediately or call the applicable public emergency number.",
+    "clinic_info": "{{clinic}}\nFor address and hours, reply AGENT for up-to-date unit details.",
+    "reminder_confirmed": "✅ Appointment confirmed. Thank you! See you soon.",
+    "reschedule_requested": "We received your reschedule request. The scheduling team will contact you with available times.",
+    "nps_recovery": "We're sorry your experience wasn't satisfactory. Your message was forwarded to the unit manager, who will contact you to understand what happened.",
     "ask_specialty": "Which specialty do you need? Type the number:\n\n1️⃣ General Practice\n2️⃣ Cardiology\n3️⃣ Dermatology\n4️⃣ Gynecology\n5️⃣ Pediatrics\n6️⃣ Orthopedics",
     "ask_date": "Which day do you prefer? Reply with the date (DD/MM) or type TOMORROW.",
     "ask_time": "What time works best? Reply MORNING, AFTERNOON or EVENING.",
@@ -307,7 +315,8 @@
     "nps_thanks": "Thank you so much for your feedback! It helps us take better care of you. 💙",
     "nps_invalid": "Please reply with a number from 0 to 10.",
     "promo_footer": "\n\n_Reply STOP to opt out of promotional messages._",
-    "survey_intro_skip": "skip"
+    "survey_intro_skip": "skip",
+    "request_received": "Request registered. We will respond within 15 days as required by LGPD."
   },
   "lgpd": {
     "title": "LGPD — General Data Protection Law",

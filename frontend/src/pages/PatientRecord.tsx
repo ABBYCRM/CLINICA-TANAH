@@ -8,7 +8,7 @@ import { PatientForm } from '../components/PatientForm';
 
 type WorkspaceTab =
   | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'whatsapp'
-  | 'surveys' | 'billing' | 'privacy';
+  | 'surveys' | 'documents' | 'billing' | 'tasks' | 'privacy' | 'audit';
 
 const LIFECYCLES = [
   'prospect', 'new_patient', 'active', 'in_treatment', 'follow_up_required',
@@ -72,6 +72,12 @@ function KindIcon({ kind }: { kind: string }) {
   if (kind === 'note') {
     return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></svg>;
   }
+  if (kind === 'task' || kind === 'complaint') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>;
+  }
+  if (kind === 'document' || kind === 'recall') {
+    return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></svg>;
+  }
   return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="9" /><path d="M12 8v4l2.5 2.5" /></svg>;
 }
 
@@ -91,6 +97,13 @@ export default function PatientRecord() {
   const [noteBusy, setNoteBusy] = useState(false);
   const [consentBusy, setConsentBusy] = useState<string | null>(null);
   const [stageBusy, setStageBusy] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [docTitle, setDocTitle] = useState('');
+  const [docBusy, setDocBusy] = useState(false);
+  const [recallDays, setRecallDays] = useState('90');
+  const [recallBusy, setRecallBusy] = useState(false);
+  const [ticketBusy, setTicketBusy] = useState(false);
 
   const load = () => {
     if (!id) return;
@@ -115,7 +128,13 @@ export default function PatientRecord() {
   const upcoming = data?.upcoming_appointments || [];
   const consentLedger = data?.consent_ledger || [];
   const surveys = data?.surveys || [];
+  const tasks = data?.tasks || [];
+  const tickets = data?.tickets || [];
+  const documents = data?.documents || [];
+  const auditEvents = data?.audit_events || [];
+  const privacyRequests = data?.privacy_requests || [];
   const clinicalOk = !!permissions.clinical;
+  const auditOk = !!permissions.privacy;
 
   const titleFor = (item: any) => {
     const key = `patients.timeline.${item.title}`;
@@ -131,11 +150,13 @@ export default function PatientRecord() {
 
   const filteredTimeline = useMemo(() => {
     if (tab === 'timeline' || tab === 'overview') return timeline;
-    if (tab === 'appointments') return timeline.filter((x: any) => x.kind === 'appointment');
+    if (tab === 'appointments') return timeline.filter((x: any) => x.kind === 'appointment' || x.kind === 'recall');
     if (tab === 'clinical') return timeline.filter((x: any) => x.kind === 'encounter' || x.kind === 'prescription');
     if (tab === 'whatsapp') return timeline.filter((x: any) => x.kind === 'whatsapp' || x.kind === 'welcome');
-    if (tab === 'surveys') return timeline.filter((x: any) => x.kind === 'survey' || x.kind === 'survey_sent');
+    if (tab === 'surveys') return timeline.filter((x: any) => x.kind === 'survey' || x.kind === 'survey_sent' || x.kind === 'complaint');
+    if (tab === 'documents') return timeline.filter((x: any) => x.kind === 'document');
     if (tab === 'billing') return timeline.filter((x: any) => x.kind === 'invoice');
+    if (tab === 'tasks') return timeline.filter((x: any) => x.kind === 'task' || x.kind === 'complaint');
     if (tab === 'privacy') return timeline.filter((x: any) => x.kind === 'consent' || x.kind === 'lifecycle');
     return timeline;
   }, [tab, timeline]);
@@ -190,6 +211,93 @@ export default function PatientRecord() {
     }
   };
 
+  const createTask = async () => {
+    if (!id || !taskTitle.trim()) return;
+    setTaskBusy(true);
+    try {
+      await api.post(`/api/patients/${id}/tasks`, { title: taskTitle.trim(), category: 'follow_up' });
+      setTaskTitle('');
+      setTab('tasks');
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setTaskBusy(false);
+    }
+  };
+
+  const resolveTask = async (taskId: string) => {
+    if (!id) return;
+    try {
+      await api.patch(`/api/patients/${id}/tasks/${taskId}`, { status: 'done' });
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    }
+  };
+
+  const createTicket = async () => {
+    if (!id) return;
+    setTicketBusy(true);
+    try {
+      await api.post(`/api/patients/${id}/tickets`, {
+        title: t('patients.workspace.action_ticket'),
+        description: t('patients.workspace.ticket_manual_hint'),
+        survey_score: 0,
+      });
+      setTab('tasks');
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setTicketBusy(false);
+    }
+  };
+
+  const resolveTicket = async (ticketId: string) => {
+    if (!id) return;
+    try {
+      await api.patch(`/api/patients/${id}/tickets/${ticketId}`, {
+        status: 'resolved',
+        resolution: 'Resolvido pela equipe',
+        outcome: 'contacted',
+      });
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    }
+  };
+
+  const createDocument = async () => {
+    if (!id || !docTitle.trim()) return;
+    setDocBusy(true);
+    try {
+      await api.post(`/api/patients/${id}/documents`, { title: docTitle.trim(), doc_type: 'form', status: 'pending' });
+      setDocTitle('');
+      setTab('documents');
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
+  const setRecall = async () => {
+    if (!id) return;
+    const days = parseInt(recallDays, 10);
+    if (!days) return;
+    setRecallBusy(true);
+    try {
+      await api.put(`/api/patients/${id}/recall`, { interval_days: days });
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setRecallBusy(false);
+    }
+  };
+
   const remove = async () => {
     if (!id) return;
     setDeleteBusy(true);
@@ -226,8 +334,11 @@ export default function PatientRecord() {
     { id: 'clinical', label: t('patients.workspace.tab_clinical'), hide: !clinicalOk },
     { id: 'whatsapp', label: t('patients.workspace.tab_whatsapp') },
     { id: 'surveys', label: t('patients.workspace.tab_surveys') },
+    { id: 'documents', label: t('patients.workspace.tab_documents') },
     { id: 'billing', label: t('patients.workspace.tab_billing') },
+    { id: 'tasks', label: t('patients.workspace.tab_tasks') },
     { id: 'privacy', label: t('patients.workspace.tab_privacy') },
+    { id: 'audit', label: t('patients.workspace.tab_audit'), hide: !auditOk },
   ];
 
   const prop = (label: string, value: any) => (
@@ -337,6 +448,9 @@ export default function PatientRecord() {
               )}
               {prop(t('patients.emergency_name'), patient.emergency_contact_name)}
               {prop(t('patients.emergency_phone'), patient.emergency_contact_phone)}
+              {prop(t('patients.workspace.guardian'), patient.guardian_name)}
+              {prop(t('patients.workspace.guardian_phone'), patient.guardian_phone)}
+              {prop(t('patients.workspace.recall_due'), workspace.recall_due_at ? fmtDate(workspace.recall_due_at, locale) : '—')}
               {clinicalOk && prop(t('patients.allergies'), (patient.allergies || []).join(', '))}
               {clinicalOk && prop(t('patients.chronic_conditions'), (patient.chronic_conditions || []).join(', '))}
             </dl>
@@ -412,6 +526,81 @@ export default function PatientRecord() {
             </div>
           )}
 
+          {tab === 'tasks' && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-3" data-testid="workspace-tasks">
+              <h3 className="font-semibold text-sm">{t('patients.workspace.tasks_heading')}</h3>
+              {tickets.filter((tk: any) => tk.status === 'open').map((tk: any) => (
+                <div key={tk.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{tk.title}</div>
+                    <div className="text-xs text-[#6b645a]">{tk.description}</div>
+                  </div>
+                  <span className="badge-red">{tk.priority}</span>
+                  <button type="button" className="btn-secondary text-xs" onClick={() => resolveTicket(tk.id)}>
+                    {t('patients.workspace.resolve')}
+                  </button>
+                </div>
+              ))}
+              {tasks.length === 0 && tickets.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {tasks.map((task: any) => (
+                <div key={task.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{task.title}</div>
+                    <div className="text-xs text-[#6b645a]">{task.category} · {fmtDateTime(task.created_at, locale)}</div>
+                  </div>
+                  <span className={`badge ${task.status === 'open' ? 'badge-yellow' : 'badge-green'}`}>{task.status}</span>
+                  {task.status === 'open' && (
+                    <button type="button" className="btn-secondary text-xs" onClick={() => resolveTask(task.id)}>
+                      {t('patients.workspace.resolve')}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'documents' && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2" data-testid="workspace-documents">
+              <h3 className="font-semibold text-sm">{t('patients.workspace.documents_heading')}</h3>
+              {documents.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {documents.map((d: any) => (
+                <div key={d.id} className="crm-timeline-card flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium truncate">{d.title}</span>
+                  <span className="badge-slate text-[10px]">{d.doc_type}</span>
+                  <span className={`badge ${d.status === 'signed' ? 'badge-green' : 'badge-yellow'}`}>{d.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tab === 'audit' && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2" data-testid="workspace-audit">
+              <h3 className="font-semibold text-sm">{t('patients.workspace.audit_heading')}</h3>
+              {!auditOk && <p className="text-sm text-[#6b645a]">{t('patients.workspace.audit_restricted')}</p>}
+              {auditOk && auditEvents.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {auditOk && auditEvents.map((a: any) => (
+                <div key={a.id} className="crm-timeline-card text-sm">
+                  <div className="font-medium">{a.action}</div>
+                  <div className="text-xs text-[#6b645a]">
+                    {a.actor_email || '—'} · {fmtDateTime(a.created_at, locale)} · {a.legal_basis || '—'}
+                  </div>
+                </div>
+              ))}
+              {privacyRequests.length > 0 && (
+                <div className="pt-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-[#6b645a] mb-1">{t('patients.workspace.privacy_requests')}</h4>
+                  {privacyRequests.map((r: any) => (
+                    <div key={r.id} className="crm-timeline-card flex justify-between gap-2 text-sm">
+                      <span>{r.request_type}</span>
+                      <span className="badge-slate">{r.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab !== 'audit' && (
           <div className="p-4 space-y-5">
             {grouped.length === 0 && (
               <div className="text-center text-sm text-[#8a8174] py-10">{t('common.no_data')}</div>
@@ -442,6 +631,7 @@ export default function PatientRecord() {
               </div>
             ))}
           </div>
+          )}
         </section>
 
         {/* RIGHT — quick actions */}
@@ -450,6 +640,12 @@ export default function PatientRecord() {
             <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.quick_actions')}</h2>
             <Link to="/whatsapp" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_whatsapp')}</Link>
             <Link to="/appointments" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_schedule')}</Link>
+            <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('tasks')}>
+              {t('patients.workspace.action_task')}
+            </button>
+            <button type="button" className="btn-secondary w-full justify-start text-sm" disabled={ticketBusy} onClick={createTicket}>
+              {ticketBusy ? '…' : t('patients.workspace.action_ticket')}
+            </button>
             <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('privacy')}>
               {t('patients.workspace.action_consent')}
             </button>
@@ -460,6 +656,35 @@ export default function PatientRecord() {
             )}
             <Link to="/invoices" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_billing')}</Link>
           </div>
+
+          <div className="card p-4 space-y-2">
+            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.create_task')}</h2>
+            <input className="input" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder={t('patients.workspace.task_placeholder')} />
+            <button type="button" className="btn-primary w-full text-sm" disabled={taskBusy || !taskTitle.trim()} onClick={createTask}>
+              {taskBusy ? '…' : t('patients.workspace.action_task')}
+            </button>
+          </div>
+
+          <div className="card p-4 space-y-2">
+            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.create_document')}</h2>
+            <input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder={t('patients.workspace.document_placeholder')} />
+            <button type="button" className="btn-secondary w-full text-sm" disabled={docBusy || !docTitle.trim()} onClick={createDocument}>
+              {docBusy ? '…' : t('patients.workspace.action_document')}
+            </button>
+          </div>
+
+          {clinicalOk && (
+            <div className="card p-4 space-y-2">
+              <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.set_recall')}</h2>
+              <div className="flex gap-2">
+                <input className="input" type="number" min={1} max={3650} value={recallDays} onChange={(e) => setRecallDays(e.target.value)} />
+                <button type="button" className="btn-secondary text-sm shrink-0" disabled={recallBusy} onClick={setRecall}>
+                  {recallBusy ? '…' : t('common.save')}
+                </button>
+              </div>
+              <p className="text-[11px] text-[#8a8174]">{t('patients.workspace.recall_hint')}</p>
+            </div>
+          )}
 
           <div className="card p-4 space-y-2">
             <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.internal_note')}</h2>
@@ -474,6 +699,9 @@ export default function PatientRecord() {
               ['appointments', t('patients.assoc.appointments'), associations.appointments],
               ['whatsapp', t('patients.assoc.whatsapp'), associations.whatsapp],
               ['surveys', t('patients.workspace.tab_surveys'), associations.surveys],
+              ['tasks', t('patients.workspace.tab_tasks'), associations.tasks],
+              ['tickets', t('patients.workspace.tickets'), associations.tickets],
+              ['documents', t('patients.workspace.tab_documents'), associations.documents],
               ['invoices', t('patients.assoc.invoices'), associations.invoices],
               ['consents', t('patients.assoc.consents'), associations.consents],
             ].map(([key, label, assoc]: any) => (

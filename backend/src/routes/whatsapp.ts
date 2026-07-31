@@ -51,12 +51,49 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
   const text = body.trim();
   const lower = text.toLowerCase();
 
-  // Global opt-out
-  if (['sair', 'stop', 'cancelar tudo', 'remover', 'exit', 'salir', 'unsubscribe'].includes(lower) && conv.state !== 'awaiting_consent') {
+  // Global opt-out / privacy commands (administrative bot — not diagnostic)
+  if (['sair', 'parar', 'stop', 'cancelar tudo', 'remover', 'exit', 'salir', 'unsubscribe'].includes(lower) && conv.state !== 'awaiting_consent') {
     updateConversation(phone, tenantId, { state: 'lgpd_optout', opt_out: true });
     db.prepare(`UPDATE patients SET lgpd_opt_out_marketing = 1 WHERE phone = ? AND tenant_id = ?`).run(phone, tenantId);
+    // Revoke marketing consents when present
+    try {
+      const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+      if (p) {
+        const { setPatientConsent } = await import('../services/patientJourney');
+        setPatientConsent({ patientId: p.id, tenantId, purpose: 'marketing_news', granted: false, source: 'whatsapp_sair' });
+        setPatientConsent({ patientId: p.id, tenantId, purpose: 'promotions_events', granted: false, source: 'whatsapp_sair' });
+      }
+    } catch { /* ignore */ }
     logAudit({ tenantId, action: 'whatsapp_optout', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
     await reply(phone, locale, 'lgpd_optout_confirmed', {}, tenantId);
+    return;
+  }
+
+  if (['urgência', 'urgencia', 'emergency', 'emergencia'].includes(lower)) {
+    await reply(phone, locale, 'emergency_notice', {}, tenantId);
+    return;
+  }
+
+  if (['atendente', 'humano', 'recepção', 'recepcao', 'agent'].includes(lower)) {
+    await reply(phone, locale, 'transfer_to_human', {}, tenantId);
+    updateConversation(phone, tenantId, { state: 'idle' });
+    return;
+  }
+
+  if (['preferências', 'preferencias', 'preferences'].includes(lower) || lower === '7') {
+    updateConversation(phone, tenantId, { state: 'idle' });
+    await reply(phone, locale, 'prefs_menu', {}, tenantId);
+    return;
+  }
+
+  if (['privacidade', 'privacy', 'meus dados', 'meusdados'].includes(lower) || lower === '8') {
+    updateConversation(phone, tenantId, { state: 'idle' });
+    await reply(phone, locale, 'privacy_menu', {}, tenantId);
+    return;
+  }
+
+  if (['cancelar mensagens', 'cancelar mensagem'].includes(lower)) {
+    await reply(phone, locale, 'cancel_messages_clarify', {}, tenantId);
     return;
   }
 
@@ -83,15 +120,56 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
     return;
   }
 
+  // Reminder reply while idle: confirm / reschedule / cancel upcoming appointment
+  if (conv.state === 'idle' && ['confirmar', '1 — confirmar'].includes(lower)) {
+    const appt = db.prepare(`
+      SELECT a.id FROM appointments a
+      JOIN patients p ON p.id = a.patient_id
+      WHERE p.phone = ? AND a.tenant_id = ? AND a.status IN ('scheduled','confirmed')
+        AND a.scheduled_at >= datetime('now')
+      ORDER BY a.scheduled_at ASC LIMIT 1
+    `).get(phone, tenantId) as any;
+    if (appt) {
+      db.prepare(`UPDATE appointments SET status = 'confirmed', updated_at = datetime('now') WHERE id = ?`).run(appt.id);
+      const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+      if (p) {
+        try {
+          const { appendTimelineEvent } = await import('../services/patientJourney');
+          appendTimelineEvent({
+            tenantId, patientId: p.id, kind: 'appointment', title: 'appointment_confirmed_wa',
+            subtitle: 'WhatsApp', status: 'confirmed', meta: { appointment_id: appt.id },
+          });
+        } catch { /* ignore */ }
+      }
+      await reply(phone, locale, 'reminder_confirmed', {}, tenantId);
+      return;
+    }
+  }
+
   // State machine
   switch (conv.state) {
     case 'idle': {
-      if (['1', 'agendar', 'book', 'cita', 'agendar consulta', 'agendar uma consulta'].some(k => lower.includes(k))) {
+      if (['1', 'agendar', 'book', 'cita', 'marcar', 'marcar consulta', 'agendar consulta'].some(k => lower === k || lower.includes(k))) {
         updateConversation(phone, tenantId, { state: 'awaiting_cpf' });
         await reply(phone, locale, 'ask_cpf', {}, tenantId);
         return;
       }
-      if (['2', 'consultas', 'appointments', 'citas', 'minhas'].some(k => lower.includes(k))) {
+      if (['2', 'confirmar', 'confirm', 'consultas', 'appointments', 'citas', 'minhas'].some(k => lower === k || lower.startsWith(k))) {
+        if (lower === '2' || lower.includes('confirm')) {
+          const appt = db.prepare(`
+            SELECT a.id, a.scheduled_at FROM appointments a
+            JOIN patients p ON p.id = a.patient_id
+            WHERE p.phone = ? AND a.tenant_id = ?
+              AND a.status IN ('scheduled','confirmed')
+              AND a.scheduled_at >= datetime('now')
+            ORDER BY a.scheduled_at ASC LIMIT 1
+          `).get(phone, tenantId) as any;
+          if (appt) {
+            db.prepare(`UPDATE appointments SET status = 'confirmed', updated_at = datetime('now') WHERE id = ?`).run(appt.id);
+            await reply(phone, locale, 'reminder_confirmed', {}, tenantId);
+            return;
+          }
+        }
         const appts = db.prepare(`
           SELECT a.scheduled_at, a.type, u.full_name AS practitioner
           FROM appointments a JOIN users u ON u.id = a.practitioner_id
@@ -109,7 +187,41 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
         await reply(phone, locale, 'bot_menu', {}, tenantId);
         return;
       }
-      if (['3', 'cancelar', 'cancel'].some(k => lower.includes(k))) {
+      if (['3', 'remarcar', 'reschedule', 'reagendar'].some(k => lower === k || lower.includes(k))) {
+        const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+        if (p) {
+          const appt = db.prepare(`
+            SELECT id FROM appointments
+            WHERE patient_id = ? AND tenant_id = ? AND status IN ('scheduled','confirmed')
+              AND scheduled_at >= datetime('now')
+            ORDER BY scheduled_at ASC LIMIT 1
+          `).get(p.id, tenantId) as any;
+          if (appt) {
+            db.prepare(`
+              UPDATE appointments SET notes = COALESCE(notes || ' | ', '') || 'Rescheduling requested via WhatsApp',
+                updated_at = datetime('now') WHERE id = ?
+            `).run(appt.id);
+          }
+          try {
+            const { createPatientTask, appendTimelineEvent } = await import('../services/patientJourney');
+            createPatientTask({
+              tenantId,
+              patientId: p.id,
+              title: 'Remarcação solicitada via WhatsApp',
+              category: 'scheduling',
+              priority: 'normal',
+              relatedAppointmentId: appt?.id ?? null,
+            });
+            appendTimelineEvent({
+              tenantId, patientId: p.id, kind: 'appointment', title: 'reschedule_requested',
+              status: 'requested', meta: { appointment_id: appt?.id },
+            });
+          } catch { /* ignore */ }
+        }
+        await reply(phone, locale, 'reschedule_requested', {}, tenantId);
+        return;
+      }
+      if (['4', 'cancelar', 'cancel'].some(k => lower === k || lower.includes(k))) {
         const appts = db.prepare(`
           SELECT a.id, a.scheduled_at, u.full_name AS practitioner
           FROM appointments a JOIN users u ON u.id = a.practitioner_id
@@ -131,20 +243,28 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
         await reply(phone, locale, 'cancel_ask_choice', { list }, tenantId);
         return;
       }
-      if (['4', 'humano', 'atendente', 'recepção', 'reception', 'agente'].some(k => lower.includes(k))) {
+      if (['5', 'humano', 'atendente', 'recepção', 'reception', 'agente'].some(k => lower === k || lower.includes(k))) {
         await reply(phone, locale, 'transfer_to_human', {}, tenantId);
         return;
       }
-      if (['5', 'remover dados', 'deletar', 'apagar', 'lgpd', 'deletion'].some(k => lower.includes(k))) {
-        const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
-        if (p) {
-          db.prepare(`
-            INSERT INTO lgpd_data_requests (id, tenant_id, request_type, subject_type, subject_id, status)
-            VALUES (?, ?, 'deletion', 'patient', ?, 'open')
-          `).run(uuid(), tenantId, p.id);
-          logAudit({ tenantId, action: 'lgpd_deletion_request_whatsapp', resourceType: 'patient', resourceId: p.id, legalBasis: 'consent_art7_I' });
+      if (['6', 'endereço', 'endereco', 'horário', 'horario', 'address', 'hours'].some(k => lower === k || lower.includes(k))) {
+        await reply(phone, locale, 'clinic_info', {}, tenantId);
+        return;
+      }
+      if (['8', 'remover dados', 'deletar', 'apagar', 'lgpd', 'deletion', 'privacidade'].some(k => lower === k || lower.includes(k))) {
+        if (lower.includes('remover') || lower.includes('delet') || lower.includes('apag') || lower.includes('deletion')) {
+          const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+          if (p) {
+            db.prepare(`
+              INSERT INTO lgpd_data_requests (id, tenant_id, request_type, subject_type, subject_id, status)
+              VALUES (?, ?, 'deletion', 'patient', ?, 'open')
+            `).run(uuid(), tenantId, p.id);
+            logAudit({ tenantId, action: 'lgpd_deletion_request_whatsapp', resourceType: 'patient', resourceId: p.id, legalBasis: 'consent_art7_I' });
+            await reply(phone, locale, 'request_received', {}, tenantId);
+            return;
+          }
         }
-        await reply(phone, locale, 'request_received', {}, tenantId);
+        await reply(phone, locale, 'privacy_menu', {}, tenantId);
         return;
       }
       // Default: show menu
@@ -283,27 +403,38 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
           meta: { score: ctx.score, appointment_id: ctx.appointment_id, survey_id: surveyId },
         });
         if (Number(ctx.score) <= 6) {
-          db.prepare(`
-            UPDATE patients SET open_complaint = 1, updated_at = datetime('now')
-            WHERE id = ? AND tenant_id = ?
-          `).run(ctx.patient_id, tenantId);
+          const { openServiceRecoveryTicket } = await import('../services/patientJourney');
+          openServiceRecoveryTicket({
+            tenantId,
+            patientId: ctx.patient_id,
+            surveyId,
+            surveyScore: Number(ctx.score),
+            comment,
+          });
+          await reply(phone, locale, 'nps_recovery', {}, tenantId);
+          updateConversation(phone, tenantId, { state: 'idle', context: {} });
+          return;
+        }
+        if (Number(ctx.score) >= 9) {
           appendTimelineEvent({
             tenantId,
             patientId: ctx.patient_id,
-            kind: 'complaint',
-            title: 'service_recovery_opened',
+            kind: 'survey',
+            title: 'satisfied_segment',
             subtitle: `NPS ${ctx.score}`,
-            status: 'high',
+            status: 'promoter',
             meta: { score: ctx.score, survey_id: surveyId },
           });
-          await reply(phone, locale, 'nps_thanks', {}, tenantId);
+        } else if (Number(ctx.score) >= 7) {
           await sendTextMessage(
             phone,
-            'Sentimos muito que sua experiência não tenha sido satisfatória. Sua mensagem foi encaminhada ao responsável pela unidade, que entrará em contato para entender melhor o ocorrido.',
+            locale === 'en'
+              ? 'Thank you. What could we improve next time?'
+              : locale === 'es'
+                ? 'Gracias. ¿Qué podríamos mejorar la próxima vez?'
+                : 'Obrigado. O que poderíamos melhorar na próxima vez?',
             tenantId,
           );
-          updateConversation(phone, tenantId, { state: 'idle', context: {} });
-          return;
         }
       } catch (e) {
         console.error('survey timeline side-effect', e);

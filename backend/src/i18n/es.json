@@ -285,7 +285,15 @@
     "lgpd_consent_request": "Para continuar, necesitamos su consentimiento para tratar sus datos conforme a la LGPD. Responda SÍ para aceptar o NO para rechazar.",
     "lgpd_consent_granted": "Consentimiento registrado. ¡Gracias!",
     "lgpd_optout_confirmed": "Fue removido de nuestras listas. Respetamos su decisión. Para reactivar, solo pídalo.",
-    "bot_menu": "¡Hola! Soy el asistente de {{clinic}}. ¿Cómo puedo ayudar?\n\n1️⃣ Agendar cita\n2️⃣ Ver mis citas\n3️⃣ Cancelar cita\n4️⃣ Hablar con recepción\n5️⃣ Eliminar mis datos (LGPD)\n\nResponda el número de la opción deseada.",
+    "bot_menu": "¡Hola! Soy el asistente virtual de {{clinic}}.\n\n1 — Marcar cita\n2 — Confirmar cita\n3 — Reprogramar\n4 — Cancelar\n5 — Hablar con un agente\n6 — Dirección y horario\n7 — Preferencias de comunicación\n8 — Privacidad y datos personales\n\nResponda el número o un comando (ATENDENTE, SALIR, PRIVACIDAD).",
+    "prefs_menu": "Preferencias de comunicación:\n\n• SALIR — pausar novedades y promociones\n• CANCELAR MENSAJES — elegir qué interrumpir\n• ATENDENTE — hablar con el equipo\n\nLos recordatorios de cita siguen activos con consentimiento administrativo.",
+    "privacy_menu": "Privacidad y datos (LGPD):\n\n• MIS DATOS — solicitar acceso\n• Eliminar datos — abrir solicitud (la historia clínica puede retenerse por ley)\n• ATENDENTE — hablar con recepción/DPO\n\nBorrar marketing no borra el registro clínico.",
+    "cancel_messages_clarify": "¿Desea:\n1 — Parar solo novedades/promociones\n2 — Parar todo el WhatsApp de la clínica\n\nResponda 1 o 2. Los recordatorios usan un consentimiento aparte.",
+    "emergency_notice": "Este canal no realiza atención de emergencia. En una situación urgente, busque de inmediato un servicio de emergencia o llame al servicio público aplicable.",
+    "clinic_info": "{{clinic}}\nPara dirección y horarios, responda ATENDENTE.",
+    "reminder_confirmed": "✅ Cita confirmada. ¡Gracias! Hasta pronto.",
+    "reschedule_requested": "Recibimos su pedido de reprogramación. El equipo de agenda se pondrá en contacto.",
+    "nps_recovery": "Lamentamos que su experiencia no haya sido satisfactoria. Su mensaje fue enviado al responsable de la unidad, quien se pondrá en contacto.",
     "ask_specialty": "¿Qué especialidad necesita? Escriba el número:\n\n1️⃣ Clínica General\n2️⃣ Cardiología\n3️⃣ Dermatología\n4️⃣ Ginecología\n5️⃣ Pediatría\n6️⃣ Ortopedia",
     "ask_date": "¿Qué día prefiere? Responda con la fecha (DD/MM) o escriba MAÑANA.",
     "ask_time": "¿Qué horario es mejor? Responda MAÑANA, TARDE o NOCHE.",
@@ -307,7 +315,8 @@
     "nps_thanks": "¡Muchas gracias por tu opinión! Nos ayuda a cuidarte mejor. 💙",
     "nps_invalid": "Por favor, responde con un número del 0 al 10.",
     "promo_footer": "\n\n_Responde SALIR para no recibir más mensajes promocionales._",
-    "survey_intro_skip": "saltar"
+    "survey_intro_skip": "saltar",
+    "request_received": "Solicitud registrada. Responderemos en hasta 15 días conforme a la LGPD."
   },
   "lgpd": {
     "title": "LGPD — Ley General de Protección de Datos",

@@ -611,6 +611,74 @@ function migrate(): void {
     openDb().exec(`CREATE INDEX IF NOT EXISTS idx_pte_tenant ON patient_timeline_events(tenant_id)`);
   } catch { /* exists */ }
 
+  // Patient Workspace Phase 2 — tasks, service tickets, documents
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS patient_tasks (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'follow_up',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      status TEXT NOT NULL DEFAULT 'open',
+      due_at TEXT,
+      assigned_to TEXT,
+      created_by TEXT,
+      related_ticket_id TEXT,
+      related_appointment_id TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ptasks_patient ON patient_tasks(patient_id, status);
+    CREATE INDEX IF NOT EXISTS idx_ptasks_tenant ON patient_tasks(tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS service_tickets (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'patient_experience',
+      priority TEXT NOT NULL DEFAULT 'high',
+      status TEXT NOT NULL DEFAULT 'open',
+      title TEXT NOT NULL,
+      description TEXT,
+      survey_id TEXT,
+      survey_score INTEGER,
+      assigned_to TEXT,
+      resolution TEXT,
+      outcome TEXT,
+      marketing_paused INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_stickets_patient ON service_tickets(patient_id, status);
+    CREATE INDEX IF NOT EXISTS idx_stickets_tenant ON service_tickets(tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS patient_documents (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      doc_type TEXT NOT NULL DEFAULT 'form',
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      signed_at TEXT,
+      file_url TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_pdocs_patient ON patient_documents(patient_id);
+  `);
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN recall_interval_days INTEGER`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN recall_notified_at TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_name TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_phone TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_relationship TEXT`); } catch { /* exists */ }
+
   // ---- Multi-tenancy: default tenant owns everything that predates it
   openDb().prepare(`
     INSERT OR IGNORE INTO tenants (id, slug, name, address, phone)
@@ -707,6 +775,26 @@ function migrate(): void {
   try { openDb().exec(`ALTER TABLE invoices ADD COLUMN document_count INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
 
   seedMarketingDefaults(DEFAULT_TENANT_ID);
+  ensureRecallAutomation(DEFAULT_TENANT_ID);
+}
+
+function ensureRecallAutomation(tenantId: string): void {
+  const db = openDb();
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO wa_automations
+        (id, tenant_id, key, name, description, enabled, message, config)
+      VALUES (?, ?, 'recall', 'Recall / acompanhamento',
+        'Avisa pacientes com recall_due_at nos próximos 30 dias (sem citar procedimento).',
+        1,
+        'Olá {{name}}. Já está próximo do período recomendado para seu próximo acompanhamento na Clínica Tanah. Gostaria de verificar horários disponíveis?',
+        ?)
+    `).run(
+      `auto_recall_${tenantId}`,
+      tenantId,
+      JSON.stringify({ days_before: 30 }),
+    );
+  } catch { /* ignore */ }
 }
 
 /** Seed clinic marketing templates + automations once per tenant (idempotent). */
@@ -718,9 +806,9 @@ export function seedMarketingDefaults(tenantId: string): void {
       ['tpl_welcome', 'Boas-vindas', 'utility',
         'Olá {{name}}! Bem-vindo(a) à Clínica Tanah. Estamos felizes em cuidar de você. Responda MENU para agendar.', 'approved'],
       ['tpl_reminder_24h', 'Lembrete 24h', 'utility',
-        'Olá {{name}}! Lembrete: sua consulta está marcada para amanhã ({{date}} às {{time}}). Responda 1 para confirmar ou 2 para remarcar.', 'approved'],
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah no dia {{date}}, às {{time}}.\n\nEscolha uma opção:\n1 — Confirmar\n2 — Remarcar\n3 — Cancelar', 'approved'],
       ['tpl_reminder_2h', 'Lembrete 2h', 'utility',
-        'Olá {{name}}! Sua consulta é hoje às {{time}}. Estamos te esperando na Clínica Tanah.', 'approved'],
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah hoje às {{time}}.\n\n1 — Confirmar | 2 — Remarcar | 3 — Cancelar', 'approved'],
       ['tpl_promo', 'Campanha promocional', 'marketing',
         'Olá {{name}}! 💙 Semana especial na Clínica Tanah: condições exclusivas para você. Agende pelo WhatsApp. Responda SAIR para não receber promoções.', 'approved'],
       ['tpl_birthday', 'Aniversário', 'marketing',
@@ -747,10 +835,10 @@ export function seedMarketingDefaults(tenantId: string): void {
   if (hasAuto === 0) {
     const autos: Array<[string, string, string, string, string, object]> = [
       ['reminder_24h', 'Lembrete 24 horas antes', 'Envia lembrete utilitário 24h antes da consulta confirmada/agendada.',
-        'Olá {{name}}! Lembrete: sua consulta está marcada para amanhã ({{date}} às {{time}}). Responda 1 para confirmar ou 2 para remarcar.',
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah no dia {{date}}, às {{time}}.\n\nEscolha uma opção:\n1 — Confirmar\n2 — Remarcar\n3 — Cancelar',
         JSON.stringify({ offset_hours: 24 }), { enabled: 1 }],
       ['reminder_2h', 'Lembrete 2 horas antes', 'Lembrete curto no dia da consulta.',
-        'Olá {{name}}! Sua consulta é hoje às {{time}}. Estamos te esperando na Clínica Tanah.',
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah hoje às {{time}}.\n\n1 — Confirmar | 2 — Remarcar | 3 — Cancelar',
         JSON.stringify({ offset_hours: 2 }), { enabled: 1 }],
       ['welcome', 'Boas-vindas pós primeira consulta', 'Disparada uma vez após a primeira consulta concluída (checkout).',
         'Olá {{name}}! Agradecemos por escolher a Clínica Tanah. Este é nosso canal oficial para confirmações e atendimento administrativo. Responda ATENDENTE ou PREFERÊNCIAS.',
@@ -770,6 +858,9 @@ export function seedMarketingDefaults(tenantId: string): void {
       ['payment_reminder', 'Lembrete de fatura', 'Faturas emitidas/atrasadas com paciente vinculado.',
         'Olá {{name}}! Há uma fatura em aberto ({{invoice}}). Podemos ajudar? Fale com a recepção.',
         JSON.stringify({}), { enabled: 0 }],
+      ['recall', 'Recall / acompanhamento', 'Avisa pacientes com recall_due_at nos próximos 30 dias (sem citar procedimento).',
+        'Olá {{name}}. Já está próximo do período recomendado para seu próximo acompanhamento na Clínica Tanah. Gostaria de verificar horários disponíveis?',
+        JSON.stringify({ days_before: 30 }), { enabled: 1 }],
     ];
     const insA = db.prepare(`
       INSERT OR IGNORE INTO wa_automations
@@ -780,4 +871,5 @@ export function seedMarketingDefaults(tenantId: string): void {
       insA.run(`auto_${key}_${tenantId}`, tenantId, key, name, desc, (flags as any).enabled ? 1 : 0, message, config);
     }
   }
+  ensureRecallAutomation(tenantId);
 }
