@@ -26,7 +26,8 @@
     "team": "Team",
     "settings": "Settings",
     "clinics": "Clinics",
-    "manual": "Manual"
+    "manual": "Manual",
+    "apps": "Apps"
   },
   "common": {
     "save": "Save",
@@ -552,6 +553,18 @@
     "install_cta": "Install app",
     "ios_hint": "In Safari: tap Share, then “Add to Home Screen”.",
     "ios_share": "Share → Add to Home Screen"
+  },
+  "apps": {
+    "title": "Apps",
+    "subtitle": "Save links to the tools and sites you use, and open them in one click.",
+    "label": "Name",
+    "label_placeholder": "e.g. ANVISA Portal",
+    "url": "URL",
+    "url_placeholder": "https://example.com",
+    "add": "Add",
+    "empty": "No apps saved yet. Add a link above to get started.",
+    "required": "Enter a name and a URL.",
+    "invalid_url": "Invalid URL. Use a valid http(s) address."
   },
   "manual": {
     "title": "User manual",

@@ -18,6 +18,7 @@ import payrollRouter from './routes/payroll';
 import whatsappRouter from './routes/whatsapp';
 import lgpdRouter from './routes/lgpd';
 import tenantsRouter from './routes/tenants';
+import appsRouter from './routes/apps';
 import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
 
@@ -63,6 +64,7 @@ app.use('/api/payroll', payrollRouter);
 app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/tenants', tenantsRouter);
+app.use('/api/apps', appsRouter);
 
 // Dashboard
 import { db } from './db/schema';

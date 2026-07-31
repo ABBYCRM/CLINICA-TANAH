@@ -542,6 +542,19 @@ export function initSchema(): void {
       value TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- ============================================================
+    -- SAVED APPS — per-user bookmarks/shortcuts to external URLs
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS user_apps (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      url TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_apps_owner ON user_apps(tenant_id, user_id);
   `);
 
   migrate();

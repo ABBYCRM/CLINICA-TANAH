@@ -26,7 +26,8 @@
     "team": "Equipo",
     "settings": "Configuración",
     "clinics": "Clínicas",
-    "manual": "Manual"
+    "manual": "Manual",
+    "apps": "Apps"
   },
   "common": {
     "save": "Guardar",
@@ -552,6 +553,18 @@
     "install_cta": "Instalar app",
     "ios_hint": "En Safari: toque Compartir y luego “Añadir a pantalla de inicio”.",
     "ios_share": "Compartir → Añadir a pantalla de inicio"
+  },
+  "apps": {
+    "title": "Apps",
+    "subtitle": "Guarda enlaces a las herramientas y sitios que usas y ábrelos con un clic.",
+    "label": "Nombre",
+    "label_placeholder": "Ej.: Portal ANVISA",
+    "url": "URL",
+    "url_placeholder": "https://ejemplo.com",
+    "add": "Agregar",
+    "empty": "Aún no hay apps guardadas. Agrega un enlace arriba para empezar.",
+    "required": "Ingresa un nombre y una URL.",
+    "invalid_url": "URL no válida. Usa una dirección http(s) válida."
   },
   "manual": {
     "title": "Manual de usuario",
