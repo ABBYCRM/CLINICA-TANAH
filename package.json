@@ -9,6 +9,14 @@
     "build:backend": "cd backend && npm run build",
     "build": "npm run build:frontend && npm run build:backend",
     "seed": "cd backend && npm run seed",
-    "start": "cd backend && npm start"
+    "start": "cd backend && npm start",
+    "test": "cd backend && npm test",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:mobile": "playwright test --config e2e/playwright.config.ts --project=mobile-chrome",
+    "test:e2e:desktop": "playwright test --config e2e/playwright.config.ts --project=desktop-chrome",
+    "e2e:install": "playwright install chromium --with-deps"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2"
   }
 }

@@ -1,0 +1,43 @@
+name: clinica-tanah
+region: nyc
+# Live: https://clinica-tanah-bbqu7.ondigitalocean.app
+features:
+  - buildpack-stack=ubuntu-22
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: clinica-tanah-web
+services:
+  - name: clinica-tanah-web
+    dockerfile_path: Dockerfile
+    github:
+      repo: ABBYCRM/CLINICA-TANAH
+      branch: cursor/mobile-e2e-professional-signin-531c
+      deploy_on_push: true
+    http_port: 10000
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 30
+      period_seconds: 15
+    envs:
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "10000"
+      - key: DB_DIR
+        value: "/data"
+      - key: DEFAULT_LOCALE
+        value: "pt-BR"
+      - key: META_WA_VERIFY_TOKEN
+        value: "clinica-tanah-verify"
+      - key: JWT_SECRET
+        type: SECRET
+        scope: RUN_AND_BUILD_TIME
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
