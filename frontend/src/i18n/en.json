@@ -497,5 +497,12 @@
     "viewing": "Active",
     "admin_section": "Clinic administrator",
     "superadmin_only": "Superadmin access only."
+  },
+  "pwa": {
+    "install_title": "Install Clínica Tanah",
+    "install_body": "Add the app to your home screen or Start menu for fast, fullscreen access — works offline.",
+    "install_cta": "Install app",
+    "ios_hint": "In Safari: tap Share, then “Add to Home Screen”.",
+    "ios_share": "Share → Add to Home Screen"
   }
 }

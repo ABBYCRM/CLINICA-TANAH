@@ -19,7 +19,12 @@ import LGPD from './pages/LGPD';
 import Team from './pages/Team';
 import Settings from './pages/Settings';
 import Clinics from './pages/Clinics';
+import InstallPrompt from './components/InstallPrompt';
+import { registerSW } from 'virtual:pwa-register';
 import './index.css';
+
+// Register the service worker (auto-updates when a new build is deployed)
+registerSW({ immediate: true });
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -59,6 +64,7 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <InstallPrompt />
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>

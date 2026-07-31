@@ -4,9 +4,11 @@ LGPD-compliant clinic management platform for **Clínica Tanah** in São Paulo /
 Trilingual (Português / Español / English), with WhatsApp bot for appointments, full inventory & vendor
 management, double-entry accounting, Brazilian payroll (INSS/IRRF/FGTS), and complete audit trail.
 
-🌐 **Live**: https://clinica-tanah.onrender.com
+🌐 **Live (DigitalOcean)**: create from [`.do/app.yaml`](.do/app.yaml) → `https://<app-name>-xxxxx.ondigitalocean.app`
+📱 **PWA**: installable on Android, iOS (Safari → Add to Home Screen), and Windows (Edge/Chrome → Install)
 🔒 **LGPD Mode**: Strict (Lei 13.709/2018 + CFM 2.314/2022)
 💬 **WhatsApp Bot**: Trilingual, with appointment booking + opt-out
+🏢 **Multi-tenant**: one deployment, many clinics (superadmin → Clínicas)
 
 ---
 
@@ -29,7 +31,7 @@ npm start
 
 | Email | Role | Password |
 |---|---|---|
-| `admin@clinica-tanah.com.br` | Admin / Dra. Helena Tanaka | `clinica2026` |
+| `admin@clinica-tanah.com.br` | Admin / Dra. Helena Tanaka (**superadmin**) | `clinica2026` |
 | `dpo@clinica-tanah.com.br` | DPO / Dr. Marcos Vieira | `clinica2026` |
 | `silva@clinica-tanah.com.br` | Doctor / Dr. Roberto Silva | `clinica2026` |
 | `santos@clinica-tanah.com.br` | Doctor / Dra. Beatriz Santos | `clinica2026` |
@@ -240,14 +242,47 @@ The e2e suite also runs in CI (`.github/workflows/e2e.yml`) on every push/PR.
 
 ## Deploy
 
+### DigitalOcean App Platform (recommended)
+
 ```bash
-# On Render (auto via render.yaml):
+# Requires doctl authenticated against your DO account
+doctl apps create --spec .do/app.yaml
+# then open the app URL printed by:
+doctl apps list
+```
+
+Or in the [DigitalOcean dashboard](https://cloud.digitalocean.com/apps):
+1. **Create App** → GitHub → `ABBYCRM/CLINICA-TANAH`
+2. Use the Dockerfile at the repo root (or paste `.do/app.yaml`)
+3. Set secret `JWT_SECRET` (and optional Meta WhatsApp vars)
+4. Confirm volume mount `/data` for SQLite persistence
+5. Deploy → frontend + API share the same HTTPS origin (required for PWA install)
+
+**Frontend URL** = the App Platform default ingress, e.g.  
+`https://clinica-tanah-xxxxx.ondigitalocean.app`  
+(login page is `/login`; the same URL is what users “Install” as the PWA)
+
+### Progressive Web App
+
+The Vite build ships a Web App Manifest + service worker (`vite-plugin-pwa`):
+- **Android / Chrome / Edge / Windows**: install banner or browser “Install app”
+- **iOS Safari**: Share → **Add to Home Screen** (banner shows the steps)
+- Icons: 192 / 512 / maskable + Apple touch icon + Windows tile
+- API calls are never cached offline (`NetworkOnly`); the shell works offline
+
+### Render (optional)
+
+```bash
+# On Render (render.yaml):
 # - Build: cd .. && npm install:all && npm run build:frontend && cd backend && npm run build
 # - Start: node dist/server.js
 # - Health: /api/health
+```
 
-# Manual:
-npm run build      # builds both
+### Manual
+
+```bash
+npm run build      # builds both (+ PWA assets)
 npm run seed       # seeds the SQLite DB
 npm start          # serves on $PORT (default 3001)
 ```

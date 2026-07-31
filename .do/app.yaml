@@ -1,0 +1,52 @@
+# DigitalOcean App Platform — Clínica Tanah (PWA + API)
+# Create: doctl apps create --spec .do/app.yaml
+# Or: DigitalOcean dashboard → Apps → Create → upload this spec
+#
+# After create, attach a persistent volume mounted at /data (SQLite)
+# and set JWT_SECRET in App Settings → App-Level Environment Variables.
+name: clinica-tanah
+region: nyc
+services:
+  - name: web
+    dockerfile_path: Dockerfile
+    github:
+      repo: ABBYCRM/CLINICA-TANAH
+      branch: cursor/mobile-e2e-professional-signin-531c
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 25
+      period_seconds: 15
+    envs:
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "8080"
+      - key: DB_DIR
+        value: "/data"
+      - key: DEFAULT_LOCALE
+        value: "pt-BR"
+      - key: META_WA_VERIFY_TOKEN
+        value: "clinica-tanah-verify"
+      - key: JWT_SECRET
+        type: SECRET
+        scope: RUN_TIME
+      - key: META_WA_TOKEN
+        type: SECRET
+        scope: RUN_TIME
+      - key: META_WA_PHONE_ID
+        type: SECRET
+        scope: RUN_TIME
+      - key: META_WA_APP_SECRET
+        type: SECRET
+        scope: RUN_TIME
+    volumes:
+      - name: clinica-data
+        mount_path: /data
+        size_gib: 1
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED

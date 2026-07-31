@@ -497,5 +497,12 @@
     "viewing": "Activa",
     "admin_section": "Administrador de la clínica",
     "superadmin_only": "Acceso solo para superadministradores."
+  },
+  "pwa": {
+    "install_title": "Instalar Clínica Tanah",
+    "install_body": "Añada la app a la pantalla de inicio o al menú Inicio para acceso rápido, sin conexión y a pantalla completa.",
+    "install_cta": "Instalar app",
+    "ios_hint": "En Safari: toque Compartir y luego “Añadir a pantalla de inicio”.",
+    "ios_share": "Compartir → Añadir a pantalla de inicio"
   }
 }
