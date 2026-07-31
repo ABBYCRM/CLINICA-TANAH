@@ -19,6 +19,7 @@ import LGPD from './pages/LGPD';
 import Team from './pages/Team';
 import Settings from './pages/Settings';
 import Clinics from './pages/Clinics';
+import Manual from './pages/Manual';
 import InstallPrompt from './components/InstallPrompt';
 import { registerSW } from 'virtual:pwa-register';
 import './index.css';
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="team" element={<Team />} />
         <Route path="settings" element={<Settings />} />
         <Route path="clinics" element={<Clinics />} />
+        <Route path="manual" element={<Manual />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
