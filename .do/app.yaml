@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
     github:
       repo: ABBYCRM/CLINICA-TANAH
-      branch: cursor/equipe-folha-brasileira-531c
+      branch: cursor/patient-workspace-phase2-531c
       deploy_on_push: true
     http_port: 10000
     instance_count: 1
