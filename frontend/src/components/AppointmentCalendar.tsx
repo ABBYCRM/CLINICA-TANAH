@@ -213,101 +213,158 @@ export function AppointmentDrawer({ appointment, onClose, onStatusChange, onEdit
   const p = summary?.patient;
   const age = p?.birth_date ? Math.floor((Date.now() - new Date(p.birth_date).getTime()) / 3.156e10) : null;
 
-  const ActionBtn = ({ status, label, cls }: { status: string; label: string; cls: string }) => (
-    <button onClick={() => transition(status)} disabled={!!busy}
-      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all disabled:opacity-50 ${cls}`}>
-      {busy === status ? '…' : label}
-    </button>
-  );
+  const statusActions: Array<{ status: string; label: string; tone: 'primary' | 'danger' | 'secondary' }> = [];
+  if (appointment.status === 'scheduled') {
+    statusActions.push(
+      { status: 'confirmed', label: t('appointments.confirm'), tone: 'primary' },
+      { status: 'cancelled', label: t('appointments.mark_cancelled'), tone: 'danger' },
+    );
+  } else if (appointment.status === 'confirmed') {
+    statusActions.push(
+      { status: 'arrived', label: t('appointments.mark_arrived'), tone: 'primary' },
+      { status: 'cancelled', label: t('appointments.mark_cancelled'), tone: 'danger' },
+    );
+  } else if (appointment.status === 'arrived' || appointment.status === 'in_progress') {
+    statusActions.push(
+      { status: 'completed', label: t('appointments.mark_completed'), tone: 'primary' },
+    );
+  }
+
+  const actionClass = (tone: 'primary' | 'danger' | 'secondary') => {
+    if (tone === 'primary') return 'btn-primary';
+    if (tone === 'danger') return 'btn-danger';
+    return 'btn-secondary';
+  };
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-[#141c16]/45 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 w-full max-w-md panel-inset flex flex-col animate-slide-in-left !rounded-none border-l border-[rgba(63,92,66,0.28)]" data-testid="appointment-drawer" style={{ animationName: 'slide-in-right' }}>
-        <style>{`@keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
-        <div className="flex items-start justify-between border-b border-[rgba(63,92,66,0.16)] px-5 py-4">
-          <div>
-            <div className="font-display font-semibold text-slate-900 text-lg leading-tight">{appointment.patient_name}</div>
-            <div className="text-sm text-slate-500">
-              {new Date(appointment.scheduled_at.replace(' ', 'T')).toLocaleString(tag, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+      <div
+        className="appt-drawer-backdrop fixed inset-x-0 bottom-0 z-40 bg-[#1a120c]/40 backdrop-blur-[2px] animate-fade-in"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      {/* Sit under the shell topbar so the aluminum chrome stays continuous to the top-right corner */}
+      <aside
+        className="appt-drawer fixed right-0 z-50 flex flex-col w-full max-w-md"
+        data-testid="appointment-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={appointment.patient_name}
+      >
+        <header className="appt-drawer-header flex items-start justify-between gap-3 px-5 py-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="font-display font-semibold text-[#2a1f16] text-lg leading-tight truncate">
+              {appointment.patient_name}
+            </div>
+            <div className="text-sm text-[#5c4a38] leading-snug">
+              {new Date(appointment.scheduled_at.replace(' ', 'T')).toLocaleString(tag, {
+                weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+              })}
               {' · '}{appointment.practitioner_name}
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <span className={`badge ${appointment.status === 'confirmed' || appointment.status === 'completed' ? 'badge-green' : appointment.status === 'cancelled' || appointment.status === 'no_show' ? 'badge-red' : 'badge-yellow'}`}>{appointment.status}</span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`badge ${appointment.status === 'confirmed' || appointment.status === 'completed' ? 'badge-green' : appointment.status === 'cancelled' || appointment.status === 'no_show' ? 'badge-red' : 'badge-yellow'}`}>
+                {appointment.status}
+              </span>
               <span className="badge-blue">{t(`appointments.types.${appointment.type}`)}</span>
               <span className="badge-slate">{appointment.source}</span>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors" aria-label="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-5 h-5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          <button
+            type="button"
+            onClick={onClose}
+            className="appt-drawer-close shrink-0"
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
-        </div>
+        </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* status workflow */}
-          <div className="flex flex-wrap gap-2">
-            {appointment.status === 'scheduled' && (
-              <>
-                <ActionBtn status="confirmed" label={`✓ ${t('appointments.confirm')}`} cls="bg-emerald-600 text-white hover:bg-emerald-700" />
-                <ActionBtn status="cancelled" label={t('appointments.mark_cancelled')} cls="bg-rose-50 text-rose-700 hover:bg-rose-100" />
-              </>
-            )}
-            {appointment.status === 'confirmed' && (
-              <>
-                <ActionBtn status="arrived" label={`🚶 ${t('appointments.mark_arrived')}`} cls="bg-violet-600 text-white hover:bg-violet-700" />
-                <ActionBtn status="cancelled" label={t('appointments.mark_cancelled')} cls="bg-rose-50 text-rose-700 hover:bg-rose-100" />
-              </>
-            )}
-            {(appointment.status === 'arrived' || appointment.status === 'in_progress') && (
-              <ActionBtn status="completed" label={`✓ ${t('appointments.mark_completed')}`} cls="bg-emerald-600 text-white hover:bg-emerald-700" />
-            )}
-            <button onClick={onEdit} className="rounded-lg px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all">{t('crud.edit')}</button>
-            <button onClick={onDelete} className="rounded-lg px-3 py-1.5 text-xs font-medium bg-rose-50 text-rose-700 hover:bg-rose-100 transition-all">{t('common.delete')}</button>
+          <div className="appt-drawer-actions">
+            {statusActions.map((a) => (
+              <button
+                key={a.status}
+                type="button"
+                onClick={() => transition(a.status)}
+                disabled={!!busy}
+                className={`${actionClass(a.tone)} text-sm justify-center`}
+              >
+                {busy === a.status ? '…' : a.label}
+              </button>
+            ))}
+            <button type="button" onClick={onEdit} className="btn-secondary text-sm justify-center">
+              {t('crud.edit')}
+            </button>
+            <button type="button" onClick={onDelete} className="btn-danger text-sm justify-center">
+              {t('common.delete')}
+            </button>
           </div>
 
           {appointment.notes && (
-            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">{appointment.notes}</div>
+            <div className="rounded-xl px-4 py-3 text-sm text-[#5c3d18]"
+              style={{ background: 'linear-gradient(180deg,#f5ebd4,#ebe0c4)', border: '1px solid rgba(168,132,61,0.35)' }}>
+              {appointment.notes}
+            </div>
           )}
 
-          {/* clinical snapshot — the educated-decision panel */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-clinic-700 mb-3">{t('appointments.patient_summary')}</h3>
-            {!summary && <div className="text-sm text-slate-400">{t('common.loading')}</div>}
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8a7048] mb-3">
+              {t('appointments.patient_summary')}
+            </h3>
+            {!summary && <div className="text-sm text-[#8a8174]">{t('common.loading')}</div>}
             {p && (
               <div className="space-y-4 animate-fade-in">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                  <div><span className="text-slate-400">{t('patients.birth_date')}:</span> {p.birth_date}{age !== null ? ` (${age})` : ''}</div>
-                  <div><span className="text-slate-400">{t('patients.blood_type')}:</span> {p.blood_type || '—'}</div>
-                  <div><span className="text-slate-400">{t('patients.health_insurance')}:</span> {p.health_insurance || '—'}</div>
-                  <div><span className="text-slate-400">{t('patients.phone')}:</span> {p.phone}</div>
-                </div>
+                <dl className="appt-drawer-facts">
+                  <div>
+                    <dt>{t('patients.birth_date')}</dt>
+                    <dd>{p.birth_date}{age !== null ? ` (${age})` : ''}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('patients.blood_type')}</dt>
+                    <dd>{p.blood_type || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('patients.health_insurance')}</dt>
+                    <dd>{p.health_insurance || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('patients.phone')}</dt>
+                    <dd className="font-mono text-[13px]">{p.phone}</dd>
+                  </div>
+                </dl>
 
                 {p.allergies.length > 0 && (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3" data-testid="drawer-allergies">
-                    <div className="text-xs font-semibold text-rose-700 uppercase tracking-wide mb-1">⚠ {t('patients.allergies')}</div>
-                    <div className="text-sm text-rose-800 font-medium">{p.allergies.join(', ')}</div>
+                  <div className="rounded-xl border border-rose-200 px-4 py-3" data-testid="drawer-allergies"
+                    style={{ background: 'linear-gradient(180deg,#fdf2f0,#f5e4e0)' }}>
+                    <div className="text-xs font-semibold text-[#8f4a3d] uppercase tracking-wide mb-1">{t('patients.allergies')}</div>
+                    <div className="text-sm text-[#6e3228] font-medium">{p.allergies.join(', ')}</div>
                   </div>
                 )}
                 {p.chronic_conditions.length > 0 && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">{t('patients.chronic_conditions')}</div>
-                    <div className="text-sm text-amber-900">{p.chronic_conditions.join(', ')}</div>
+                  <div className="rounded-xl px-4 py-3"
+                    style={{ background: 'linear-gradient(180deg,#f5ebd4,#ebe0c4)', border: '1px solid rgba(168,132,61,0.35)' }}>
+                    <div className="text-xs font-semibold text-[#8a7048] uppercase tracking-wide mb-1">{t('patients.chronic_conditions')}</div>
+                    <div className="text-sm text-[#5c3d18]">{p.chronic_conditions.join(', ')}</div>
                   </div>
                 )}
                 {p.medications_in_use.length > 0 && (
-                  <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
-                    <div className="text-xs font-semibold text-sky-700 uppercase tracking-wide mb-1">{t('patients.medications_in_use')}</div>
-                    <div className="text-sm text-sky-900">{p.medications_in_use.join(', ')}</div>
+                  <div className="rounded-xl px-4 py-3"
+                    style={{ background: 'linear-gradient(180deg,#e8eef5,#dce4ee)', border: '1px solid rgba(100,120,150,0.35)' }}>
+                    <div className="text-xs font-semibold text-[#3d4a5c] uppercase tracking-wide mb-1">{t('patients.medications_in_use')}</div>
+                    <div className="text-sm text-[#2a3545]">{p.medications_in_use.join(', ')}</div>
                   </div>
                 )}
 
                 {summary.recent_encounters.length > 0 && (
                   <div>
-                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{t('appointments.recent_encounters')}</div>
+                    <div className="text-xs font-semibold text-[#8a8174] uppercase tracking-wide mb-1.5">{t('appointments.recent_encounters')}</div>
                     <ul className="space-y-1.5 text-sm">
                       {summary.recent_encounters.map((e: any) => (
-                        <li key={e.id} className="border-l-2 border-clinic-400 pl-3">
-                          <span className="text-slate-400">{e.started_at?.slice(0, 10)}</span> — {e.assessment || '—'}
+                        <li key={e.id} className="border-l-2 border-[#a8843d] pl-3">
+                          <span className="text-[#8a8174]">{e.started_at?.slice(0, 10)}</span> — {e.assessment || '—'}
                           {e.icd10_codes.length > 0 && <span className="ml-1 badge-blue">{e.icd10_codes.join(', ')}</span>}
                         </li>
                       ))}
@@ -315,10 +372,14 @@ export function AppointmentDrawer({ appointment, onClose, onStatusChange, onEdit
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 text-xs text-slate-500">
-                  <span>{t('appointments.prescriptions_count')}: <b>{summary.prescriptions_count}</b></span>
+                <div className="grid grid-cols-1 gap-1.5 text-xs text-[#6b645a] pt-1 border-t border-[rgba(139,115,85,0.25)]">
+                  <div>{t('appointments.prescriptions_count')}: <b className="text-[#3a342c]">{summary.prescriptions_count}</b></div>
                   {p.emergency_contact_name && (
-                    <span>{t('patients.emergency_contact_name')}: <b>{p.emergency_contact_name}</b> ({p.emergency_contact_phone})</span>
+                    <div>
+                      {t('patients.emergency_contact_name')}:{' '}
+                      <b className="text-[#3a342c]">{p.emergency_contact_name}</b>
+                      {p.emergency_contact_phone ? ` (${p.emergency_contact_phone})` : ''}
+                    </div>
                   )}
                 </div>
               </div>

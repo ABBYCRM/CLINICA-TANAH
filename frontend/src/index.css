@@ -434,6 +434,65 @@ h1, h2, .font-display {
     gap: 0.5rem;
   }
 
+  /* Appointment detail drawer — sits under shell topbar so chrome stays continuous */
+  .appt-drawer {
+    top: 3.75rem;
+    bottom: 0;
+    margin-top: 0 !important; /* parent space-y must not offset fixed panels */
+    background: var(--tex-cardstock);
+    border-left: 1px solid var(--edge);
+    box-shadow: -8px 0 28px rgba(20, 10, 4, 0.28);
+  }
+  .appt-drawer-backdrop {
+    top: 3.75rem;
+  }
+  .appt-drawer-header {
+    background: var(--tex-metal);
+    border-bottom: 1px solid var(--metal-edge);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  }
+  .appt-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    border-radius: 0.75rem;
+    color: var(--ink);
+    background: linear-gradient(135deg, #E5E7EB, #D1D5DB);
+    border: 1px solid #9CA3AF;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.12);
+    transition: filter 0.15s ease;
+  }
+  .appt-drawer-close:hover { filter: brightness(1.05); }
+  .appt-drawer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .appt-drawer-actions > * {
+    width: 100%;
+    min-height: 2.5rem;
+  }
+  .appt-drawer-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+  }
+  .appt-drawer-facts dt {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #8a7458;
+  }
+  .appt-drawer-facts dd {
+    margin-top: 0.15rem;
+    font-size: 0.875rem;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
   .stat-tile {
     @apply card p-5 relative overflow-hidden;
   }
