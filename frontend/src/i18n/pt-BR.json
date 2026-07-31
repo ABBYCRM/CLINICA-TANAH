@@ -469,6 +469,8 @@
     "description": "Descrição",
     "add_line": "Adicionar linha",
     "account": "Conta",
+    "amount": "Valor",
+    "dre_hint": "Edite os valores para recalcular o lucro líquido. Novas linhas viram contas e lançamentos.",
     "unbalanced": "Débitos e créditos devem ser iguais",
     "types": {
       "asset": "Ativo",

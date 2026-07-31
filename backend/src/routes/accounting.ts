@@ -214,18 +214,202 @@ router.get('/income-statement', (req: Request, res: Response) => {
   const from = (req.query.from as string) || new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
   const to = (req.query.to as string) || new Date().toISOString().slice(0,10);
   const rows = db.prepare(`
-    SELECT a.type, a.code, a.name,
-           COALESCE(SUM(jl.credit), 0) - COALESCE(SUM(jl.debit), 0) AS amount
+    SELECT a.id, a.type, a.code, a.name,
+           CASE
+             WHEN a.type = 'revenue'
+               THEN COALESCE(SUM(jl.credit), 0) - COALESCE(SUM(jl.debit), 0)
+             ELSE COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.credit), 0)
+           END AS amount
     FROM chart_of_accounts a
     LEFT JOIN journal_lines jl ON jl.account_id = a.id
     LEFT JOIN journal_entries je ON je.id = jl.entry_id AND date(je.entry_date) BETWEEN ? AND ? AND je.tenant_id = a.tenant_id
-    WHERE a.type IN ('revenue', 'expense') AND a.tenant_id = ?
+    WHERE a.type IN ('revenue', 'expense') AND a.tenant_id = ? AND a.active = 1
     GROUP BY a.id
     ORDER BY a.type, a.code
-  `).all(from, to, req.tenantId);
-  const revenue = rows.filter((r: any) => r.type === 'revenue').reduce((s: number, r: any) => s + r.amount, 0);
-  const expenses = rows.filter((r: any) => r.type === 'expense').reduce((s: number, r: any) => s + r.amount, 0);
-  res.json({ from, to, lines: rows, total_revenue: revenue, total_expenses: expenses, net_income: revenue - expenses });
+  `).all(from, to, req.tenantId) as any[];
+  const revenue = rows.filter((r) => r.type === 'revenue').reduce((s, r) => s + Number(r.amount), 0);
+  const expenses = rows.filter((r) => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0);
+  res.json({
+    from, to,
+    lines: rows.map((r) => ({ ...r, amount: Number(r.amount) })),
+    total_revenue: revenue,
+    total_expenses: expenses,
+    net_income: revenue - expenses,
+  });
+});
+
+const dreLineCreateSchema = z.object({
+  type: z.enum(['revenue', 'expense']),
+  name: z.string().min(1).max(120),
+  amount: z.number().min(0).default(0),
+  entry_date: z.string().optional(),
+});
+
+const dreLineAmountSchema = z.object({
+  amount: z.number().min(0),
+  entry_date: z.string().optional(),
+});
+
+function nextPlCode(_tenantId: string, type: 'revenue' | 'expense'): string {
+  const prefix = type === 'revenue' ? '4.9.' : '5.9.';
+  for (let i = 1; i < 10000; i++) {
+    const code = `${prefix}${String(i).padStart(3, '0')}`;
+    const exists = db.prepare(`SELECT id FROM chart_of_accounts WHERE code = ?`).get(code);
+    if (!exists) return code;
+  }
+  return `${prefix}${Date.now()}`;
+}
+
+function cashAccountId(tenantId: string): string {
+  ensureChart(tenantId);
+  const cash = db.prepare(`
+    SELECT id FROM chart_of_accounts WHERE tenant_id = ? AND code = '1.1.01.001'
+  `).get(tenantId) as { id: string } | undefined;
+  if (!cash) throw new Error('cash_account_missing');
+  return cash.id;
+}
+
+/** Replace the period DRE amount for an account with a balanced cash journal. */
+function syncDreAmount(opts: {
+  tenantId: string;
+  userId: string;
+  accountId: string;
+  amount: number;
+  entryDate: string;
+}): void {
+  const acc = db.prepare(`
+    SELECT id, code, name, type FROM chart_of_accounts
+    WHERE id = ? AND tenant_id = ? AND type IN ('revenue','expense') AND active = 1
+  `).get(opts.accountId, opts.tenantId) as any;
+  if (!acc) throw new Error('account_not_found');
+
+  const old = db.prepare(`
+    SELECT id FROM journal_entries
+    WHERE tenant_id = ? AND reference_type = 'dre_line' AND reference_id = ?
+  `).all(opts.tenantId, opts.accountId) as Array<{ id: string }>;
+  for (const e of old) {
+    db.prepare(`DELETE FROM journal_lines WHERE entry_id = ?`).run(e.id);
+    db.prepare(`DELETE FROM journal_entries WHERE id = ?`).run(e.id);
+  }
+
+  const amount = Math.round(opts.amount * 100) / 100;
+  if (amount <= 0) return;
+
+  const cashId = cashAccountId(opts.tenantId);
+  const entryId = uuid();
+  const entryNumber = `DRE-${Date.now()}`;
+  const desc = `DRE · ${acc.name}`;
+  db.prepare(`
+    INSERT INTO journal_entries
+      (id, tenant_id, entry_number, entry_date, description, reference_type, reference_id, total_debit, total_credit, posted, created_by)
+    VALUES (?,?,?,?,?,'dre_line',?,?,?,1,?)
+  `).run(entryId, opts.tenantId, entryNumber, opts.entryDate, desc, opts.accountId, amount, amount, opts.userId);
+
+  if (acc.type === 'revenue') {
+    // Debit cash / Credit revenue
+    db.prepare(`INSERT INTO journal_lines (id, entry_id, account_id, debit, credit, description) VALUES (?,?,?,?,?,?)`)
+      .run(uuid(), entryId, cashId, amount, 0, desc);
+    db.prepare(`INSERT INTO journal_lines (id, entry_id, account_id, debit, credit, description) VALUES (?,?,?,?,?,?)`)
+      .run(uuid(), entryId, acc.id, 0, amount, desc);
+  } else {
+    // Debit expense / Credit cash
+    db.prepare(`INSERT INTO journal_lines (id, entry_id, account_id, debit, credit, description) VALUES (?,?,?,?,?,?)`)
+      .run(uuid(), entryId, acc.id, amount, 0, desc);
+    db.prepare(`INSERT INTO journal_lines (id, entry_id, account_id, debit, credit, description) VALUES (?,?,?,?,?,?)`)
+      .run(uuid(), entryId, cashId, 0, amount, desc);
+  }
+}
+
+router.post('/income-statement/lines', requireRole('admin', 'accountant'), (req: Request, res: Response) => {
+  ensureChart(req.tenantId!);
+  const parsed = dreLineCreateSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+  const d = parsed.data;
+  const entryDate = d.entry_date || new Date().toISOString().slice(0, 10);
+  const id = uuid();
+  const code = nextPlCode(req.tenantId!, d.type);
+  try {
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO chart_of_accounts (id, tenant_id, code, name, type, active)
+        VALUES (?,?,?,?,?,1)
+      `).run(id, req.tenantId, code, d.name.trim(), d.type);
+      syncDreAmount({
+        tenantId: req.tenantId!,
+        userId: req.user!.id,
+        accountId: id,
+        amount: d.amount,
+        entryDate,
+      });
+    });
+    tx();
+  } catch (e: any) {
+    res.status(400).json({ error: 'dre_line_error', message: e.message });
+    return;
+  }
+  res.status(201).json({ id, code, type: d.type, name: d.name.trim(), amount: d.amount });
+});
+
+router.put('/income-statement/lines/:id', requireRole('admin', 'accountant'), (req: Request, res: Response) => {
+  ensureChart(req.tenantId!);
+  const parsed = dreLineAmountSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+  const entryDate = parsed.data.entry_date || new Date().toISOString().slice(0, 10);
+  try {
+    const tx = db.transaction(() => {
+      syncDreAmount({
+        tenantId: req.tenantId!,
+        userId: req.user!.id,
+        accountId: req.params.id,
+        amount: parsed.data.amount,
+        entryDate,
+      });
+    });
+    tx();
+  } catch (e: any) {
+    const status = e.message === 'account_not_found' ? 404 : 400;
+    res.status(status).json({ error: e.message });
+    return;
+  }
+  res.json({ ok: true, id: req.params.id, amount: parsed.data.amount });
+});
+
+router.delete('/income-statement/lines/:id', requireRole('admin', 'accountant'), (req: Request, res: Response) => {
+  const acc = db.prepare(`
+    SELECT id, name, type FROM chart_of_accounts
+    WHERE id = ? AND tenant_id = ? AND type IN ('revenue','expense')
+  `).get(req.params.id, req.tenantId) as any;
+  if (!acc) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const tx = db.transaction(() => {
+    // Remove DRE-managed journals for this line
+    const old = db.prepare(`
+      SELECT id FROM journal_entries
+      WHERE tenant_id = ? AND reference_type = 'dre_line' AND reference_id = ?
+    `).all(req.tenantId, req.params.id) as Array<{ id: string }>;
+    for (const e of old) {
+      db.prepare(`DELETE FROM journal_lines WHERE entry_id = ?`).run(e.id);
+      db.prepare(`DELETE FROM journal_entries WHERE id = ?`).run(e.id);
+    }
+
+    const otherUse = (db.prepare(`
+      SELECT COUNT(*) AS c FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.entry_id
+      WHERE jl.account_id = ? AND je.tenant_id = ?
+    `).get(req.params.id, req.tenantId) as any).c;
+
+    if (otherUse > 0) {
+      db.prepare(`UPDATE chart_of_accounts SET active = 0 WHERE id = ? AND tenant_id = ?`)
+        .run(req.params.id, req.tenantId);
+      return { soft_deleted: true };
+    }
+    db.prepare(`DELETE FROM chart_of_accounts WHERE id = ? AND tenant_id = ?`)
+      .run(req.params.id, req.tenantId);
+    return { soft_deleted: false };
+  });
+
+  const result = tx();
+  res.json({ ok: true, ...result });
 });
 
 // INVOICES

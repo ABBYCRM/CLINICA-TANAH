@@ -469,6 +469,8 @@
     "description": "Description",
     "add_line": "Add line",
     "account": "Account",
+    "amount": "Amount",
+    "dre_hint": "Edit amounts to recalculate net income. New lines become accounts and journal entries.",
     "unbalanced": "Debits and credits must be equal",
     "types": {
       "asset": "Asset",

@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
 
 type Tab = 'tb' | 'pl' | 'accounts' | 'journal';
 const ACCOUNT_TYPES = ['asset', 'liability', 'equity', 'revenue', 'expense'];
+
+type DreLine = {
+  id: string;
+  type: 'revenue' | 'expense';
+  code: string;
+  name: string;
+  amount: number;
+};
 
 export default function Accounting() {
   const { t, locale } = useI18n();
@@ -116,43 +124,16 @@ export default function Accounting() {
         </div>
       )}
 
-      {tab === 'pl' && pl && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="card p-5">
-            <h3 className="font-semibold mb-3 text-emerald-700">{t('accounting.revenue')}</h3>
-            {pl.lines.filter((r: any) => r.type === 'revenue').map((r: any) => (
-              <div key={r.code} className="flex justify-between text-sm border-b border-slate-100 py-1">
-                <span>{r.name}</span>
-                <span className="font-mono">{r.amount.toFixed(2)}</span>
-              </div>
-            ))}
-            <div className="flex justify-between font-bold mt-3 pt-3 border-t-2 border-slate-300">
-              <span>{t('accounting.revenue')}</span>
-              <span>R$ {pl.total_revenue.toFixed(2)}</span>
-            </div>
-          </div>
-          <div className="card p-5">
-            <h3 className="font-semibold mb-3 text-rose-700">{t('accounting.expenses')}</h3>
-            {pl.lines.filter((r: any) => r.type === 'expense').map((r: any) => (
-              <div key={r.code} className="flex justify-between text-sm border-b border-slate-100 py-1">
-                <span>{r.name}</span>
-                <span className="font-mono">{r.amount.toFixed(2)}</span>
-              </div>
-            ))}
-            <div className="flex justify-between font-bold mt-3 pt-3 border-t-2 border-slate-300">
-              <span>{t('accounting.expenses')}</span>
-              <span>R$ {pl.total_expenses.toFixed(2)}</span>
-            </div>
-          </div>
-          <div className="card p-5 col-span-2 bg-clinic-50 border-clinic-200">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-lg">{t('accounting.net_income')}</span>
-              <span className={`font-mono font-bold text-2xl ${pl.net_income >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                R$ {pl.net_income.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        </div>
+      {tab === 'pl' && (
+        loading && !pl ? (
+          <div className="card p-6 text-sm text-[#8a8174]">{t('common.loading')}</div>
+        ) : pl ? (
+          <DreWorksheet
+            initial={pl}
+            onError={(msg) => setError(msg)}
+            onMutated={refresh}
+          />
+        ) : null
       )}
 
       {tab === 'accounts' && (
@@ -244,6 +225,288 @@ export default function Accounting() {
         />
       )}
     </div>
+  );
+}
+
+function money(n: number) {
+  return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function DreWorksheet({
+  initial,
+  onError,
+  onMutated,
+}: {
+  initial: any;
+  onError: (msg: string) => void;
+  onMutated: () => void;
+}) {
+  const { t } = useI18n();
+  const [lines, setLines] = useState<DreLine[]>(() =>
+    (initial.lines || []).map((r: any) => ({
+      id: r.id,
+      type: r.type,
+      code: r.code,
+      name: r.name,
+      amount: Number(r.amount) || 0,
+    })),
+  );
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    const d: Record<string, string> = {};
+    for (const r of initial.lines || []) d[r.id] = Number(r.amount || 0).toFixed(2);
+    return d;
+  });
+  const [adding, setAdding] = useState<'revenue' | 'expense' | null>(null);
+  const [deleting, setDeleting] = useState<DreLine | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  useEffect(() => {
+    const next = (initial.lines || []).map((r: any) => ({
+      id: r.id,
+      type: r.type as 'revenue' | 'expense',
+      code: r.code,
+      name: r.name,
+      amount: Number(r.amount) || 0,
+    }));
+    setLines(next);
+    const d: Record<string, string> = {};
+    for (const r of next) d[r.id] = r.amount.toFixed(2);
+    setDrafts(d);
+  }, [initial]);
+
+  const revenue = useMemo(
+    () => lines.filter((l) => l.type === 'revenue').reduce((s, l) => s + (Number(l.amount) || 0), 0),
+    [lines],
+  );
+  const expenses = useMemo(
+    () => lines.filter((l) => l.type === 'expense').reduce((s, l) => s + (Number(l.amount) || 0), 0),
+    [lines],
+  );
+  const net = revenue - expenses;
+
+  const saveAmount = async (line: DreLine, raw: string) => {
+    const amount = Math.max(0, parseFloat(raw.replace(',', '.')) || 0);
+    const rounded = Math.round(amount * 100) / 100;
+    setDrafts((d) => ({ ...d, [line.id]: rounded.toFixed(2) }));
+    if (Math.abs(rounded - line.amount) < 0.001) return;
+    setBusyId(line.id);
+    onError('');
+    try {
+      await api.put(`/api/accounting/income-statement/lines/${line.id}`, { amount: rounded });
+      setLines((arr) => arr.map((l) => (l.id === line.id ? { ...l, amount: rounded } : l)));
+      onMutated();
+    } catch (e: any) {
+      onError(e.message || t('errors.generic'));
+      setDrafts((d) => ({ ...d, [line.id]: line.amount.toFixed(2) }));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const removeLine = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    onError('');
+    try {
+      await api.del(`/api/accounting/income-statement/lines/${deleting.id}`);
+      setLines((arr) => arr.filter((l) => l.id !== deleting.id));
+      setDeleting(null);
+      onMutated();
+    } catch (e: any) {
+      onError(e.message || t('errors.generic'));
+      setDeleting(null);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const renderColumn = (type: 'revenue' | 'expense') => {
+    const items = lines.filter((l) => l.type === type);
+    const total = type === 'revenue' ? revenue : expenses;
+    const titleColor = type === 'revenue' ? 'text-emerald-800' : 'text-rose-800';
+    return (
+      <div className="card p-5 flex flex-col min-h-[22rem]" data-testid={`dre-${type}`}>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className={`font-display font-semibold ${titleColor}`}>
+            {type === 'revenue' ? t('accounting.revenue') : t('accounting.expenses')}
+          </h3>
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            data-testid={`dre-add-${type}`}
+            onClick={() => setAdding(type)}
+          >
+            + {t('accounting.add_line')}
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-1">
+          {items.length === 0 && (
+            <p className="text-sm text-[#8a8174] py-6 text-center">{t('common.no_data')}</p>
+          )}
+          {items.map((line) => (
+            <div
+              key={line.id}
+              className="grid grid-cols-[1fr_7.5rem_2.25rem] gap-2 items-center border-b border-[rgba(139,115,85,0.2)] py-1.5"
+              data-testid={`dre-line-${line.id}`}
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-[#3a342c] truncate">{line.name}</div>
+                <div className="text-[11px] font-mono text-[#8a8174]">{line.code}</div>
+              </div>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                className="input text-right font-mono text-sm !py-1.5"
+                value={drafts[line.id] ?? line.amount.toFixed(2)}
+                disabled={busyId === line.id}
+                data-testid={`dre-amount-${line.id}`}
+                onChange={(e) => setDrafts((d) => ({ ...d, [line.id]: e.target.value }))}
+                onBlur={(e) => saveAmount(line, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                }}
+              />
+              <button
+                type="button"
+                className="inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg text-[#8a8174] hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                aria-label={t('common.delete')}
+                data-testid={`dre-delete-${line.id}`}
+                onClick={() => setDeleting(line)}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-4 h-4" aria-hidden="true">
+                  <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-between font-bold mt-3 pt-3 border-t-2 border-[rgba(139,115,85,0.35)]">
+          <span>{type === 'revenue' ? t('accounting.revenue') : t('accounting.expenses')}</span>
+          <span className="font-mono" data-testid={`dre-total-${type}`}>{money(total)}</span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4" data-testid="dre-worksheet">
+      <div className="grid md:grid-cols-2 gap-4 items-stretch">
+        {renderColumn('revenue')}
+        {renderColumn('expense')}
+      </div>
+      <div className="card p-5" data-testid="dre-net">
+        <div className="flex justify-between items-center gap-3">
+          <span className="font-display font-semibold text-lg text-[#3a342c]">{t('accounting.net_income')}</span>
+          <span className={`font-mono font-bold text-2xl ${net >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+            {money(net)}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-[#8a8174]">{t('accounting.dre_hint')}</p>
+      </div>
+
+      {adding && (
+        <DreAddModal
+          type={adding}
+          onClose={() => setAdding(null)}
+          onSaved={(line) => {
+            setLines((arr) => [...arr, line].sort((a, b) => a.code.localeCompare(b.code)));
+            setDrafts((d) => ({ ...d, [line.id]: line.amount.toFixed(2) }));
+            setAdding(null);
+            onMutated();
+          }}
+          onError={onError}
+        />
+      )}
+      {deleting && (
+        <ConfirmDialog
+          name={`${deleting.code} — ${deleting.name}`}
+          busy={deleteBusy}
+          onCancel={() => setDeleting(null)}
+          onConfirm={removeLine}
+        />
+      )}
+    </div>
+  );
+}
+
+function DreAddModal({
+  type,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  type: 'revenue' | 'expense';
+  onClose: () => void;
+  onSaved: (line: DreLine) => void;
+  onError: (msg: string) => void;
+}) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('0.00');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    onError('');
+    try {
+      const value = Math.max(0, parseFloat(amount.replace(',', '.')) || 0);
+      const res = await api.post('/api/accounting/income-statement/lines', {
+        type,
+        name: name.trim(),
+        amount: Math.round(value * 100) / 100,
+      });
+      onSaved({
+        id: res.id,
+        type: res.type,
+        code: res.code,
+        name: res.name,
+        amount: Number(res.amount) || 0,
+      });
+    } catch (err: any) {
+      onError(err.message || t('errors.generic'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`${t('accounting.add_line')} — ${type === 'revenue' ? t('accounting.revenue') : t('accounting.expenses')}`}
+      onClose={onClose}
+    >
+      <form onSubmit={submit} className="space-y-4" data-testid="dre-add-form">
+        <div>
+          <label className="label">{t('common.name')} *</label>
+          <input
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+            data-testid="dre-add-name"
+            placeholder={type === 'revenue' ? 'Receita de …' : 'Despesa de …'}
+          />
+        </div>
+        <div>
+          <label className="label">{t('accounting.amount')}</label>
+          <input
+            type="number"
+            min={0}
+            step={0.01}
+            className="input font-mono"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            data-testid="dre-add-amount"
+          />
+        </div>
+        <FormActions saving={saving} onCancel={onClose} />
+      </form>
+    </Modal>
   );
 }
 

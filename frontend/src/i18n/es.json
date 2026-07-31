@@ -469,6 +469,8 @@
     "description": "Descripción",
     "add_line": "Agregar línea",
     "account": "Cuenta",
+    "amount": "Valor",
+    "dre_hint": "Edite los valores para recalcular la utilidad neta. Las nuevas líneas se convierten en cuentas y asientos.",
     "unbalanced": "Débitos y créditos deben ser iguales",
     "types": {
       "asset": "Activo",
