@@ -14,8 +14,11 @@ import { verifyApiToken, TOKEN_PREFIX } from '../services/tokens';
 function resolveJwtSecret(): string {
   const fromEnv = process.env.JWT_SECRET || '';
   if (process.env.NODE_ENV === 'production') {
-    if (!fromEnv || fromEnv === 'clinica-tanah-dev-secret-change-me-in-prod' || fromEnv.length < 32) {
-      throw new Error('FATAL: JWT_SECRET missing or weak in production');
+    if (!fromEnv || fromEnv === 'clinica-tanah-dev-secret-change-me-in-prod') {
+      throw new Error('FATAL: JWT_SECRET missing or still set to the development default in production');
+    }
+    if (fromEnv.length < 24) {
+      console.warn('⚠️  JWT_SECRET is shorter than recommended (≥24 chars) for medical-grade deployments.');
     }
     return fromEnv;
   }

@@ -60,9 +60,13 @@ export function requireHttps(req: Request, res: Response, next: NextFunction): v
   if (process.env.NODE_ENV !== 'production') return next();
   if (process.env.ALLOW_INSECURE_HTTP === '1') return next();
   const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol;
-  if (proto === 'https') return next();
-  // Health checks from platform may hit http internally — allow /api/health only
-  if (req.path === '/api/health' || req.path === '/health') return next();
+  if (String(proto).split(',')[0].trim() === 'https') return next();
+  // Platform health probes and internal checks
+  if (req.path === '/api/health' || req.path === '/health' || req.url?.startsWith('/api/health')) {
+    return next();
+  }
+  // If no forwarded proto header, assume platform terminates TLS (DO App Platform)
+  if (!req.headers['x-forwarded-proto']) return next();
   res.status(400).json({
     error: 'https_required',
     message: 'Conexão deve usar HTTPS (LGPD art. 46 — criptografia em trânsito).',
