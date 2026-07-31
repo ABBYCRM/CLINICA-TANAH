@@ -584,6 +584,7 @@
     "toc_lgpd": "LGPD",
     "toc_admin": "Equipe e clínicas",
     "toc_tips": "Dicas",
+    "toc_howto": "Passo a passo detalhado",
     "col_module": "Módulo",
     "col_purpose": "Para que serve",
     "col_how": "Como usar",
@@ -710,7 +711,209 @@
     "tip2": "Telefone WhatsApp deve incluir DDI (+55…) para o bot e campanhas.",
     "tip3": "O Painel mostra alertas de estoque baixo, lotes a vencer e faturas pendentes.",
     "tip4": "Instale o app (PWA) no celular ou Windows pelo navegador para acesso rápido.",
-    "tip5": "Em dúvida, volte a este Manual pelo menu — o sumário leva a cada seção."
+    "tip5": "Em dúvida, volte a este Manual pelo menu — o sumário leva a cada seção.",
+    "howto_title": "Passo a passo detalhado",
+    "howto_intro": "Instruções completas, passo a passo, de como executar cada tarefa do sistema. Os nomes dos botões podem variar conforme o idioma e o papel do usuário.",
+    "howto": [
+      {
+        "title": "Entrar no sistema (login)",
+        "steps": [
+          "Abra o navegador e acesse o endereço do sistema (o link fornecido pela clínica).",
+          "Na tela de login, clique no campo \"E-mail\" e digite seu e-mail.",
+          "Clique no campo \"Senha\" e digite sua senha; use o ícone de olho para conferir, se necessário.",
+          "Clique no botão \"Entrar\".",
+          "Se aparecer \"e-mail ou senha inválidos\", confira os dados e tente de novo (após muitas tentativas o acesso é bloqueado por 15 minutos).",
+          "Ao entrar, confira no topo qual é a clínica ativa e comece pelo Painel."
+        ]
+      },
+      {
+        "title": "Escolher o idioma (PT / ES / EN)",
+        "steps": [
+          "Localize os botões de idioma no rodapé do menu lateral esquerdo.",
+          "Clique em PT, ES ou EN conforme o idioma desejado.",
+          "A interface muda imediatamente e a preferência fica salva no navegador para os próximos acessos."
+        ]
+      },
+      {
+        "title": "Trocar de clínica ativa (somente superadmin)",
+        "steps": [
+          "Abra \"Clínicas\" no menu lateral.",
+          "Localize na lista a clínica com a qual você quer trabalhar.",
+          "Selecione-a para defini-la como clínica ativa (ou use o seletor no topo da tela).",
+          "Confirme o nome da clínica ativa no cabeçalho antes de cadastrar ou editar dados."
+        ]
+      },
+      {
+        "title": "Cadastrar um novo paciente",
+        "steps": [
+          "Abra \"Pacientes\" no menu lateral.",
+          "Clique em \"+ Novo Paciente\" no canto superior direito.",
+          "Em Identificação, preencha Nome completo, Data de nascimento e CPF.",
+          "Em Contato, preencha o Telefone no formato +55DDNÚMERO (obrigatório para WhatsApp) e o e-mail.",
+          "Preencha o Endereço (CEP, rua, número, bairro, cidade e UF) quando disponível.",
+          "Preencha dados de saúde e sociodemográficos (convênio, tipo sanguíneo, alergias, condições e medicamentos) conforme o caso.",
+          "Marque a caixa de Consentimento LGPD — ela é obrigatória para salvar.",
+          "Clique em \"Salvar\". O paciente passa a aparecer na lista."
+        ]
+      },
+      {
+        "title": "Buscar, editar ou excluir um paciente",
+        "steps": [
+          "Abra \"Pacientes\" e digite nome, telefone, e-mail ou CPF no campo de busca.",
+          "Use o filtro \"Convênio\" para restringir por plano de saúde, ou escolha \"Sem convênio\".",
+          "Para editar, clique no ícone de lápis na linha do paciente, ajuste os campos e clique em \"Salvar\".",
+          "Para excluir, clique no ícone de lixeira e confirme em \"Excluir\".",
+          "Observação: pacientes com histórico clínico não podem ser excluídos — use o fluxo LGPD quando necessário."
+        ]
+      },
+      {
+        "title": "Agendar uma consulta",
+        "steps": [
+          "Abra \"Consultas\" no menu lateral.",
+          "Clique em \"+ Nova Consulta\".",
+          "No campo \"Paciente\", clique e selecione o paciente na lista (ou digite para buscar).",
+          "No campo \"Profissional\", selecione o médico ou profissional responsável.",
+          "Em \"Data e hora\", escolha a data e o horário; se aparecerem horários disponíveis, clique em um dos botões verdes.",
+          "Ajuste o tipo e a duração, se necessário (o padrão é 30 minutos).",
+          "Clique em \"Salvar\". A consulta passa a aparecer na agenda."
+        ]
+      },
+      {
+        "title": "Atualizar o status de uma consulta",
+        "steps": [
+          "Abra \"Consultas\" e localize a consulta na agenda.",
+          "Abra a consulta e altere o status conforme o fluxo: confirmada, chegou, em andamento ou concluída.",
+          "Use \"cancelada\" ou \"no-show\" (faltou) quando o paciente não comparecer.",
+          "Salve. Os status de falta/cancelamento alimentam as automações de follow-up."
+        ]
+      },
+      {
+        "title": "Registrar um atendimento (prontuário SOAP)",
+        "steps": [
+          "Abra \"Atendimentos\" no menu lateral.",
+          "Crie um novo atendimento e vincule-o ao paciente (e à consulta, quando houver).",
+          "Preencha os campos S (subjetivo), O (objetivo), A (avaliação) e P (plano).",
+          "Adicione os códigos CID-10 do diagnóstico quando aplicável.",
+          "Salve o atendimento. Não exclua pacientes com histórico clínico."
+        ]
+      },
+      {
+        "title": "Emitir uma receita",
+        "steps": [
+          "Abra \"Receitas\" no menu lateral.",
+          "Crie uma nova receita vinculada ao paciente (e ao atendimento, quando houver).",
+          "Adicione cada medicamento com dose, frequência, duração e instruções.",
+          "Salve. Quando disponível, a receita pode ser gerada em PDF e enviada por WhatsApp."
+        ]
+      },
+      {
+        "title": "Cadastrar item, lote e movimentação de estoque",
+        "steps": [
+          "Abra \"Estoque\" no menu lateral.",
+          "Cadastre o item informando nome, unidade, categoria e estoque mínimo.",
+          "Dê entrada de um lote com número do lote, data de validade e quantidade.",
+          "Registre as saídas/uso conforme o consumo do item.",
+          "Acompanhe os alertas de estoque baixo e de lotes a vencer pelo Painel."
+        ]
+      },
+      {
+        "title": "Cadastrar um fornecedor",
+        "steps": [
+          "Abra \"Fornecedores\" no menu lateral.",
+          "Clique em \"+ Novo fornecedor\".",
+          "Preencha a razão social e o CNPJ (obrigatórios), além dos dados de contato.",
+          "Clique em \"Salvar\"."
+        ]
+      },
+      {
+        "title": "Emitir uma fatura",
+        "steps": [
+          "Abra \"Faturas\" no menu lateral.",
+          "Crie uma nova fatura e vincule-a ao paciente quando couber.",
+          "Adicione os itens e valores e revise o total.",
+          "Clique em \"Salvar\". Marque a fatura como paga ao receber; pendências aparecem no Painel."
+        ]
+      },
+      {
+        "title": "Rodar a folha de pagamento",
+        "steps": [
+          "Abra \"Folha\" no menu lateral.",
+          "Cadastre ou atualize os funcionários.",
+          "Rode a folha do período (mês) desejado.",
+          "Revise os valores de INSS, IRRF e FGTS, aprove e registre o pagamento."
+        ]
+      },
+      {
+        "title": "Atender conversas e usar o simulador do WhatsApp",
+        "steps": [
+          "Abra \"Marketing\" (WhatsApp) no menu lateral.",
+          "Em \"Conversas\", selecione um número para ver o histórico e responder.",
+          "Sem as credenciais da Meta, o envio fica em modo simulação (dry-run) e nada sai do servidor.",
+          "Use o simulador para testar o fluxo do bot como se você fosse o paciente."
+        ]
+      },
+      {
+        "title": "Criar template, campanha e automação de marketing",
+        "steps": [
+          "Em \"Templates\", crie ou edite uma mensagem usando {{name}} e defina a categoria (marketing ou utilitária).",
+          "Em \"Campanhas\", escolha o segmento (consentidos, inativos, aniversariantes…) e dispare o envio.",
+          "Em \"Automações\", ative lembretes 24h/2h, NPS, boas-vindas e outras, e execute quando quiser.",
+          "Respeite o opt-out: quem responde SAIR/STOP deixa de receber campanhas."
+        ]
+      },
+      {
+        "title": "Registrar consentimento e atender solicitações LGPD",
+        "steps": [
+          "Registre o consentimento LGPD no cadastro do paciente ao criá-lo ou editá-lo.",
+          "Abra \"LGPD\" no menu lateral para ver consentimentos, opt-outs e a trilha de auditoria.",
+          "Ao receber um pedido de acesso, correção ou exclusão, abra uma solicitação de titular.",
+          "Atenda a solicitação e registre a resposta; tudo fica gravado na auditoria."
+        ]
+      },
+      {
+        "title": "Criar um usuário da equipe (admin)",
+        "steps": [
+          "Abra \"Equipe\" no menu lateral.",
+          "Clique em \"+ Novo usuário\".",
+          "Preencha e-mail, uma senha forte e escolha o papel (médico, recepção, etc.).",
+          "Clique em \"Salvar\". Prefira desativar em vez de apagar quando houver histórico."
+        ]
+      },
+      {
+        "title": "Gerar um token de API (admin)",
+        "steps": [
+          "Abra \"Configurações\" no menu lateral.",
+          "Na seção de tokens de API, clique para gerar um novo token.",
+          "Defina o nome, o escopo (leitura ou leitura/escrita) e a validade.",
+          "Copie o token exibido — ele aparece uma única vez — e guarde-o em local seguro."
+        ]
+      },
+      {
+        "title": "Criar e alternar clínicas (superadmin)",
+        "steps": [
+          "Abra \"Clínicas\" no menu lateral.",
+          "Clique para criar uma nova clínica e defina o administrador inicial.",
+          "Use o seletor no topo para alternar o contexto de trabalho entre as clínicas."
+        ]
+      },
+      {
+        "title": "Salvar um atalho no módulo Apps",
+        "steps": [
+          "Abra \"Apps\" no menu lateral.",
+          "Digite um nome no campo \"Nome\" e o endereço no campo \"URL\" (o https:// é adicionado automaticamente se faltar).",
+          "Clique em \"+ Adicionar\"; o atalho aparece como um cartão.",
+          "Clique no cartão para abrir o site em nova aba; use o ícone de lixeira e confirme em \"Excluir\" para removê-lo."
+        ]
+      },
+      {
+        "title": "Instalar o aplicativo (PWA)",
+        "steps": [
+          "No navegador (celular ou Windows), abra o menu do navegador.",
+          "Escolha \"Instalar app\" ou \"Adicionar à tela inicial\".",
+          "Confirme; o app passa a abrir em janela própria para acesso rápido."
+        ]
+      }
+    ]
   },
   "picker": {
     "change": "Trocar",
