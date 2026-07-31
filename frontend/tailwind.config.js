@@ -1,13 +1,15 @@
 /** @type {import('tailwindcss').Config} */
 
 /** Harmonized warm desk palette — wood / leather / paper / warm metal. */
+/* Mapped onto warm desk tones, but keep readable steps on paper
+ * (400/500 used as secondary text) and darker steps for emphasis. */
 const earthSlate = {
   50: '#f2e6cc',
   100: '#ead9b8',
   200: '#dfcba0',
-  300: '#c9a25a',
-  400: '#9a9084',
-  500: '#6a5848',
+  300: '#b89a72',
+  400: '#7a6552',
+  500: '#5c4a3c',
   600: '#4a3424',
   700: '#3a2a1c',
   800: '#2c2118',

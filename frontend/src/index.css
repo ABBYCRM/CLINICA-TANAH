@@ -13,13 +13,13 @@
   --desk-warm: #4a3424;
   --leather: #3d2a1e;
   --leather-deep: #2c1c14;
-  --leather-text: #efe4d2;
-  --leather-muted: #c4b49a;
+  --leather-text: #f5ecde;
+  --leather-muted: #e0d2bc;
   --paper: #f2e6cc;
   --paper-mid: #ead9b8;
   --paper-deep: #dfcba0;
   --ink: #2c2118;
-  --ink-muted: #6a5848;
+  --ink-muted: #5c4a3c;
   --edge: #8b7355;
   --edge-soft: rgba(139, 115, 85, 0.45);
   --metal-hi: #ece8e2;
@@ -43,7 +43,7 @@
   --paper-line: rgba(130, 150, 170, 0.22);
   --metal-edge: #6e665c;
   --metal-hi: #ece8e2;
-  --ink-muted: #6a5848;
+  --ink-muted: #5c4a3c;
   --earth-ink: var(--ink);
   --earth-muted: var(--ink-muted);
   --earth-panel: var(--paper);
@@ -183,7 +183,7 @@ h1, h2, .font-display {
   }
 
   .input {
-    @apply w-full rounded-xl px-3 py-2.5 text-sm transition-all duration-150 placeholder:text-[#9a8568];
+    @apply w-full rounded-xl px-3 py-2.5 text-sm transition-all duration-150 placeholder:text-[#6e5848];
     color: var(--ink);
     background: linear-gradient(180deg, #d4c4a4 0%, #efe4cc 40%, #f4ead2 100%);
     border: 1px solid var(--edge);
@@ -312,19 +312,21 @@ h1, h2, .font-display {
     @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150;
   }
   .nav-chip-idle {
-    color: var(--leather-muted);
+    color: var(--leather-text);
     border: 1px solid transparent;
+    opacity: 0.88;
   }
   .nav-chip-idle svg {
     color: var(--brass);
-    opacity: 0.65;
+    opacity: 0.9;
   }
   .nav-chip-idle:hover {
     color: var(--leather-text);
+    opacity: 1;
     background: rgba(255, 220, 170, 0.07);
     border-color: rgba(201, 162, 90, 0.25);
   }
-  .nav-chip-idle:hover svg { opacity: 0.95; }
+  .nav-chip-idle:hover svg { opacity: 1; }
 
   .brand-medallion {
     @apply flex items-center justify-center rounded-2xl;
@@ -565,7 +567,7 @@ h1, h2, .font-display {
   .page-subtitle {
     @apply text-sm mt-1;
     color: var(--leather-muted);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   }
 
   .well {

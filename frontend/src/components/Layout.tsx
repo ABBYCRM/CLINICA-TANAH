@@ -119,7 +119,7 @@ export default function Layout() {
       {!compact && (
         <>
           <div>
-            <div className="text-[#c9b896] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
+            <div className="text-[#e8dcc8] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
             <div
               className="inline-flex rounded-xl p-0.5 border border-[#1a1008]"
               style={{
@@ -135,7 +135,7 @@ export default function Layout() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
                     l === locale
                       ? 'text-[#2a1f16]'
-                      : 'text-[#c9b896] hover:text-[#f0e2c8]'
+                      : 'text-[#e8dcc8] hover:text-[#f5ecde]'
                   }`}
                   style={l === locale
                     ? {
@@ -151,7 +151,7 @@ export default function Layout() {
           </div>
           <div className="pt-2 border-t border-[#1a1008]/70">
             <div className="text-[#f0e2c8] font-semibold truncate">{user?.full_name}</div>
-            <div className="text-[#c9b896] truncate capitalize">{user?.role}</div>
+            <div className="text-[#e8dcc8] truncate capitalize">{user?.role}</div>
             <button
               onClick={handleLogout}
               className="mt-2 inline-flex items-center gap-1.5 text-[#e8b8a8] transition-colors hover:text-[#f0d0c0]"

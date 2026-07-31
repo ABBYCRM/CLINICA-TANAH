@@ -117,17 +117,17 @@ export default function WhatsApp() {
       </div>
 
       {status && (
-        <div className="card p-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <div className="card p-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[color:var(--ink)]">
           <span className="flex items-center gap-2">
             <span className={`w-2.5 h-2.5 rounded-full ${status.live ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            <span className="font-medium text-slate-700">{status.live ? t('whatsapp.live') : t('whatsapp.dry_run')}</span>
+            <span className="font-medium">{status.live ? t('whatsapp.live') : t('whatsapp.dry_run')}</span>
           </span>
-          <span className="text-slate-400">·</span>
-          <span className="text-slate-500">{status.conversations_count} {t('whatsapp.conversations').toLowerCase()} · {status.messages_count} msg</span>
+          <span className="text-[color:var(--ink-muted)]" aria-hidden="true">·</span>
+          <span className="text-[color:var(--ink-muted)]">{status.conversations_count} {t('whatsapp.conversations').toLowerCase()} · {status.messages_count} msg</span>
           {status.live && (
             <>
-              <span className="text-slate-400">·</span>
-              <span className={`text-xs ${status.app_secret_configured ? 'text-emerald-700' : 'text-amber-700'}`}>
+              <span className="text-[color:var(--ink-muted)]" aria-hidden="true">·</span>
+              <span className={`text-xs font-medium ${status.app_secret_configured ? 'text-emerald-800' : 'text-amber-800'}`}>
                 {status.app_secret_configured ? '✓ signature' : '⚠ no app secret'}
               </span>
             </>
@@ -152,42 +152,49 @@ export default function WhatsApp() {
 
       {tab === 'chat' && (
       <div className="grid md:grid-cols-3 gap-4 h-[min(70vh,600px)] min-h-[420px]">
-        <div className="card overflow-y-auto well !bg-none" style={{ background: 'linear-gradient(180deg, #f7f2ea, #efe6d8)' }}>
-          <div className="p-3 border-b border-[rgba(176,183,192,0.45)] font-semibold text-sm"
-            style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}>
+        <div
+          className="card overflow-y-auto text-[color:var(--ink)]"
+          style={{ background: 'linear-gradient(180deg, #f7f2ea, #efe6d8)' }}
+        >
+          <div
+            className="p-3 border-b border-[rgba(139,115,85,0.35)] font-semibold text-sm text-[color:var(--ink)]"
+            style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}
+          >
             {t('whatsapp.conversations')}
           </div>
           {conversations.map((c) => (
-            <div key={c.id} className={`group relative border-b border-[rgba(176,183,192,0.35)] transition-colors ${activePhone === c.phone ? 'bg-clinic-50' : 'hover:bg-[#efe6d8]'}`}>
+            <div key={c.id} className={`group relative border-b border-[rgba(139,115,85,0.28)] transition-colors ${activePhone === c.phone ? 'bg-[#e8dfd1]' : 'hover:bg-[#f3ece0]'}`}>
               <button onClick={() => setActivePhone(c.phone)} className="w-full text-left p-3">
-                <div className="font-medium text-sm pr-7">{c.patient_name || c.phone}</div>
-                <div className="text-xs text-slate-500 font-mono">{c.phone}</div>
+                <div className="font-semibold text-sm pr-7 text-[color:var(--ink)]">{c.patient_name || c.phone}</div>
+                <div className="text-xs font-mono text-[color:var(--ink-muted)]">{c.phone}</div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`badge ${c.lgpd_consent_granted ? 'badge-green' : 'badge-yellow'}`}>
                     {c.lgpd_consent_granted ? '✓ LGPD' : '⚠ LGPD'}
                   </span>
                   {c.opted_out ? <span className="badge-red">SAIR</span> : null}
-                  <span className="text-xs text-slate-400">{c.state}</span>
+                  <span className="text-xs font-medium capitalize text-[color:var(--ink-muted)]">{c.state}</span>
                 </div>
               </button>
               <button
                 onClick={() => setDeleting(c)}
                 title={t('whatsapp.delete_conversation')}
-                className="absolute top-3 right-2 rounded-lg p-1.5 text-slate-300 transition-colors hover:bg-rose-50 hover:text-rose-600 opacity-0 group-hover:opacity-100"
+                className="absolute top-3 right-2 rounded-lg p-1.5 text-[color:var(--ink-muted)] transition-colors hover:bg-rose-50 hover:text-rose-700 opacity-0 group-hover:opacity-100"
               >
                 <IconTrash />
               </button>
             </div>
           ))}
-          {conversations.length === 0 && <div className="p-6 text-center text-slate-400 text-sm">{t('common.no_data')}</div>}
+          {conversations.length === 0 && (
+            <div className="p-6 text-center text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</div>
+          )}
         </div>
 
-        <div className="card md:col-span-2 flex flex-col overflow-hidden">
+        <div className="card md:col-span-2 flex flex-col overflow-hidden text-[color:var(--ink)]">
           {activePhone ? (
             <>
-              <div className="p-3 border-b border-[rgba(176,183,192,0.45)] flex items-center justify-between gap-2"
+              <div className="p-3 border-b border-[rgba(139,115,85,0.35)] flex items-center justify-between gap-2"
                 style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}>
-                <span className="font-mono text-sm">{activePhone}</span>
+                <span className="font-mono text-sm font-semibold text-[color:var(--ink)]">{activePhone}</span>
                 <div className="seg-track !p-0.5">
                   <button onClick={() => setMode('send')}
                     className={`seg-item !py-1 !px-2.5 !text-xs ${mode === 'send' ? 'is-active' : ''}`}
@@ -207,7 +214,7 @@ export default function WhatsApp() {
                   <div key={m.id} className={`flex ${m.direction === 'in' ? 'justify-start' : 'justify-end'}`}>
                     <div className={`max-w-[75%] rounded-xl px-3 py-2 text-sm ${
                       m.direction === 'in'
-                        ? 'text-[#3a342c]'
+                        ? 'text-[color:var(--ink)]'
                         : 'text-white'
                     }`}
                       style={m.direction === 'in'
@@ -223,15 +230,15 @@ export default function WhatsApp() {
                           }}
                     >
                       <div className="whitespace-pre-wrap">{m.body}</div>
-                      <div className={`text-xs mt-1 flex items-center gap-1 ${m.direction === 'in' ? 'text-slate-400' : 'text-[#E5E7EB]'}`}>
+                      <div className={`text-xs mt-1 flex items-center gap-1 ${m.direction === 'in' ? 'text-[color:var(--ink-muted)]' : 'text-[#F3F4F6]'}`}>
                         {new Date(m.created_at).toLocaleTimeString(locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US')}
-                        {m.direction === 'out' && m.status && <span className="opacity-80">· {m.status}</span>}
+                        {m.direction === 'out' && m.status && <span className="opacity-90">· {m.status}</span>}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="p-3 border-t border-[rgba(176,183,192,0.45)] flex gap-2"
+              <div className="p-3 border-t border-[rgba(139,115,85,0.35)] flex gap-2"
                 style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}>
                 <input
                   value={input}
@@ -247,7 +254,8 @@ export default function WhatsApp() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-slate-400 px-4 text-center">
+            <div className="flex-1 flex items-center justify-center px-4 text-center text-base font-medium text-[color:var(--ink-muted)]"
+              style={{ background: 'linear-gradient(180deg, #f4efe6, #ebe2d4)' }}>
               ← {t('whatsapp.simulator_help')}
             </div>
           )}
