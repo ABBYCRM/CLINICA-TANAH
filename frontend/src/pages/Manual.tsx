@@ -13,6 +13,7 @@ type SectionId =
   | 'marketing'
   | 'lgpd'
   | 'admin'
+  | 'howto'
   | 'tips';
 
 const SECTIONS: { id: SectionId; tocKey: string }[] = [
@@ -27,8 +28,11 @@ const SECTIONS: { id: SectionId; tocKey: string }[] = [
   { id: 'marketing', tocKey: 'manual.toc_marketing' },
   { id: 'lgpd', tocKey: 'manual.toc_lgpd' },
   { id: 'admin', tocKey: 'manual.toc_admin' },
+  { id: 'howto', tocKey: 'manual.toc_howto' },
   { id: 'tips', tocKey: 'manual.toc_tips' },
 ];
+
+type HowToProcedure = { title: string; steps: string[] };
 
 const MODULE_ROWS = [
   'dashboard', 'patients', 'appointments', 'encounters', 'prescriptions',
@@ -51,8 +55,9 @@ function Steps({ keys, t }: { keys: string[]; t: (k: string) => string }) {
 }
 
 export default function Manual() {
-  const { t } = useI18n();
+  const { t, tRaw } = useI18n();
   const [active, setActive] = useState<SectionId>('start');
+  const howto = (tRaw('manual.howto') as HowToProcedure[]) || [];
 
   const observer = useMemo(() => {
     if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return null;
@@ -274,6 +279,28 @@ export default function Manual() {
             ]}
             t={t}
           />
+
+          <section id="manual-howto" className="card p-5 space-y-5 scroll-mt-24" data-testid="manual-section-howto">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{t('manual.howto_title')}</h2>
+              <p className="text-sm text-slate-600 leading-relaxed mt-1">{t('manual.howto_intro')}</p>
+            </div>
+            <div className="space-y-4">
+              {howto.map((proc, i) => (
+                <div key={i} className="rounded-xl border border-slate-200 p-4" data-testid={`manual-howto-${i}`}>
+                  <h3 className="font-semibold text-slate-900 mb-2 flex items-baseline gap-2">
+                    <span className="text-clinic-600 tabular-nums">{i + 1}.</span>
+                    <span>{proc.title}</span>
+                  </h3>
+                  <ol className="list-decimal list-inside space-y-1.5 text-sm text-slate-700 marker:text-slate-400">
+                    {(proc.steps || []).map((s, j) => (
+                      <li key={j}>{s}</li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </div>
+          </section>
 
           <section id="manual-tips" className="card p-5 space-y-3 scroll-mt-24">
             <h2 className="text-lg font-semibold text-slate-900">{t('manual.tips_title')}</h2>
