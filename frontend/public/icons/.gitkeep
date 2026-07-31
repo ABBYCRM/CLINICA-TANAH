@@ -1,0 +1,4 @@
+# Ignore local deps; keep generated PWA assets committed for Docker builds without sharp
+node_modules/
+dist/
+*.log
