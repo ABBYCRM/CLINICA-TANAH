@@ -46,7 +46,8 @@ describe('WhatsApp bot — Portuguese flow', () => {
     await handleMessage(phone, 'oi', 'pt-BR');
     const reply = await getLastBotMessage(phone);
     expect(reply).toContain('Clínica Tanah');
-    expect(reply).toContain('Agendar consulta');
+    expect(reply).toContain('Flow Doctor');
+    expect(reply).toMatch(/Marcar consulta|1 —/);
   });
 
   it('routes 1 to CPF request', async () => {
@@ -57,6 +58,26 @@ describe('WhatsApp bot — Portuguese flow', () => {
     await handleMessage(phone, '1', 'pt-BR');
     const reply = await getLastBotMessage(phone);
     expect(reply.toLowerCase()).toContain('cpf');
+  });
+
+  it('Flow Doctor keyword returns Portuguese marketing menu', async () => {
+    const phone = '+5511955555555';
+    persistIncoming(phone, 'médico');
+    await handleMessage(phone, 'médico', 'en');
+    const reply = await getLastBotMessage(phone);
+    expect(reply).toContain('Flow Doctor');
+    expect(reply).toContain('Promoções');
+    expect(reply).toContain('satisfação');
+  });
+
+  it('option 5 lists promotions in Portuguese', async () => {
+    const phone = '+5511966666666';
+    persistIncoming(phone, 'oi');
+    await handleMessage(phone, 'oi', 'pt-BR');
+    persistIncoming(phone, '5');
+    await handleMessage(phone, '5', 'pt-BR');
+    const reply = await getLastBotMessage(phone);
+    expect(reply).toMatch(/Promoç|campanha|Check-up|SAIR/i);
   });
 
   it('SAIR triggers opt-out', async () => {
