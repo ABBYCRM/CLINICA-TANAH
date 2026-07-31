@@ -2,19 +2,31 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useI18n } from '../hooks/useI18n';
-import { api, ApiError } from '../lib/api';
+import { ApiError } from '../lib/api';
+
+function LogoMark({ className = 'w-11 h-11' }: { className?: string }) {
+  return (
+    <div className={`brand-medallion ${className}`}>
+      <svg viewBox="0 0 24 24" className="w-3/5 h-3/5" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    </div>
+  );
+}
 
 export default function Login() {
   const { t, locale, setLocale, locales, localeLabels } = useI18n();
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@clinica-tanah.com.br');
-  const [password, setPassword] = useState('clinica2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     setLoading(true);
     try {
@@ -28,48 +40,244 @@ export default function Login() {
     }
   };
 
+  const features = [
+    {
+      label: t('auth.feature_records'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+          <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /><path d="M9 14h6M9 17h4" />
+        </svg>
+      ),
+    },
+    {
+      label: t('auth.feature_whatsapp'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" />
+        </svg>
+      ),
+    },
+    {
+      label: t('auth.feature_lgpd'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-clinic-500 via-sky-500 to-primary-700 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-        <div className="text-center mb-6">
-          <div className="inline-flex w-16 h-16 rounded-full bg-clinic-500 items-center justify-center text-white text-3xl font-bold mb-3">+</div>
-          <h1 className="text-2xl font-bold text-slate-900">{t('app.name')}</h1>
-          <p className="text-sm text-slate-500">{t('app.tagline')}</p>
-          <p className="text-xs text-slate-400 mt-1">{t('app.address')}</p>
-        </div>
+    <div className="login-desk min-h-screen flex">
+      {/* Brand panel — leather + wood desk */}
+      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden skeuo-sidebar p-12 text-[#f0e2c8]">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-40 animate-drift"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 50% at 15% 20%, rgba(212,175,106,0.25), transparent 55%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(0,0,0,0.45), transparent 50%)',
+          }}
+          aria-hidden="true"
+        />
 
-        <div className="flex justify-center gap-1 mb-4">
-          {locales.map((l) => (
-            <button key={l} onClick={() => setLocale(l)}
-              className={`px-3 py-1 text-xs rounded ${l === locale ? 'bg-clinic-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              {localeLabels[l]}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={submit} className="space-y-3">
-          {error && <div className="p-3 bg-rose-50 text-rose-700 rounded text-sm">{error}</div>}
-          <div>
-            <label className="label">{t('auth.email')}</label>
-            <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <div className="relative animate-fade-in-down z-[1]">
+          <div className="flex items-center gap-4">
+            <LogoMark className="w-12 h-12" />
+            <div className="text-sm text-[#c9b896]">{t('app.tagline')}</div>
           </div>
-          <div>
-            <label className="label">{t('auth.password')}</label>
-            <input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </div>
-          <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? t('common.loading') : t('auth.sign_in')}
-          </button>
-        </form>
-
-        <div className="mt-6 p-3 bg-slate-50 rounded text-xs text-slate-600 space-y-1">
-          <div className="font-semibold text-slate-700">Test users (senha: clinica2026):</div>
-          <div>👤 admin@clinica-tanah.com.br</div>
-          <div>👨‍⚕️ silva@clinica-tanah.com.br</div>
-          <div>👩‍⚕️ santos@clinica-tanah.com.br</div>
-          <div>🔒 dpo@clinica-tanah.com.br</div>
         </div>
-      </div>
+
+        <div className="relative space-y-6 z-[1]">
+          <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight text-[#f0e2c8] animate-fade-in-up delay-100"
+            style={{ textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
+            {t('app.name')}
+          </h1>
+          <p className="max-w-md text-[1.05rem] text-[#c9b896] leading-relaxed animate-fade-in-up delay-200">
+            {t('auth.brand_subtitle')}
+          </p>
+          <ul className="space-y-3.5 animate-fade-in-up delay-300">
+            {features.map((f) => (
+              <li key={f.label} className="flex items-center gap-3 text-sm text-[#f0e2c8]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#2a1f16] border border-[#7a5a22]"
+                  style={{
+                    background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,245,200,0.65), 0 2px 8px rgba(0,0,0,0.35)',
+                  }}
+                >
+                  {f.icon}
+                </span>
+                {f.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="relative z-[1] flex items-center gap-2 text-xs text-[#c9b896] animate-fade-in delay-300">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-[#d4af6a]" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <span>{t('auth.secure_notice')}</span>
+          <span className="text-[#a8843d]">·</span>
+          <span className="truncate">{t('app.address')}</span>
+        </div>
+      </aside>
+
+      {/* Form panel */}
+      <main className="relative flex flex-1 items-center justify-center overflow-hidden px-0 py-0 lg:px-8 lg:py-8">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-[#9bb89a]/25 blur-3xl animate-drift" />
+          <div className="absolute bottom-0 -left-16 h-72 w-72 rounded-full bg-[#8a6a45]/12 blur-3xl animate-drift-alt" />
+        </div>
+
+        <div className="relative w-full max-w-md max-lg:self-start px-4 sm:px-8 pb-8 lg:px-0 lg:pb-0">
+          {/* Mobile brand header — leather */}
+          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden skeuo-sidebar px-6 pt-12 pb-24 text-center text-[#f0e2c8] lg:hidden">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-40 animate-leaf"
+              style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(212,175,106,0.3), transparent 55%)' }}
+              aria-hidden="true"
+            />
+            <div className="relative flex flex-col items-center animate-fade-in-down z-[1]">
+              <LogoMark className="w-14 h-14" />
+              <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight text-[#f0e2c8]">{t('app.name')}</h1>
+              <p className="mt-1 text-sm text-[#c9b896]">{t('app.tagline')}</p>
+            </div>
+          </div>
+
+          <div className="panel-inset relative animate-fade-in-up p-6 sm:p-8" data-testid="login-card">
+            <div className="mb-6 hidden lg:block">
+              <h2 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('auth.welcome')}</h2>
+              <p className="mt-1 text-sm text-[color:var(--ink-muted)]">{t('auth.subtitle')}</p>
+            </div>
+
+            <div className="mb-6 flex justify-center" data-testid="locale-switcher">
+              <div
+                className="inline-flex rounded-xl p-0.5"
+                style={{
+                  background: 'linear-gradient(180deg, #c8b896, #ebe0c4)',
+                  border: '1px solid #8a7048',
+                  boxShadow: 'inset 0 2px 5px rgba(40,25,10,0.25)',
+                }}
+              >
+                {locales.map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => setLocale(l)}
+                    aria-pressed={l === locale}
+                    className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
+                      l === locale
+                        ? 'text-[#2a1f16] shadow-knob'
+                        : 'text-[color:var(--ink)] hover:text-[color:var(--ink)]'
+                    }`}
+                    style={l === locale ? { background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)' } : undefined}
+                  >
+                    {localeLabels[l]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={submit} className="space-y-4" noValidate={false}>
+              {error && (
+                <div
+                  data-testid="login-error"
+                  role="alert"
+                  className="animate-shake flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-sm text-[#6e3228]"
+                  style={{
+                    background: 'linear-gradient(180deg, #f5e4df, #edd4cd)',
+                    border: '1px solid rgba(143,74,61,0.35)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="login-email" className="label">{t('auth.email')}</label>
+                <input
+                  id="login-email"
+                  data-testid="login-email"
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="Juliana"
+                  className="input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="login-password" className="label">{t('auth.password')}</label>
+                <div className="relative">
+                  <input
+                    id="login-password"
+                    data-testid="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="input pr-11"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    data-testid="toggle-password"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2 text-[color:var(--ink-muted)] transition-colors hover:bg-[#e8dfd1] hover:text-[#3a342c]"
+                  >
+                    {showPassword ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><path d="m1 1 22 22" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                data-testid="login-submit"
+                className="btn-primary h-11 w-full text-[15px]"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+                    </svg>
+                    {t('common.loading')}
+                  </>
+                ) : (
+                  t('auth.sign_in')
+                )}
+              </button>
+            </form>
+          </div>
+
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[color:var(--ink-muted)] animate-fade-in delay-200">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#6B7280]" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            {t('auth.secure_notice')}
+          </p>
+        </div>
+      </main>
     </div>
   );
 }
