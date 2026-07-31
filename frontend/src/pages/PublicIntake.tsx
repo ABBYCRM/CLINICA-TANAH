@@ -78,7 +78,8 @@ export default function PublicIntake() {
       }
     })();
     return () => { cancelled = true; };
-  }, [slug, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t is unstable; slug drives reload
+  }, [slug]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
