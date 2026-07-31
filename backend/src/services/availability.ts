@@ -21,24 +21,24 @@ function allSlotsForDate(date: string): string[] {
   return slots;
 }
 
-function takenSlots(practitionerId: string, date: string): Set<string> {
+function takenSlots(practitionerId: string, date: string, tenantId: string): Set<string> {
   const rows = db.prepare(`
     SELECT scheduled_at FROM appointments
-    WHERE practitioner_id = ? AND date(scheduled_at) = ?
+    WHERE practitioner_id = ? AND date(scheduled_at) = ? AND tenant_id = ?
       AND status NOT IN ('cancelled','no_show')
-  `).all(practitionerId, date) as any[];
+  `).all(practitionerId, date, tenantId) as any[];
   return new Set(rows.map((r) => r.scheduled_at));
 }
 
 /** Every slot of the day, flagged available/taken — drives the scheduler UI. */
-export function getDaySlots(practitionerId: string, date: string): SlotInfo[] {
-  const taken = takenSlots(practitionerId, date);
+export function getDaySlots(practitionerId: string, date: string, tenantId: string): SlotInfo[] {
+  const taken = takenSlots(practitionerId, date, tenantId);
   return allSlotsForDate(date).map((s) => ({ scheduled_at: s, available: !taken.has(s) }));
 }
 
 /** Only the free slots — used by the WhatsApp bot when offering times. */
-export function getAvailableSlots(practitionerId: string, date: string): string[] {
-  return getDaySlots(practitionerId, date).filter((s) => s.available).map((s) => s.scheduled_at);
+export function getAvailableSlots(practitionerId: string, date: string, tenantId: string): string[] {
+  return getDaySlots(practitionerId, date, tenantId).filter((s) => s.available).map((s) => s.scheduled_at);
 }
 
 export interface PractitionerLoad {
@@ -50,16 +50,16 @@ export interface PractitionerLoad {
 }
 
 /**
- * Active doctors ranked by how much room they still have on `date`
- * (most free slots first) — the bot's fair, "educated" pick.
+ * Active doctors of the tenant ranked by how much room they still have on
+ * `date` (most free slots first) — the bot's fair, "educated" pick.
  */
-export function getPractitionerLoads(date: string): PractitionerLoad[] {
+export function getPractitionerLoads(date: string, tenantId: string): PractitionerLoad[] {
   const doctors = db.prepare(`
     SELECT id, full_name, council_number FROM users
-    WHERE role = 'doctor' AND active = 1 ORDER BY full_name ASC
-  `).all() as any[];
+    WHERE role = 'doctor' AND active = 1 AND tenant_id = ? ORDER BY full_name ASC
+  `).all(tenantId) as any[];
   return doctors.map((d) => {
-    const taken = takenSlots(d.id, date).size;
+    const taken = takenSlots(d.id, date, tenantId).size;
     const total = allSlotsForDate(date).length;
     return { id: d.id, full_name: d.full_name, council_number: d.council_number, booked: taken, free: total - taken };
   }).sort((a, b) => b.free - a.free || a.full_name.localeCompare(b.full_name));

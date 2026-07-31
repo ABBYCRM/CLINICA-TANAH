@@ -15,6 +15,7 @@ export interface ApiTokenRow {
   name: string;
   prefix: string;
   scope: TokenScope;
+  tenant_id: string;
   created_by: string | null;
   created_at: string;
   last_used_at: string | null;
@@ -26,13 +27,19 @@ function hash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-export function mintToken(name: string, scope: TokenScope, expiresAt: string | null, createdBy: string): { row: ApiTokenRow; token: string } {
+export function mintToken(
+  name: string,
+  scope: TokenScope,
+  expiresAt: string | null,
+  createdBy: string,
+  tenantId: string,
+): { row: ApiTokenRow; token: string } {
   const token = TOKEN_PREFIX + crypto.randomBytes(24).toString('hex'); // ct_ + 48 hex
   const id = uuid();
   db.prepare(`
-    INSERT INTO api_tokens (id, name, prefix, token_hash, scope, created_by, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, name, token.slice(0, 10), hash(token), scope, createdBy, expiresAt);
+    INSERT INTO api_tokens (id, tenant_id, name, prefix, token_hash, scope, created_by, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, tenantId, name, token.slice(0, 10), hash(token), scope, createdBy, expiresAt);
   return {
     row: db.prepare(`SELECT * FROM api_tokens WHERE id = ?`).get(id) as ApiTokenRow,
     token,
@@ -49,7 +56,11 @@ export function verifyApiToken(raw: string): ApiTokenRow | null {
   return row;
 }
 
-export function revokeToken(id: string): boolean {
+export function revokeToken(id: string, tenantId?: string): boolean {
+  if (tenantId) {
+    const res = db.prepare(`UPDATE api_tokens SET revoked_at = datetime('now') WHERE id = ? AND tenant_id = ? AND revoked_at IS NULL`).run(id, tenantId);
+    return res.changes > 0;
+  }
   const res = db.prepare(`UPDATE api_tokens SET revoked_at = datetime('now') WHERE id = ? AND revoked_at IS NULL`).run(id);
   return res.changes > 0;
 }

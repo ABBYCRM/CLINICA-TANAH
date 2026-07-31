@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useI18n } from '../hooks/useI18n';
 import { useEffect, useState } from 'react';
+import { api } from '../lib/api';
 
 type IconProps = { className?: string };
 
@@ -29,14 +30,16 @@ const Icons = {
   lgpd: icon(<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>),
   team: icon(<><circle cx="12" cy="8" r="3.5" /><path d="M5 20v-1a6 6 0 0 1 6-6h2a6 6 0 0 1 6 6v1" /><path d="M17.5 3.9a3.5 3.5 0 0 1 0 7" /></>),
   settings: icon(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>),
+  clinics: icon(<><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /><path d="M9 10h.01M15 10h.01M12 10h.01" /></>),
 };
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, effectiveTenantId } = useAuth();
   const { t, locale, setLocale, locales } = useI18n();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [tenantLabel, setTenantLabel] = useState(user?.tenant_name || t('app.name'));
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
@@ -44,6 +47,16 @@ export default function Layout() {
     document.body.style.overflow = mobileOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
+
+  useEffect(() => {
+    if (!user?.is_superadmin) {
+      setTenantLabel(user?.tenant_name || t('app.name'));
+      return;
+    }
+    api.get('/api/auth/me').then((d) => {
+      setTenantLabel(d.user?.effective_tenant_name || d.user?.tenant_name || t('app.name'));
+    }).catch(() => setTenantLabel(user?.tenant_name || t('app.name')));
+  }, [user, effectiveTenantId, t]);
 
   const navItems = [
     { to: '/', label: t('nav.dashboard'), Icon: Icons.dashboard },
@@ -60,6 +73,7 @@ export default function Layout() {
     { to: '/lgpd', label: t('nav.lgpd'), Icon: Icons.lgpd },
     ...(user?.role === 'admin' ? [{ to: '/team', label: t('nav.team'), Icon: Icons.team }] : []),
     ...(user?.role === 'admin' ? [{ to: '/settings', label: t('nav.settings'), Icon: Icons.settings }] : []),
+    ...(user?.is_superadmin ? [{ to: '/clinics', label: t('nav.clinics'), Icon: Icons.clinics }] : []),
   ];
 
   const brand = (compact: boolean) => (
@@ -71,7 +85,7 @@ export default function Layout() {
       </div>
       {!compact && (
         <div className="overflow-hidden">
-          <div className="font-semibold text-white truncate tracking-tight">{t('app.name')}</div>
+          <div className="font-semibold text-white truncate tracking-tight">{tenantLabel}</div>
           <div className="text-xs text-slate-400 truncate">{t('app.tagline')}</div>
         </div>
       )}
@@ -207,7 +221,10 @@ export default function Layout() {
               <path d="M4 6h16M4 12h16M4 18h10" />
             </svg>
           </button>
-          <div className="text-xs sm:text-sm text-slate-500 truncate">{t('app.address')}</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-slate-800 truncate" data-testid="active-clinic">{tenantLabel}</div>
+            <div className="text-xs text-slate-500 truncate hidden sm:block">{t('app.address')}</div>
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-fade-in">
           <Outlet />

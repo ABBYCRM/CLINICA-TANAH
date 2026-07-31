@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { db } from '../db/schema';
 import { signToken, authenticate, loadUserByEmail } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 
@@ -35,20 +36,30 @@ router.post('/login', async (req: Request, res: Response) => {
     res.status(401).json({ error: 'invalid_credentials' });
     return;
   }
-  const token = signToken({ id: user.id, email: user.email, full_name: user.full_name, role: user.role });
+  const token = signToken({
+    id: user.id, email: user.email, full_name: user.full_name,
+    role: user.role, tenant_id: user.tenant_id, is_superadmin: !!user.is_superadmin,
+  });
   logAudit({
     actorId: user.id, actorEmail: user.email, action: 'login_success',
     ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
     legalBasis: 'legal_obligation_art7_II',
+    tenantId: user.tenant_id,
   });
+  const tenant = db.prepare(`SELECT id, slug, name FROM tenants WHERE id = ?`).get(user.tenant_id) as any;
   res.json({
     token,
-    user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
+    user: {
+      id: user.id, email: user.email, full_name: user.full_name, role: user.role,
+      tenant_id: user.tenant_id, is_superadmin: !!user.is_superadmin, tenant_name: tenant?.name,
+    },
   });
 });
 
 router.get('/me', authenticate, (req: Request, res: Response) => {
-  res.json({ user: req.user });
+  const tenant = db.prepare(`SELECT id, slug, name FROM tenants WHERE id = ?`).get(req.user!.tenant_id) as any;
+  const effective = db.prepare(`SELECT id, slug, name FROM tenants WHERE id = ?`).get(req.tenantId) as any;
+  res.json({ user: { ...req.user, tenant_name: tenant?.name, effective_tenant_name: effective?.name } });
 });
 
 router.post('/logout', authenticate, (req: Request, res: Response) => {

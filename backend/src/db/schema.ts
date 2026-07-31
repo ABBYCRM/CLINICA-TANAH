@@ -42,6 +42,20 @@ export function initSchema(): void {
     -- ============================================================
     -- USERS / STAFF (RBAC for LGPD access control)
     -- ============================================================
+    -- ============================================================
+    -- TENANTS — one deployment, many clinics (row-level isolation)
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      cnpj TEXT,
+      address TEXT,
+      phone TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -496,6 +510,9 @@ export function initSchema(): void {
   migrate();
 }
 
+/** Fixed id of the tenant that owns all pre-multitenancy data. */
+export const DEFAULT_TENANT_ID = 't_clinica_tanah';
+
 /**
  * Idempotent column migrations for existing databases.
  * CREATE TABLE IF NOT EXISTS never alters live tables — add new
@@ -520,4 +537,29 @@ function migrate(): void {
   for (const sql of patientCols) {
     try { openDb().exec(sql); } catch { /* column already exists */ }
   }
+
+  // ---- Multi-tenancy: default tenant owns everything that predates it
+  openDb().prepare(`
+    INSERT OR IGNORE INTO tenants (id, slug, name, address, phone)
+    VALUES (?, 'clinica-tanah', 'Clínica Tanah',
+            'Rua Augusta, 1234 — Consolação, São Paulo / SP — CEP 01304-001', '+55 11 3000-0000')
+  `).run(DEFAULT_TENANT_ID);
+
+  const tenantTables = [
+    'users', 'patients', 'appointments', 'encounters', 'prescriptions',
+    'vendors', 'inventory_items', 'inventory_batches', 'stock_movements',
+    'purchase_orders', 'chart_of_accounts', 'journal_entries', 'invoices',
+    'employees', 'payroll_runs', 'payslips',
+    'lgpd_consents', 'lgpd_data_requests',
+    'whatsapp_conversations', 'whatsapp_messages',
+    'satisfaction_surveys', 'campaigns', 'api_tokens', 'audit_log',
+  ];
+  for (const table of tenantTables) {
+    try {
+      openDb().exec(`ALTER TABLE ${table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT '${DEFAULT_TENANT_ID}'`);
+    } catch { /* column already exists */ }
+  }
+  try { openDb().exec(`ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_patients_tenant ON patients(tenant_id)`); } catch { /* exists */ }
+  try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_appt_tenant ON appointments(tenant_id)`); } catch { /* exists */ }
 }

@@ -65,24 +65,25 @@ router.get('/', (req: Request, res: Response) => {
     rows = db.prepare(`
       SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
       FROM patients
-      WHERE full_name LIKE ? OR cpf LIKE ? OR phone LIKE ?
+      WHERE tenant_id = ? AND (full_name LIKE ? OR cpf LIKE ? OR phone LIKE ?)
       ORDER BY full_name ASC LIMIT ? OFFSET ?
-    `).all(like, like, like, limit, offset);
+    `).all(req.tenantId, like, like, like, limit, offset);
   } else {
     rows = db.prepare(`
       SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
-      FROM patients ORDER BY full_name ASC LIMIT ? OFFSET ?
-    `).all(limit, offset);
+      FROM patients WHERE tenant_id = ? ORDER BY full_name ASC LIMIT ? OFFSET ?
+    `).all(req.tenantId, limit, offset);
   }
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM patients`).get() as any).c;
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM patients WHERE tenant_id = ?`).get(req.tenantId) as any).c;
   res.json({ patients: rows, total });
 });
 
 // Get single patient — audit logged (PHI access)
 router.get('/:id', (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id) as any;
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'view_patient_phi', resourceType: 'patient', resourceId: p.id,
     ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
@@ -106,7 +107,7 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
   const id = uuid();
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO patients (id, full_name, social_name, birth_date, cpf, rg, rg_issuer, gender, phone, phone_secondary, email,
+    INSERT INTO patients (id, tenant_id, full_name, social_name, birth_date, cpf, rg, rg_issuer, gender, phone, phone_secondary, email,
                           address_zip, address_street, address_number, address_complement,
                           address_neighborhood, address_city, address_state,
                           marital_status, occupation, education_level, nationality, birthplace,
@@ -117,9 +118,9 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
                           lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version,
                           created_at, updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
-    id, d.full_name, d.social_name ?? null, d.birth_date, d.cpf ?? null, d.rg ?? null,
+    id, req.tenantId, d.full_name, d.social_name ?? null, d.birth_date, d.cpf ?? null, d.rg ?? null,
     d.rg_issuer ?? null, d.gender ?? null, d.phone, d.phone_secondary ?? null, d.email ?? null,
     d.address_zip ?? null, d.address_street ?? null, d.address_number ?? null, d.address_complement ?? null,
     d.address_neighborhood ?? null, d.address_city ?? null, d.address_state ?? null,
@@ -134,6 +135,7 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
   );
   // Record formal LGPD consent
   recordConsent({
+    tenantId: req.tenantId,
     subjectType: 'patient', subjectId: id,
     consentType: 'health_data_processing',
     granted: true, policyVersion: d.lgpd_policy_version,
@@ -142,6 +144,7 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
   });
   if (d.phone) {
     recordConsent({
+      tenantId: req.tenantId,
       subjectType: 'patient', subjectId: id,
       consentType: 'whatsapp_communication',
       granted: true, policyVersion: d.lgpd_policy_version,
@@ -150,6 +153,7 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
     });
   }
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'create_patient', resourceType: 'patient', resourceId: id,
     afterValue: { full_name: d.full_name, cpf: d.cpf },
@@ -161,7 +165,7 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
 
 // Update patient
 router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
-  const before = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id) as any;
+  const before = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!before) { res.status(404).json({ error: 'not_found' }); return; }
   const parsed = patientSchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
@@ -192,8 +196,9 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
   sets.push(`updated_at = ?`);
   args.push(new Date().toISOString());
   args.push(req.params.id);
-  db.prepare(`UPDATE patients SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+  db.prepare(`UPDATE patients SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`).run(...args, req.tenantId);
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'update_patient', resourceType: 'patient', resourceId: req.params.id,
     beforeValue: { full_name: before.full_name },
@@ -209,12 +214,12 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
 // (CFM 1.821/2007 mandates 20-year retention of medical records; those
 // patients must go through the LGPD deletion/anonymization flow instead).
 router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT id, full_name FROM patients WHERE id = ?`).get(req.params.id) as any;
+  const p = db.prepare(`SELECT id, full_name FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
   const clinical = (db.prepare(`
-    SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ?) +
-           (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ?) AS c
-  `).get(req.params.id, req.params.id) as any).c;
+    SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ? AND tenant_id = ?) AS c
+  `).get(req.params.id, req.tenantId, req.params.id, req.tenantId) as any).c;
   if (clinical > 0) {
     res.status(409).json({
       error: 'has_clinical_records',
@@ -222,10 +227,11 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     });
     return;
   }
-  db.prepare(`DELETE FROM invoices WHERE patient_id = ? AND status != 'paid'`).run(req.params.id);
+  db.prepare(`DELETE FROM invoices WHERE patient_id = ? AND status != 'paid' AND tenant_id = ?`).run(req.params.id, req.tenantId);
   db.prepare(`UPDATE whatsapp_conversations SET patient_id = NULL WHERE patient_id = ?`).run(req.params.id);
-  db.prepare(`DELETE FROM patients WHERE id = ?`).run(req.params.id); // appointments cascade
+  db.prepare(`DELETE FROM patients WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId); // appointments cascade
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'delete_patient', resourceType: 'patient', resourceId: req.params.id,
     beforeValue: { full_name: p.full_name },
@@ -238,25 +244,26 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
 // Clinical snapshot for the scheduler drawer — everything the medical team
 // needs next to an appointment to make an educated decision.
 router.get('/:id/summary', (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id) as any;
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
   const parseArr = (v: any): string[] => { try { return v ? JSON.parse(v) : []; } catch { return []; } };
   const recentEncounters = db.prepare(`
     SELECT e.id, e.started_at, e.assessment, e.icd10_codes, u.full_name AS practitioner_name
     FROM encounters e JOIN users u ON u.id = e.practitioner_id
-    WHERE e.patient_id = ? ORDER BY e.started_at DESC LIMIT 3
-  `).all(req.params.id) as any[];
+    WHERE e.patient_id = ? AND e.tenant_id = ? ORDER BY e.started_at DESC LIMIT 3
+  `).all(req.params.id, req.tenantId) as any[];
   const upcoming = db.prepare(`
     SELECT a.id, a.scheduled_at, a.type, a.status, u.full_name AS practitioner_name
     FROM appointments a JOIN users u ON u.id = a.practitioner_id
-    WHERE a.patient_id = ? AND a.scheduled_at >= datetime('now')
+    WHERE a.patient_id = ? AND a.tenant_id = ? AND a.scheduled_at >= datetime('now')
       AND a.status NOT IN ('cancelled','no_show','completed')
     ORDER BY a.scheduled_at ASC LIMIT 5
-  `).all(req.params.id);
+  `).all(req.params.id, req.tenantId);
   const activePrescriptions = (db.prepare(`
-    SELECT COUNT(*) AS c FROM prescriptions WHERE patient_id = ?
-  `).get(req.params.id) as any).c;
+    SELECT COUNT(*) AS c FROM prescriptions WHERE patient_id = ? AND tenant_id = ?
+  `).get(req.params.id, req.tenantId) as any).c;
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'view_patient_summary_phi', resourceType: 'patient', resourceId: p.id,
     legalBasis: 'health_protection_art7_VIII',
@@ -281,13 +288,14 @@ router.get('/:id/summary', (req: Request, res: Response) => {
 
 // Patient LGPD data export (portability)
 router.get('/:id/data-export', requireRole('admin', 'patient', 'doctor'), (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id);
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId);
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
-  const encounters = db.prepare(`SELECT * FROM encounters WHERE patient_id = ? ORDER BY started_at DESC`).all(req.params.id);
-  const prescriptions = db.prepare(`SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC`).all(req.params.id);
-  const appointments = db.prepare(`SELECT * FROM appointments WHERE patient_id = ? ORDER BY scheduled_at DESC`).all(req.params.id);
+  const encounters = db.prepare(`SELECT * FROM encounters WHERE patient_id = ? AND tenant_id = ? ORDER BY started_at DESC`).all(req.params.id, req.tenantId);
+  const prescriptions = db.prepare(`SELECT * FROM prescriptions WHERE patient_id = ? AND tenant_id = ? ORDER BY created_at DESC`).all(req.params.id, req.tenantId);
+  const appointments = db.prepare(`SELECT * FROM appointments WHERE patient_id = ? AND tenant_id = ? ORDER BY scheduled_at DESC`).all(req.params.id, req.tenantId);
   const consents = db.prepare(`SELECT * FROM lgpd_consents WHERE subject_type='patient' AND subject_id = ? ORDER BY granted_at DESC`).all(req.params.id);
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'lgpd_data_portability_export',
     resourceType: 'patient', resourceId: req.params.id,

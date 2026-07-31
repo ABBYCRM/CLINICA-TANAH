@@ -1,6 +1,7 @@
 /**
  * API token administration — admin only.
  * Mint (plaintext returned once), list (no secrets), revoke.
+ * Tokens are scoped to the effective tenant.
  */
 import { Router, Request, Response } from 'express';
 import { db } from '../db/schema';
@@ -13,9 +14,9 @@ router.use(authenticate, requireRole('admin'));
 
 const SAFE_COLS = `id, name, prefix, scope, created_by, created_at, last_used_at, expires_at, revoked_at`;
 
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', (req: Request, res: Response) => {
   res.json({
-    tokens: db.prepare(`SELECT ${SAFE_COLS} FROM api_tokens ORDER BY created_at DESC`).all(),
+    tokens: db.prepare(`SELECT ${SAFE_COLS} FROM api_tokens WHERE tenant_id = ? ORDER BY created_at DESC`).all(req.tenantId),
   });
 });
 
@@ -38,23 +39,24 @@ router.post('/', (req: Request, res: Response) => {
     }
     expiresAt = new Date(Date.now() + days * 86400000).toISOString();
   }
-  const { row, token } = mintToken(name.trim(), scope ?? 'read_write', expiresAt, req.user!.id);
+  const { row, token } = mintToken(name.trim(), scope ?? 'read_write', expiresAt, req.user!.id, req.tenantId!);
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'api_token_minted', resourceType: 'api_token', resourceId: row.id,
     afterValue: { name: row.name, scope: row.scope, expires_at: row.expires_at },
     ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
     legalBasis: 'legal_obligation_art7_II',
   });
-  // plaintext token returned exactly once — it cannot be recovered later
   res.status(201).json({ token, id: row.id, prefix: row.prefix, scope: row.scope, expires_at: row.expires_at });
 });
 
 router.delete('/:id', (req: Request, res: Response) => {
-  const existing = db.prepare(`SELECT id, name, revoked_at FROM api_tokens WHERE id = ?`).get(req.params.id) as any;
+  const existing = db.prepare(`SELECT id, name, revoked_at FROM api_tokens WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
-  const changed = revokeToken(req.params.id);
+  const changed = revokeToken(req.params.id, req.tenantId);
   logAudit({
+    tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'api_token_revoked', resourceType: 'api_token', resourceId: req.params.id,
     beforeValue: { name: existing.name },

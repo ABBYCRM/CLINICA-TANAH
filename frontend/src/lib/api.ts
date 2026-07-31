@@ -1,16 +1,28 @@
 /**
- * API client — handles auth, locale, and JSON.
+ * API client — handles auth, locale, tenant override, and JSON.
  */
 import { getLocale } from '../i18n';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
+const TENANT_KEY = 'effective_tenant_id';
+
+export function getTenantOverride(): string | null {
+  return localStorage.getItem(TENANT_KEY);
+}
+
+export function setTenantOverride(id: string | null): void {
+  if (id) localStorage.setItem(TENANT_KEY, id);
+  else localStorage.removeItem(TENANT_KEY);
+}
 
 function authHeaders(): HeadersInit {
   const token = localStorage.getItem('auth_token');
+  const tenant = getTenantOverride();
   return {
     'Content-Type': 'application/json',
     'Accept-Language': getLocale(),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(tenant ? { 'X-Tenant-Id': tenant } : {}),
   };
 }
 

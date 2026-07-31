@@ -18,6 +18,7 @@ import WhatsApp from './pages/WhatsApp';
 import LGPD from './pages/LGPD';
 import Team from './pages/Team';
 import Settings from './pages/Settings';
+import Clinics from './pages/Clinics';
 import './index.css';
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,7 @@ function AppRoutes() {
         <Route path="lgpd" element={<LGPD />} />
         <Route path="team" element={<Team />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="clinics" element={<Clinics />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

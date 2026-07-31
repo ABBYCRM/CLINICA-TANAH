@@ -24,7 +24,8 @@
     "audit": "Auditoria",
     "logout": "Sair",
     "team": "Equipe",
-    "settings": "Configurações"
+    "settings": "Configurações",
+    "clinics": "Clínicas"
   },
   "common": {
     "save": "Salvar",
@@ -484,5 +485,17 @@
     "active": "Ativo",
     "no_tokens": "Nenhum token emitido ainda.",
     "confirm_revoke": "Revogar o token {{name}}? Integrações que o usam perderão acesso imediatamente."
+  },
+  "clinics": {
+    "title": "Clínicas",
+    "subtitle": "Gerencie as clínicas da plataforma (multi-tenant).",
+    "new": "Nova clínica",
+    "slug": "Identificador",
+    "staff": "Equipe",
+    "patients": "Pacientes",
+    "switch": "Visualizar",
+    "viewing": "Ativa",
+    "admin_section": "Administrador da clínica",
+    "superadmin_only": "Acesso restrito a superadministradores."
   }
 }

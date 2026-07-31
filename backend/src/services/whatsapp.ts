@@ -7,9 +7,13 @@
  *   - Marks incoming messages as read, applies delivery status callbacks
  * Dry-run mode (env missing): messages are persisted but not sent — used
  * by tests and the in-app simulator. Everything else behaves identically.
+ *
+ * Multi-tenancy: conversations/messages are keyed by (tenant_id, phone).
+ * Inbound webhooks resolve the tenant from an existing conversation/patient,
+ * falling back to DEFAULT_TENANT_ID.
  */
 import crypto from 'crypto';
-import { db } from '../db/schema';
+import { db, DEFAULT_TENANT_ID } from '../db/schema';
 import { v4 as uuid } from 'uuid';
 
 const META_API_VERSION = 'v18.0';
@@ -20,6 +24,15 @@ export interface SendResult { ok: boolean; message_id?: string; error?: string; 
 
 export function isLive(): boolean {
   return !!(process.env.META_WA_TOKEN && process.env.META_WA_PHONE_ID);
+}
+
+/** Resolve which clinic owns this WhatsApp phone number. */
+export function resolveTenantForPhone(phone: string): string {
+  const conv = db.prepare(`SELECT tenant_id FROM whatsapp_conversations WHERE phone = ? ORDER BY last_message_at DESC LIMIT 1`).get(phone) as any;
+  if (conv?.tenant_id) return conv.tenant_id;
+  const patient = db.prepare(`SELECT tenant_id FROM patients WHERE phone = ? LIMIT 1`).get(phone) as any;
+  if (patient?.tenant_id) return patient.tenant_id;
+  return DEFAULT_TENANT_ID;
 }
 
 /** HMAC-SHA256 signature check for Meta webhook payloads (X-Hub-Signature-256). */
@@ -47,12 +60,12 @@ async function metaRequest(path: string, init: RequestInit = {}): Promise<{ ok: 
   return { ok: res.ok, status: res.status, data };
 }
 
-export async function sendTextMessage(to: string, body: string): Promise<SendResult> {
+export async function sendTextMessage(to: string, body: string, tenantId: string = DEFAULT_TENANT_ID): Promise<SendResult> {
   const id = uuid();
   db.prepare(`
-    INSERT INTO whatsapp_messages (id, phone, direction, body, status)
-    VALUES (?, ?, 'out', ?, 'queued')
-  `).run(id, to, body);
+    INSERT INTO whatsapp_messages (id, tenant_id, phone, direction, body, status)
+    VALUES (?, ?, ?, 'out', ?, 'queued')
+  `).run(id, tenantId, to, body);
 
   if (!isLive()) {
     return { ok: true, message_id: `dry-${id}`, dry_run: true };
@@ -116,26 +129,26 @@ export async function pingMeta(): Promise<{ reachable: boolean; display_phone?: 
   }
 }
 
-export function persistIncoming(phone: string, body: string, waMessageId?: string): void {
+export function persistIncoming(phone: string, body: string, waMessageId?: string, tenantId: string = DEFAULT_TENANT_ID): void {
   db.prepare(`
-    INSERT INTO whatsapp_messages (id, phone, direction, body, wa_message_id, status)
-    VALUES (?, ?, 'in', ?, ?, 'received')
-  `).run(uuid(), phone, body, waMessageId ?? null);
+    INSERT INTO whatsapp_messages (id, tenant_id, phone, direction, body, wa_message_id, status)
+    VALUES (?, ?, ?, 'in', ?, ?, 'received')
+  `).run(uuid(), tenantId, phone, body, waMessageId ?? null);
 }
 
 export { persistIncoming as persistIncomingPublic };
 
-export function getOrCreateConversation(phone: string): any {
-  let conv = db.prepare(`SELECT * FROM whatsapp_conversations WHERE phone = ?`).get(phone) as any;
+export function getOrCreateConversation(phone: string, tenantId: string): any {
+  let conv = db.prepare(`SELECT * FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
   if (!conv) {
     const id = uuid();
-    db.prepare(`INSERT INTO whatsapp_conversations (id, phone, state, last_message_at) VALUES (?, ?, 'idle', datetime('now'))`).run(id, phone);
+    db.prepare(`INSERT INTO whatsapp_conversations (id, tenant_id, phone, state, last_message_at) VALUES (?, ?, ?, 'idle', datetime('now'))`).run(id, tenantId, phone);
     conv = db.prepare(`SELECT * FROM whatsapp_conversations WHERE id = ?`).get(id);
   }
   return conv;
 }
 
-export function updateConversation(phone: string, fields: { state?: string; context?: any; patient_id?: string; consent?: boolean; opt_out?: boolean }): void {
+export function updateConversation(phone: string, tenantId: string, fields: { state?: string; context?: any; patient_id?: string; consent?: boolean; opt_out?: boolean }): void {
   const sets: string[] = [];
   const args: any[] = [];
   if (fields.state !== undefined) { sets.push('state = ?'); args.push(fields.state); }
@@ -145,6 +158,6 @@ export function updateConversation(phone: string, fields: { state?: string; cont
   if (fields.opt_out !== undefined) { sets.push('opted_out = ?'); args.push(fields.opt_out ? 1 : 0); }
   sets.push('last_message_at = datetime(\'now\')');
   sets.push('updated_at = datetime(\'now\')');
-  args.push(phone);
-  db.prepare(`UPDATE whatsapp_conversations SET ${sets.join(', ')} WHERE phone = ?`).run(...args);
+  args.push(phone, tenantId);
+  db.prepare(`UPDATE whatsapp_conversations SET ${sets.join(', ')} WHERE phone = ? AND tenant_id = ?`).run(...args);
 }

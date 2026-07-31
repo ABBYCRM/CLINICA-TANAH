@@ -9,9 +9,9 @@ router.use(authenticate);
 
 router.get('/consents', requireRole('admin','dpo'), (req: Request, res: Response) => {
   const subjectType = req.query.subject_type as string | undefined;
-  let sql = `SELECT * FROM lgpd_consents`;
-  const args: any[] = [];
-  if (subjectType) { sql += ` WHERE subject_type = ?`; args.push(subjectType); }
+  let sql = `SELECT * FROM lgpd_consents WHERE tenant_id = ?`;
+  const args: any[] = [req.tenantId];
+  if (subjectType) { sql += ` AND subject_type = ?`; args.push(subjectType); }
   sql += ` ORDER BY granted_at DESC LIMIT 500`;
   res.json({ consents: db.prepare(sql).all(...args) });
 });
@@ -21,14 +21,15 @@ router.get('/data-requests', requireRole('admin','dpo','receptionist'), (req: Re
   let sql = `
     SELECT r.*,
            CASE r.subject_type
-             WHEN 'patient' THEN (SELECT full_name FROM patients WHERE id = r.subject_id)
-             WHEN 'employee' THEN (SELECT full_name FROM employees WHERE id = r.subject_id)
-             WHEN 'vendor' THEN (SELECT legal_name FROM vendors WHERE id = r.subject_id)
+             WHEN 'patient' THEN (SELECT full_name FROM patients WHERE id = r.subject_id AND tenant_id = r.tenant_id)
+             WHEN 'employee' THEN (SELECT full_name FROM employees WHERE id = r.subject_id AND tenant_id = r.tenant_id)
+             WHEN 'vendor' THEN (SELECT legal_name FROM vendors WHERE id = r.subject_id AND tenant_id = r.tenant_id)
            END AS subject_name
     FROM lgpd_data_requests r
+    WHERE r.tenant_id = ?
   `;
-  const args: any[] = [];
-  if (status) { sql += ` WHERE r.status = ?`; args.push(status); }
+  const args: any[] = [req.tenantId];
+  if (status) { sql += ` AND r.status = ?`; args.push(status); }
   sql += ` ORDER BY r.requested_at DESC LIMIT 200`;
   res.json({ requests: db.prepare(sql).all(...args) });
 });
@@ -45,24 +46,24 @@ router.post('/data-requests', requireRole('admin','dpo','receptionist'), (req: R
   }
   const id = uuid();
   db.prepare(`
-    INSERT INTO lgpd_data_requests (id, request_type, subject_type, subject_id, status)
-    VALUES (?, ?, ?, ?, 'open')
-  `).run(id, request_type, subject_type, subject_id);
+    INSERT INTO lgpd_data_requests (id, tenant_id, request_type, subject_type, subject_id, status)
+    VALUES (?, ?, ?, ?, ?, 'open')
+  `).run(id, req.tenantId, request_type, subject_type, subject_id);
   if (notes) {
-    db.prepare(`UPDATE lgpd_data_requests SET response_notes = ? WHERE id = ?`).run(notes, id);
+    db.prepare(`UPDATE lgpd_data_requests SET response_notes = ? WHERE id = ? AND tenant_id = ?`).run(notes, id, req.tenantId);
   }
-  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_registered',
+  logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_registered',
              resourceType: 'lgpd_data_request', resourceId: id,
              afterValue: { request_type, subject_type, subject_id }, legalBasis: 'legal_obligation_art7_II' });
   res.status(201).json({ id });
 });
 
 router.put('/data-requests/:id/fulfill', requireRole('admin','dpo'), (req: Request, res: Response) => {
-  const existing = db.prepare(`SELECT id FROM lgpd_data_requests WHERE id = ?`).get(req.params.id) as any;
+  const existing = db.prepare(`SELECT id FROM lgpd_data_requests WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`UPDATE lgpd_data_requests SET status = 'fulfilled', fulfilled_at = datetime('now'), handled_by = ?, response_notes = ? WHERE id = ?`)
-    .run(req.user!.id, req.body.notes ?? null, req.params.id);
-  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_fulfilled',
+  db.prepare(`UPDATE lgpd_data_requests SET status = 'fulfilled', fulfilled_at = datetime('now'), handled_by = ?, response_notes = ? WHERE id = ? AND tenant_id = ?`)
+    .run(req.user!.id, req.body.notes ?? null, req.params.id, req.tenantId);
+  logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_fulfilled',
              resourceType: 'lgpd_data_request', resourceId: req.params.id, legalBasis: 'legal_obligation_art7_II' });
   res.json({ ok: true });
 });
@@ -70,9 +71,9 @@ router.put('/data-requests/:id/fulfill', requireRole('admin','dpo'), (req: Reque
 router.get('/audit', requireRole('admin','dpo'), (req: Request, res: Response) => {
   const limit = Math.min(parseInt(req.query.limit as string || '100'), 500);
   const resourceType = req.query.resource_type as string | undefined;
-  let sql = `SELECT * FROM audit_log`;
-  const args: any[] = [];
-  if (resourceType) { sql += ` WHERE resource_type = ?`; args.push(resourceType); }
+  let sql = `SELECT * FROM audit_log WHERE tenant_id = ?`;
+  const args: any[] = [req.tenantId];
+  if (resourceType) { sql += ` AND resource_type = ?`; args.push(resourceType); }
   sql += ` ORDER BY created_at DESC LIMIT ?`;
   args.push(limit);
   res.json({ entries: db.prepare(sql).all(...args) });

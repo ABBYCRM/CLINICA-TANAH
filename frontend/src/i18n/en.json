@@ -24,7 +24,8 @@
     "audit": "Audit",
     "logout": "Logout",
     "team": "Team",
-    "settings": "Settings"
+    "settings": "Settings",
+    "clinics": "Clinics"
   },
   "common": {
     "save": "Save",
@@ -484,5 +485,17 @@
     "active": "Active",
     "no_tokens": "No tokens minted yet.",
     "confirm_revoke": "Revoke token {{name}}? Integrations using it lose access immediately."
+  },
+  "clinics": {
+    "title": "Clinics",
+    "subtitle": "Manage clinics on this platform (multi-tenant).",
+    "new": "New clinic",
+    "slug": "Slug",
+    "staff": "Staff",
+    "patients": "Patients",
+    "switch": "View",
+    "viewing": "Active",
+    "admin_section": "Clinic administrator",
+    "superadmin_only": "Superadmin access only."
   }
 }

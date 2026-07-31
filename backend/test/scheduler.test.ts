@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 const TEST_DB_DIR = path.join(__dirname, '..', 'data-test-scheduler');
 const BASE = 'http://127.0.0.1:3995';
 
-import { db } from '../src/db/schema';
+import { db, DEFAULT_TENANT_ID } from '../src/db/schema';
 import { getAvailableSlots, getPractitionerLoads } from '../src/services/availability';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
@@ -20,6 +20,7 @@ let doctorB = '';
 let patientId = '';
 const PHONE = '+5511960607070';
 const DATE = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+const T = DEFAULT_TENANT_ID;
 
 async function api(method: string, p: string, body?: any) {
   const res = await fetch(`${BASE}/api${p}`, {
@@ -81,10 +82,10 @@ describe('availability service', () => {
     });
     expect(created.status).toBe(201);
 
-    expect(getAvailableSlots(doctorA, DATE)).not.toContain(`${DATE} 08:00:00`);
-    expect(getAvailableSlots(doctorA, DATE)).toContain(`${DATE} 08:30:00`);
+    expect(getAvailableSlots(doctorA, DATE, T)).not.toContain(`${DATE} 08:00:00`);
+    expect(getAvailableSlots(doctorA, DATE, T)).toContain(`${DATE} 08:30:00`);
 
-    const loads = getPractitionerLoads(DATE);
+    const loads = getPractitionerLoads(DATE, T);
     expect(loads[0].id).toBe(doctorB); // more free slots than A now
     expect(loads.find((l) => l.id === doctorA)!.booked).toBe(1);
 
@@ -135,7 +136,7 @@ describe('availability service', () => {
     `).get(patientId, DATE) as any;
     expect(appt).toBeTruthy();
     // and that exact slot is now taken in the shared service
-    expect(getAvailableSlots(appt.practitioner_id, DATE)).not.toContain(appt.scheduled_at);
+    expect(getAvailableSlots(appt.practitioner_id, DATE, T)).not.toContain(appt.scheduled_at);
   });
 });
 

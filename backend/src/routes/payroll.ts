@@ -71,7 +71,7 @@ const employeeSchema = z.object({
 });
 
 router.get('/employees', (req: Request, res: Response) => {
-  const rows = db.prepare(`SELECT * FROM employees WHERE active = 1 ORDER BY full_name ASC`).all();
+  const rows = db.prepare(`SELECT * FROM employees WHERE active = 1 AND tenant_id = ? ORDER BY full_name ASC`).all(req.tenantId);
   res.json({ employees: rows });
 });
 
@@ -82,11 +82,11 @@ router.post('/employees', requireRole('admin','accountant'), (req: Request, res:
   const id = uuid();
   try {
     db.prepare(`
-      INSERT INTO employees (id, user_id, full_name, cpf, pis, ctps_number, ctps_series, role,
+      INSERT INTO employees (id, tenant_id, user_id, full_name, cpf, pis, ctps_number, ctps_series, role,
                              admission_date, termination_date, base_salary, weekly_hours,
                              health_insurance_discount, other_discounts, dependents, bank_account)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).run(id, d.user_id ?? null, d.full_name, d.cpf, d.pis ?? null, d.ctps_number ?? null,
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(id, req.tenantId, d.user_id ?? null, d.full_name, d.cpf, d.pis ?? null, d.ctps_number ?? null,
            d.ctps_series ?? null, d.role, d.admission_date, d.termination_date ?? null,
            d.base_salary, d.weekly_hours, d.health_insurance_discount, d.other_discounts,
            d.dependents, d.bank_account ? JSON.stringify(d.bank_account) : null);
@@ -113,37 +113,38 @@ router.put('/employees/:id', requireRole('admin','accountant'), (req: Request, r
     }
   }
   if (!sets.length) { res.json({ ok: true, noop: true }); return; }
-  sets.push(`updated_at = ?`); args.push(new Date().toISOString()); args.push(req.params.id);
-  db.prepare(`UPDATE employees SET ${sets.join(', ')} WHERE id = ?`).run(...args);
+  sets.push(`updated_at = ?`); args.push(new Date().toISOString()); args.push(req.params.id, req.tenantId);
+  const r = db.prepare(`UPDATE employees SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`).run(...args);
+  if (!r.changes) { res.status(404).json({ error: 'not_found' }); return; }
   res.json({ ok: true });
 });
 
 // Terminate/deactivate an employee (keeps payslip history; eSocial-style
 // termination date can be set via PUT). Hard delete only if never paid.
 router.delete('/employees/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
-  const emp = db.prepare(`SELECT id, full_name FROM employees WHERE id = ?`).get(req.params.id) as any;
+  const emp = db.prepare(`SELECT id, full_name FROM employees WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!emp) { res.status(404).json({ error: 'not_found' }); return; }
-  const slips = (db.prepare(`SELECT COUNT(*) AS c FROM payslips WHERE employee_id = ?`).get(req.params.id) as any).c;
+  const slips = (db.prepare(`SELECT COUNT(*) AS c FROM payslips WHERE employee_id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any).c;
   if (slips > 0) {
-    db.prepare(`UPDATE employees SET active = 0, termination_date = COALESCE(termination_date, date('now')), updated_at = ? WHERE id = ?`)
-      .run(new Date().toISOString(), req.params.id);
+    db.prepare(`UPDATE employees SET active = 0, termination_date = COALESCE(termination_date, date('now')), updated_at = ? WHERE id = ? AND tenant_id = ?`)
+      .run(new Date().toISOString(), req.params.id, req.tenantId);
     res.json({ ok: true, soft_deleted: true });
     return;
   }
-  db.prepare(`DELETE FROM employees WHERE id = ?`).run(req.params.id);
+  db.prepare(`DELETE FROM employees WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
   res.json({ ok: true, soft_deleted: false });
 });
 
 router.post('/run', requireRole('admin','accountant'), (req: Request, res: Response) => {
   const period = req.body.period as string; // 'YYYY-MM'
   if (!/^\d{4}-\d{2}$/.test(period)) { res.status(400).json({ error: 'invalid_period' }); return; }
-  const employees = db.prepare(`SELECT * FROM employees WHERE active = 1`).all() as any[];
+  const employees = db.prepare(`SELECT * FROM employees WHERE active = 1 AND tenant_id = ?`).all(req.tenantId) as any[];
   if (!employees.length) { res.status(400).json({ error: 'no_employees' }); return; }
 
   const runId = uuid();
   const tx = db.transaction(() => {
-    db.prepare(`INSERT INTO payroll_runs (id, period, type, status, created_by) VALUES (?, ?, 'monthly', 'draft', ?)`)
-      .run(runId, period, req.user!.id);
+    db.prepare(`INSERT INTO payroll_runs (id, tenant_id, period, type, status, created_by) VALUES (?, ?, ?, 'monthly', 'draft', ?)`)
+      .run(runId, req.tenantId, period, req.user!.id);
     let totalGross = 0, totalNet = 0, totalINSS = 0, totalIRRF = 0, totalFGTS = 0;
     for (const e of employees) {
       const gross = e.base_salary;
@@ -161,9 +162,9 @@ router.post('/run', requireRole('admin','accountant'), (req: Request, res: Respo
         irrf_brackets: IRRF_BRACKETS,
       };
       db.prepare(`
-        INSERT INTO payslips (id, payroll_run_id, employee_id, base_salary, gross_earnings, inss_deduction, irrf_deduction, other_deductions, net_pay, fgts_deposit, worked_days, json_breakdown)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-      `).run(uuid(), runId, e.id, e.base_salary, gross, inss, irrf, otherDeductions, net, fgts, 30, JSON.stringify(breakdown));
+        INSERT INTO payslips (id, tenant_id, payroll_run_id, employee_id, base_salary, gross_earnings, inss_deduction, irrf_deduction, other_deductions, net_pay, fgts_deposit, worked_days, json_breakdown)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(uuid(), req.tenantId, runId, e.id, e.base_salary, gross, inss, irrf, otherDeductions, net, fgts, 30, JSON.stringify(breakdown));
       totalGross += gross; totalNet += net; totalINSS += inss; totalIRRF += irrf; totalFGTS += fgts;
     }
     db.prepare(`UPDATE payroll_runs SET total_gross=?, total_net=?, total_inss=?, total_irrf=?, total_fgts=? WHERE id=?`)
@@ -174,43 +175,43 @@ router.post('/run', requireRole('admin','accountant'), (req: Request, res: Respo
 });
 
 router.get('/runs', (req: Request, res: Response) => {
-  res.json({ runs: db.prepare(`SELECT * FROM payroll_runs ORDER BY period DESC LIMIT 24`).all() });
+  res.json({ runs: db.prepare(`SELECT * FROM payroll_runs WHERE tenant_id = ? ORDER BY period DESC LIMIT 24`).all(req.tenantId) });
 });
 
 router.get('/runs/:id', (req: Request, res: Response) => {
-  const run = db.prepare(`SELECT * FROM payroll_runs WHERE id = ?`).get(req.params.id);
+  const run = db.prepare(`SELECT * FROM payroll_runs WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId);
   if (!run) { res.status(404).json({ error: 'not_found' }); return; }
   const payslips = db.prepare(`
     SELECT ps.*, e.full_name AS employee_name, e.cpf, e.role
     FROM payslips ps JOIN employees e ON e.id = ps.employee_id
-    WHERE ps.payroll_run_id = ?
-  `).all(req.params.id);
+    WHERE ps.payroll_run_id = ? AND ps.tenant_id = ?
+  `).all(req.params.id, req.tenantId);
   res.json({ run, payslips });
 });
 
 router.put('/runs/:id/approve', requireRole('admin','accountant'), (req: Request, res: Response) => {
-  const run = db.prepare(`SELECT id FROM payroll_runs WHERE id = ?`).get(req.params.id) as any;
+  const run = db.prepare(`SELECT id FROM payroll_runs WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!run) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`UPDATE payroll_runs SET status = 'approved' WHERE id = ?`).run(req.params.id);
+  db.prepare(`UPDATE payroll_runs SET status = 'approved' WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
   res.json({ ok: true });
 });
 
 router.put('/runs/:id/pay', requireRole('admin','accountant'), (req: Request, res: Response) => {
-  const run = db.prepare(`SELECT id FROM payroll_runs WHERE id = ?`).get(req.params.id) as any;
+  const run = db.prepare(`SELECT id FROM payroll_runs WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!run) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`UPDATE payroll_runs SET status = 'paid', paid_at = datetime('now') WHERE id = ?`).run(req.params.id);
+  db.prepare(`UPDATE payroll_runs SET status = 'paid', paid_at = datetime('now') WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
   res.json({ ok: true });
 });
 
 // Delete a payroll run — drafts only; approved/paid runs are labor records
 router.delete('/runs/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
-  const run = db.prepare(`SELECT id, status, period FROM payroll_runs WHERE id = ?`).get(req.params.id) as any;
+  const run = db.prepare(`SELECT id, status, period FROM payroll_runs WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!run) { res.status(404).json({ error: 'not_found' }); return; }
   if (run.status !== 'draft') {
     res.status(409).json({ error: 'not_draft', message: 'Only draft payroll runs can be deleted.' });
     return;
   }
-  db.prepare(`DELETE FROM payroll_runs WHERE id = ?`).run(req.params.id); // payslips cascade
+  db.prepare(`DELETE FROM payroll_runs WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId); // payslips cascade
   res.json({ ok: true, deleted_id: req.params.id });
 });
 
