@@ -15,6 +15,10 @@ import {
 } from '../services/whatsapp';
 import { getAvailableSlots, getPractitionerLoads } from '../services/availability';
 import { DEFAULT_TENANT_ID } from '../db/schema';
+import {
+  audienceStats, listAudience, marketingAnalytics, runAutomation,
+  type AudienceSegment,
+} from '../services/marketing';
 
 const router = Router();
 
@@ -482,38 +486,37 @@ router.get('/campaigns', authenticate, (req: Request, res: Response) => {
 });
 
 router.post('/campaigns', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
-  const { name, message, scheduled_for } = req.body ?? {};
+  const { name, message, scheduled_for, audience, template_id, category } = req.body ?? {};
   if (!name || !message || typeof name !== 'string' || typeof message !== 'string') {
     res.status(400).json({ error: 'validation', required: ['name', 'message'] });
     return;
   }
+  const segment = (audience || 'all_consented') as AudienceSegment;
   const id = uuid();
   db.prepare(`
-    INSERT INTO campaigns (id, tenant_id, name, message, scheduled_for, created_by)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, req.tenantId, name.trim(), message.trim(), scheduled_for ?? null, req.user!.id);
+    INSERT INTO campaigns (id, tenant_id, name, message, scheduled_for, created_by, audience, template_id, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, req.tenantId, name.trim(), message.trim(), scheduled_for ?? null, req.user!.id,
+    segment, template_id ?? null, category === 'utility' ? 'utility' : 'marketing',
+  );
   logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'campaign_created',
-             resourceType: 'campaign', resourceId: id, afterValue: { name }, legalBasis: 'consent_art7_I' });
+             resourceType: 'campaign', resourceId: id, afterValue: { name, audience: segment }, legalBasis: 'consent_art7_I' });
   res.status(201).json({ id });
 });
 
-// Blast the campaign to every consented, non-opted-out patient (LGPD art. 7º I)
+// Blast the campaign to segmented, consented, non-opted-out patients (LGPD art. 7º I)
 router.post('/campaigns/:id/dispatch', authenticate, requireRole('admin','receptionist'), async (req: Request, res: Response) => {
   const campaign = db.prepare(`SELECT * FROM campaigns WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!campaign) { res.status(404).json({ error: 'not_found' }); return; }
   if (campaign.status === 'sent') { res.status(409).json({ error: 'already_sent' }); return; }
 
-  const audience = db.prepare(`
-    SELECT p.id, p.full_name, p.phone FROM patients p
-    WHERE p.tenant_id = ? AND p.phone IS NOT NULL AND p.phone != ''
-      AND p.lgpd_consent_at IS NOT NULL
-      AND p.lgpd_opt_out_marketing = 0
-      AND p.phone NOT IN (SELECT phone FROM whatsapp_conversations WHERE opted_out = 1 AND tenant_id = ?)
-  `).all(req.tenantId, req.tenantId) as any[];
+  const segment = (campaign.audience || 'all_consented') as AudienceSegment;
+  const audience = listAudience(req.tenantId!, segment);
 
   db.prepare(`UPDATE campaigns SET status = 'sending' WHERE id = ? AND tenant_id = ?`).run(campaign.id, req.tenantId);
   const locale = (process.env.DEFAULT_LOCALE as Locale) || 'pt-BR';
-  const footer = t(locale, 'whatsapp.promo_footer', {});
+  const footer = campaign.category === 'utility' ? '' : t(locale, 'whatsapp.promo_footer', {});
   let sent = 0, failed = 0;
   for (const p of audience) {
     const firstName = p.full_name.split(' ')[0];
@@ -527,8 +530,8 @@ router.post('/campaigns/:id/dispatch', authenticate, requireRole('admin','recept
   `).run(sent, failed, campaign.id, req.tenantId);
   logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'campaign_dispatched',
              resourceType: 'campaign', resourceId: campaign.id,
-             afterValue: { sent, failed, audience: audience.length }, legalBasis: 'consent_art7_I' });
-  res.json({ ok: true, sent, failed, audience: audience.length, dry_run: !isLive() });
+             afterValue: { sent, failed, audience: audience.length, segment }, legalBasis: 'consent_art7_I' });
+  res.json({ ok: true, sent, failed, audience: audience.length, segment, dry_run: !isLive() });
 });
 
 router.delete('/campaigns/:id', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
@@ -539,6 +542,120 @@ router.delete('/campaigns/:id', authenticate, requireRole('admin','receptionist'
   logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'campaign_deleted',
              resourceType: 'campaign', resourceId: req.params.id, legalBasis: 'legal_obligation_art7_II' });
   res.json({ ok: true, deleted_id: req.params.id });
+});
+
+/* ------------------------------------------------------------------
+ * Marketing hub — templates, automations, audience, analytics
+ * ------------------------------------------------------------------ */
+
+router.get('/templates', authenticate, (req: Request, res: Response) => {
+  const rows = db.prepare(`
+    SELECT * FROM wa_templates WHERE tenant_id = ? ORDER BY category, name
+  `).all(req.tenantId);
+  res.json({ templates: rows });
+});
+
+router.post('/templates', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const { name, category, body, header, footer, language, status, meta_name } = req.body ?? {};
+  if (!name || !body || !category) {
+    res.status(400).json({ error: 'validation', required: ['name', 'category', 'body'] });
+    return;
+  }
+  if (!['marketing', 'utility', 'authentication'].includes(category)) {
+    res.status(400).json({ error: 'validation', message: 'invalid category' });
+    return;
+  }
+  const id = uuid();
+  db.prepare(`
+    INSERT INTO wa_templates (id, tenant_id, name, category, language, body, header, footer, status, meta_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, req.tenantId, String(name).trim(), category, language || 'pt_BR', String(body).trim(),
+    header ?? null, footer ?? null,
+    ['draft', 'pending', 'approved', 'rejected'].includes(status) ? status : 'draft',
+    meta_name ?? null,
+  );
+  logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'wa_template_created',
+             resourceType: 'wa_template', resourceId: id, afterValue: { name, category }, legalBasis: 'legitimate_interest_art7_VI' });
+  res.status(201).json({ id });
+});
+
+router.put('/templates/:id', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const existing = db.prepare(`SELECT * FROM wa_templates WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
+  const name = req.body?.name ?? existing.name;
+  const category = req.body?.category ?? existing.category;
+  const body = req.body?.body ?? existing.body;
+  const header = req.body?.header !== undefined ? req.body.header : existing.header;
+  const footer = req.body?.footer !== undefined ? req.body.footer : existing.footer;
+  const status = req.body?.status ?? existing.status;
+  const meta_name = req.body?.meta_name !== undefined ? req.body.meta_name : existing.meta_name;
+  if (!['marketing', 'utility', 'authentication'].includes(category)) {
+    res.status(400).json({ error: 'validation', message: 'invalid category' });
+    return;
+  }
+  db.prepare(`
+    UPDATE wa_templates SET name=?, category=?, body=?, header=?, footer=?, status=?, meta_name=?, updated_at=datetime('now')
+    WHERE id=? AND tenant_id=?
+  `).run(name, category, body, header, footer, status, meta_name, req.params.id, req.tenantId);
+  res.json({ ok: true });
+});
+
+router.delete('/templates/:id', authenticate, requireRole('admin'), (req: Request, res: Response) => {
+  const existing = db.prepare(`SELECT id FROM wa_templates WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId);
+  if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
+  db.prepare(`UPDATE wa_automations SET template_id = NULL WHERE template_id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
+  db.prepare(`DELETE FROM wa_templates WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
+  res.json({ ok: true });
+});
+
+router.get('/automations', authenticate, (req: Request, res: Response) => {
+  const rows = db.prepare(`
+    SELECT a.*, t.name AS template_name FROM wa_automations a
+    LEFT JOIN wa_templates t ON t.id = a.template_id
+    WHERE a.tenant_id = ? ORDER BY a.name
+  `).all(req.tenantId);
+  res.json({ automations: rows });
+});
+
+router.put('/automations/:id', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const existing = db.prepare(`SELECT * FROM wa_automations WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
+  const enabled = req.body?.enabled !== undefined ? (req.body.enabled ? 1 : 0) : existing.enabled;
+  const message = req.body?.message ?? existing.message;
+  const template_id = req.body?.template_id !== undefined ? req.body.template_id : existing.template_id;
+  const config = req.body?.config !== undefined
+    ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config))
+    : existing.config;
+  db.prepare(`
+    UPDATE wa_automations SET enabled=?, message=?, template_id=?, config=?, updated_at=datetime('now')
+    WHERE id=? AND tenant_id=?
+  `).run(enabled, message, template_id, config, req.params.id, req.tenantId);
+  res.json({ ok: true });
+});
+
+router.post('/automations/:id/run', authenticate, requireRole('admin','receptionist'), async (req: Request, res: Response) => {
+  const locale = (process.env.DEFAULT_LOCALE as Locale) || 'pt-BR';
+  const result = await runAutomation(req.tenantId!, req.params.id, locale);
+  if (!result.ok) {
+    const status = result.error === 'not_found' ? 404 : result.error === 'disabled' ? 409 : 400;
+    res.status(status).json(result);
+    return;
+  }
+  logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'wa_automation_run',
+             resourceType: 'wa_automation', resourceId: req.params.id, afterValue: result, legalBasis: 'consent_art7_I' });
+  res.json(result);
+});
+
+router.get('/audience', authenticate, (req: Request, res: Response) => {
+  const segment = (String(req.query.segment || 'all_consented')) as AudienceSegment;
+  const stats = audienceStats(req.tenantId!);
+  const preview = listAudience(req.tenantId!, segment).slice(0, 50);
+  res.json({ ...stats, segment, preview });
+});
+
+router.get('/analytics', authenticate, (req: Request, res: Response) => {
+  res.json(marketingAnalytics(req.tenantId!));
 });
 
 export { handleMessage, detectUserLocale, SPECIALTIES };

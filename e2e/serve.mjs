@@ -44,7 +44,7 @@ console.log(`▸ Starting Clínica Tanah on http://127.0.0.1:${port} …`);
 const server = spawn('npx', ['tsx', 'src/server.ts'], { cwd: backendDir, env, stdio: 'inherit', detached: true });
 
 function killTree(sig = 'SIGTERM') {
-  try { process.kill(-server.pid!, sig); } catch { /* already dead */ }
+  try { if (server.pid) process.kill(-server.pid, sig); } catch { /* already dead */ }
 }
 function shutdown(code = 0) {
   killTree('SIGTERM');

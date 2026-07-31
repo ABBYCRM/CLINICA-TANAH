@@ -12,7 +12,8 @@ import { db } from '../db/schema';
 import { verifyApiToken, TOKEN_PREFIX } from '../services/tokens';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'clinica-tanah-dev-secret-change-me-in-prod';
-const TOKEN_TTL = '8h';
+/** Clinic staff often leave a tab open through a shift — 24h beats 8h expiry surprises. */
+const TOKEN_TTL = '24h';
 
 export interface AuthUser {
   id: string;
@@ -50,18 +51,22 @@ export function signToken(user: Omit<AuthUser, 'is_superadmin'> & { is_superadmi
 export function verifyToken(token: string): AuthUser | null {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
-    // Tokens minted before multitenancy lack tenant_id — resolve from the user row
-    if (!payload.tenant_id) {
-      const row = db.prepare(`SELECT tenant_id, is_superadmin FROM users WHERE id = ?`).get(payload.id) as any;
-      if (row) {
-        payload.tenant_id = row.tenant_id;
-        payload.is_superadmin = row.is_superadmin;
-      }
-    }
+    // Always refresh identity from DB so tenant upgrades / role changes apply without re-login
+    const row = db.prepare(`
+      SELECT id, email, full_name, role, tenant_id, is_superadmin, active
+      FROM users WHERE id = ?
+    `).get(payload.id) as any;
+    if (!row || !row.active) return null;
+    const tenantId = row.tenant_id || payload.tenant_id;
+    if (!tenantId) return null;
     return {
-      ...payload,
-      is_superadmin: !!payload.is_superadmin,
-    } as AuthUser;
+      id: row.id,
+      email: row.email,
+      full_name: row.full_name,
+      role: row.role,
+      tenant_id: tenantId,
+      is_superadmin: !!row.is_superadmin,
+    };
   } catch {
     return null;
   }

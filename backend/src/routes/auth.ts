@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { db } from '../db/schema';
+import { db, DEFAULT_TENANT_ID } from '../db/schema';
 import { signToken, authenticate, loadUserByEmail } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 
@@ -36,6 +36,11 @@ router.post('/login', async (req: Request, res: Response) => {
     res.status(401).json({ error: 'invalid_credentials' });
     return;
   }
+  // Legacy rows / partial seeds may lack tenant_id — attach the platform default
+  if (!user.tenant_id) {
+    db.prepare(`UPDATE users SET tenant_id = ? WHERE id = ?`).run(DEFAULT_TENANT_ID, user.id);
+    user.tenant_id = DEFAULT_TENANT_ID;
+  }
   const token = signToken({
     id: user.id, email: user.email, full_name: user.full_name,
     role: user.role, tenant_id: user.tenant_id, is_superadmin: !!user.is_superadmin,
@@ -59,7 +64,18 @@ router.post('/login', async (req: Request, res: Response) => {
 router.get('/me', authenticate, (req: Request, res: Response) => {
   const tenant = db.prepare(`SELECT id, slug, name FROM tenants WHERE id = ?`).get(req.user!.tenant_id) as any;
   const effective = db.prepare(`SELECT id, slug, name FROM tenants WHERE id = ?`).get(req.tenantId) as any;
-  res.json({ user: { ...req.user, tenant_name: tenant?.name, effective_tenant_name: effective?.name } });
+  res.json({
+    user: {
+      id: req.user!.id,
+      email: req.user!.email,
+      full_name: req.user!.full_name,
+      role: req.user!.role,
+      tenant_id: req.user!.tenant_id,
+      is_superadmin: !!req.user!.is_superadmin,
+      tenant_name: tenant?.name,
+      effective_tenant_name: effective?.name,
+    },
+  });
 });
 
 router.post('/logout', authenticate, (req: Request, res: Response) => {

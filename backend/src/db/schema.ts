@@ -482,6 +482,43 @@ export function initSchema(): void {
     );
 
     -- ============================================================
+    -- WHATSAPP MARKETING — Meta-style templates + clinic automations
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS wa_templates (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('marketing','utility','authentication')),
+      language TEXT NOT NULL DEFAULT 'pt_BR',
+      body TEXT NOT NULL,
+      header TEXT,
+      footer TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','approved','rejected')),
+      meta_name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_templates_tenant ON wa_templates(tenant_id);
+
+    CREATE TABLE IF NOT EXISTS wa_automations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      message TEXT NOT NULL,
+      template_id TEXT REFERENCES wa_templates(id),
+      config TEXT,                       -- JSON: offset_hours, inactive_days, etc.
+      last_run_at TEXT,
+      last_sent_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_automations_tenant ON wa_automations(tenant_id);
+
+    -- ============================================================
     -- API TOKENS — programmatic access to the whole CRM
     -- ============================================================
     CREATE TABLE IF NOT EXISTS api_tokens (
@@ -562,4 +599,117 @@ function migrate(): void {
   try { openDb().exec(`ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
   try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_patients_tenant ON patients(tenant_id)`); } catch { /* exists */ }
   try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_appt_tenant ON appointments(tenant_id)`); } catch { /* exists */ }
+
+  // Campaign audience / template linkage for marketing blasts
+  try { openDb().exec(`ALTER TABLE campaigns ADD COLUMN template_id TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE campaigns ADD COLUMN category TEXT NOT NULL DEFAULT 'marketing'`); } catch { /* exists */ }
+
+  // Ensure marketing tables exist on DBs created before this migration
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS wa_templates (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('marketing','utility','authentication')),
+      language TEXT NOT NULL DEFAULT 'pt_BR',
+      body TEXT NOT NULL,
+      header TEXT,
+      footer TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','approved','rejected')),
+      meta_name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS wa_automations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      message TEXT NOT NULL,
+      template_id TEXT REFERENCES wa_templates(id),
+      config TEXT,
+      last_run_at TEXT,
+      last_sent_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, key)
+    );
+  `);
+
+  seedMarketingDefaults(DEFAULT_TENANT_ID);
+}
+
+/** Seed clinic marketing templates + automations once per tenant (idempotent). */
+export function seedMarketingDefaults(tenantId: string): void {
+  const db = openDb();
+  const hasTpl = (db.prepare(`SELECT COUNT(*) AS c FROM wa_templates WHERE tenant_id = ?`).get(tenantId) as any).c;
+  if (hasTpl === 0) {
+    const templates: Array<[string, string, string, string, string]> = [
+      ['tpl_welcome', 'Boas-vindas', 'utility',
+        'Olá {{name}}! Bem-vindo(a) à Clínica Tanah. Estamos felizes em cuidar de você. Responda MENU para agendar.', 'approved'],
+      ['tpl_reminder_24h', 'Lembrete 24h', 'utility',
+        'Olá {{name}}! Lembrete: sua consulta está marcada para amanhã ({{date}} às {{time}}). Responda 1 para confirmar ou 2 para remarcar.', 'approved'],
+      ['tpl_reminder_2h', 'Lembrete 2h', 'utility',
+        'Olá {{name}}! Sua consulta é hoje às {{time}}. Estamos te esperando na Clínica Tanah.', 'approved'],
+      ['tpl_promo', 'Campanha promocional', 'marketing',
+        'Olá {{name}}! 💙 Semana especial na Clínica Tanah: condições exclusivas para você. Agende pelo WhatsApp. Responda SAIR para não receber promoções.', 'approved'],
+      ['tpl_birthday', 'Aniversário', 'marketing',
+        'Feliz aniversário, {{name}}! 🎂 A Clínica Tanah deseja um dia maravilhoso. Ganhe 10% de desconto em consultas este mês — responda MENU para agendar.', 'approved'],
+      ['tpl_nps', 'Pesquisa NPS', 'utility',
+        'Olá {{name}}! Como foi sua experiência conosco? Responda com uma nota de 0 a 10.', 'approved'],
+      ['tpl_noshow', 'Falta / no-show', 'utility',
+        'Olá {{name}}, sentimos sua falta na consulta de {{date}}. Quer remarcar? Responda MENU ou ligue para a clínica.', 'approved'],
+      ['tpl_reengage', 'Reativação', 'marketing',
+        'Olá {{name}}! Faz um tempo que não nos vemos. Que tal agendar um check-up na Clínica Tanah? Responda MENU. SAIR para optar por sair.', 'approved'],
+      ['tpl_payment', 'Lembrete de pagamento', 'utility',
+        'Olá {{name}}! Identificamos uma fatura em aberto ({{invoice}}). Podemos ajudar com o pagamento? Responda esta mensagem ou fale com a recepção.', 'approved'],
+    ];
+    const ins = db.prepare(`
+      INSERT OR IGNORE INTO wa_templates (id, tenant_id, name, category, language, body, status, meta_name)
+      VALUES (?, ?, ?, ?, 'pt_BR', ?, ?, ?)
+    `);
+    for (const [id, name, cat, body, status] of templates) {
+      ins.run(`${id}_${tenantId}`, tenantId, name, cat, body, status, id);
+    }
+  }
+
+  const hasAuto = (db.prepare(`SELECT COUNT(*) AS c FROM wa_automations WHERE tenant_id = ?`).get(tenantId) as any).c;
+  if (hasAuto === 0) {
+    const autos: Array<[string, string, string, string, string, object]> = [
+      ['reminder_24h', 'Lembrete 24 horas antes', 'Envia lembrete utilitário 24h antes da consulta confirmada/agendada.',
+        'Olá {{name}}! Lembrete: sua consulta está marcada para amanhã ({{date}} às {{time}}). Responda 1 para confirmar ou 2 para remarcar.',
+        JSON.stringify({ offset_hours: 24 }), { enabled: 1 }],
+      ['reminder_2h', 'Lembrete 2 horas antes', 'Lembrete curto no dia da consulta.',
+        'Olá {{name}}! Sua consulta é hoje às {{time}}. Estamos te esperando na Clínica Tanah.',
+        JSON.stringify({ offset_hours: 2 }), { enabled: 1 }],
+      ['welcome', 'Boas-vindas a novos pacientes', 'Disparada quando um paciente é cadastrado com telefone e consentimento.',
+        'Olá {{name}}! Bem-vindo(a) à Clínica Tanah. Responda MENU para agendar sua primeira consulta.',
+        JSON.stringify({}), { enabled: 1 }],
+      ['birthday', 'Feliz aniversário', 'Mensagem de aniversário (marketing) para pacientes consentidos.',
+        'Feliz aniversário, {{name}}! 🎂 A Clínica Tanah deseja um dia maravilhoso. Responda MENU para agendar.',
+        JSON.stringify({}), { enabled: 0 }],
+      ['no_show', 'Follow-up de falta', 'Contato após consulta marcada como no_show.',
+        'Olá {{name}}, sentimos sua falta na consulta de {{date}}. Quer remarcar? Responda MENU.',
+        JSON.stringify({ lookback_days: 3 }), { enabled: 1 }],
+      ['inactive_90d', 'Reengajamento 90 dias', 'Pacientes sem consulta nos últimos 90 dias.',
+        'Olá {{name}}! Faz um tempo que não nos vemos. Que tal um check-up? Responda MENU. SAIR para optar por sair.',
+        JSON.stringify({ inactive_days: 90 }), { enabled: 0 }],
+      ['nps_auto', 'NPS automático pós-consulta', 'Pesquisa de satisfação após consultas concluídas (últimas 48h).',
+        'Olá {{name}}! Como foi sua experiência conosco? Responda com uma nota de 0 a 10.',
+        JSON.stringify({ within_hours: 48 }), { enabled: 1 }],
+      ['payment_reminder', 'Lembrete de fatura', 'Faturas emitidas/atrasadas com paciente vinculado.',
+        'Olá {{name}}! Há uma fatura em aberto ({{invoice}}). Podemos ajudar? Fale com a recepção.',
+        JSON.stringify({}), { enabled: 0 }],
+    ];
+    const insA = db.prepare(`
+      INSERT OR IGNORE INTO wa_automations
+        (id, tenant_id, key, name, description, enabled, message, config)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const [key, name, desc, message, config, flags] of autos) {
+      insA.run(`auto_${key}_${tenantId}`, tenantId, key, name, desc, (flags as any).enabled ? 1 : 0, message, config);
+    }
+  }
 }

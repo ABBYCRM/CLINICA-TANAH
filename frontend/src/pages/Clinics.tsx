@@ -128,7 +128,16 @@ export default function Clinics() {
             </label>
             <label className="block text-sm">
               <span className="text-slate-600">{t('clinics.slug')}</span>
-              <input className="input mt-1" required pattern="[a-z0-9-]+" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase() })} />
+              <input
+                className="input mt-1"
+                required
+                // Chrome pattern uses the Unicode `v` flag — escape `-` to avoid
+                // "Invalid character class" console errors on the Clinics form.
+                pattern="[a-z0-9\-]+"
+                title="somente minúsculas, números e hífen"
+                value={form.slug}
+                onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase() })}
+              />
             </label>
             <label className="block text-sm">
               <span className="text-slate-600">CNPJ</span>

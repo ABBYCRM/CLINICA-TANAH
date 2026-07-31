@@ -32,7 +32,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (stored) {
       try { setUser(JSON.parse(stored)); } catch { /* ignore */ }
     }
-    setLoading(false);
+    // Refresh from /me so upgrades (tenant_id, is_superadmin) apply without re-login
+    const token = localStorage.getItem('auth_token');
+    if (!token) { setLoading(false); return; }
+    api.get('/api/auth/me')
+      .then((d) => {
+        const u = d.user;
+        if (!u) return;
+        const next = {
+          id: u.id,
+          email: u.email,
+          full_name: u.full_name,
+          role: u.role,
+          tenant_id: u.tenant_id,
+          tenant_name: u.tenant_name || u.effective_tenant_name,
+          is_superadmin: !!u.is_superadmin,
+        };
+        localStorage.setItem('auth_user', JSON.stringify(next));
+        setUser(next);
+      })
+      .catch((e: any) => {
+        // Only wipe the session on auth failures — transient network blips keep the cached user
+        const status = e?.status;
+        const code = e?.body?.error || e?.message;
+        if (status === 401 || code === 'invalid_token' || code === 'unauthorized') {
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('auth_user');
+          setTenantOverride(null);
+          setUser(null);
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const setEffectiveTenantId = (id: string | null) => {

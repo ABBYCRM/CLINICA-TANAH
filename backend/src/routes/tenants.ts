@@ -6,7 +6,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
-import { db } from '../db/schema';
+import { db, seedMarketingDefaults } from '../db/schema';
 import { authenticate, requireSuperadmin } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 
@@ -70,6 +70,7 @@ router.post('/', (req: Request, res: Response) => {
   });
   try {
     tx();
+    seedMarketingDefaults(tenantId);
   } catch (e: any) {
     res.status(409).json({ error: 'create_failed', message: e.message });
     return;

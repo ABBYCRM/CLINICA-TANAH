@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, apiErrorKey } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, FormError, FormActions, IconTrash } from '../components/crud';
 
+type Tab = 'chat' | 'campaigns' | 'templates' | 'automations' | 'audience' | 'analytics' | 'surveys';
+
+const TABS: Tab[] = ['chat', 'campaigns', 'templates', 'automations', 'audience', 'analytics', 'surveys'];
+
+const AUDIENCE_OPTIONS = [
+  'all_consented', 'recent_30d', 'inactive_90d', 'birthday_month', 'upcoming_7d', 'high_nps',
+] as const;
+
 export default function WhatsApp() {
   const { t, locale } = useI18n();
-  const [tab, setTab] = useState<'chat' | 'campaigns' | 'surveys'>('chat');
+  const [tab, setTab] = useState<Tab>('chat');
   const [status, setStatus] = useState<any>(null);
   const [conversations, setConversations] = useState<any[]>([]);
   const [activePhone, setActivePhone] = useState<string | null>(null);
@@ -52,7 +60,7 @@ export default function WhatsApp() {
       loadMessages(activePhone);
       loadConversations();
     } catch (e: any) {
-      setError(e.body?.error === 'opted_out' ? t('whatsapp.opted_out_error') : (e.message || t('errors.generic')));
+      setError(e.body?.error === 'opted_out' ? t('whatsapp.opted_out_error') : t(apiErrorKey(e)));
     } finally {
       setSending(false);
     }
@@ -78,7 +86,7 @@ export default function WhatsApp() {
       setDeleting(null);
       loadConversations();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
+      setError(t(apiErrorKey(e)));
       setDeleting(null);
     } finally {
       setBusy(false);
@@ -86,14 +94,17 @@ export default function WhatsApp() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="whatsapp-marketing">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('whatsapp.title')}</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">{t('whatsapp.title')}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t('whatsapp.subtitle')}</p>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-            {(['chat', 'campaigns', 'surveys'] as const).map((k) => (
+          <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-lg">
+            {TABS.map((k) => (
               <button key={k} onClick={() => setTab(k)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${tab === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`px-2.5 py-1.5 text-sm rounded-md transition-all ${tab === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}
                 data-testid={`tab-${k}`}>
                 {t(`whatsapp.tab_${k}`)}
               </button>
@@ -133,11 +144,14 @@ export default function WhatsApp() {
       {error && <FormError message={error} />}
 
       {tab === 'campaigns' && <CampaignsView />}
+      {tab === 'templates' && <TemplatesView />}
+      {tab === 'automations' && <AutomationsView />}
+      {tab === 'audience' && <AudienceView />}
+      {tab === 'analytics' && <AnalyticsView />}
       {tab === 'surveys' && <SurveysView />}
 
       {tab === 'chat' && (
       <div className="grid md:grid-cols-3 gap-4 h-[600px]">
-        {/* Conversations list */}
         <div className="card overflow-y-auto">
           <div className="p-3 border-b bg-slate-50 font-semibold text-sm">{t('whatsapp.conversations')}</div>
           {conversations.map((c) => (
@@ -165,7 +179,6 @@ export default function WhatsApp() {
           {conversations.length === 0 && <div className="p-6 text-center text-slate-400 text-sm">{t('common.no_data')}</div>}
         </div>
 
-        {/* Chat panel */}
         <div className="card md:col-span-2 flex flex-col">
           {activePhone ? (
             <>
@@ -270,7 +283,7 @@ function CampaignsView() {
       setNotice(t('whatsapp.dispatched_toast', { sent: res.sent, failed: res.failed }));
       load();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
+      setError(t(apiErrorKey(e)));
     } finally {
       setDispatching(null);
     }
@@ -284,7 +297,7 @@ function CampaignsView() {
       setDeleting(null);
       load();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
+      setError(t(apiErrorKey(e)));
       setDeleting(null);
     } finally {
       setBusy(false);
@@ -313,6 +326,8 @@ function CampaignsView() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-slate-900">{c.name}</span>
                   <span className={`badge ${c.status === 'sent' ? 'badge-green' : c.status === 'draft' ? 'badge-yellow' : 'badge-blue'}`}>{c.status}</span>
+                  {c.audience && <span className="badge-blue">{t(`whatsapp.segment_${c.audience}`)}</span>}
+                  {c.category && <span className="text-xs text-slate-400">{t(`whatsapp.cat_${c.category}`)}</span>}
                 </div>
                 <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{c.message}</p>
                 <div className="text-xs text-slate-400 mt-2">
@@ -353,18 +368,37 @@ function CampaignForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const [audience, setAudience] = useState<string>('all_consented');
+  const [category, setCategory] = useState('marketing');
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateId, setTemplateId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get('/api/whatsapp/templates').then((d) => setTemplates(d.templates || [])).catch(() => {});
+  }, []);
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const tpl = templates.find((x) => x.id === id);
+    if (tpl) {
+      setMessage(tpl.body);
+      setCategory(tpl.category === 'utility' ? 'utility' : 'marketing');
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSaving(true);
     try {
-      await api.post('/api/whatsapp/campaigns', { name, message });
+      await api.post('/api/whatsapp/campaigns', {
+        name, message, audience, category, template_id: templateId || null,
+      });
       onSaved();
     } catch (err: any) {
-      setError(err.message || t('errors.generic'));
+      setError(t(apiErrorKey(err)));
     } finally {
       setSaving(false);
     }
@@ -378,15 +412,397 @@ function CampaignForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <label className="label">{t('whatsapp.campaign_name')} *</label>
           <input className="input" placeholder="Dia do Cliente — Agosto" value={name} onChange={(e) => setName(e.target.value)} required data-testid="campaign-name" />
         </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">{t('whatsapp.audience_segment')}</label>
+            <select className="input" value={audience} onChange={(e) => setAudience(e.target.value)} data-testid="campaign-audience">
+              {AUDIENCE_OPTIONS.map((s) => (
+                <option key={s} value={s}>{t(`whatsapp.segment_${s}`)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">{t('whatsapp.category')}</label>
+            <select className="input" value={category} onChange={(e) => setCategory(e.target.value)} data-testid="campaign-category">
+              <option value="marketing">{t('whatsapp.cat_marketing')}</option>
+              <option value="utility">{t('whatsapp.cat_utility')}</option>
+            </select>
+          </div>
+        </div>
+        {templates.length > 0 && (
+          <div>
+            <label className="label">{t('whatsapp.use_template')}</label>
+            <select className="input" value={templateId} onChange={(e) => applyTemplate(e.target.value)} data-testid="campaign-template">
+              <option value="">—</option>
+              {templates.filter((x) => x.status === 'approved').map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>{tpl.name} ({tpl.category})</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="label">{t('whatsapp.campaign_message')} *</label>
-          <textarea className="input" rows={5} placeholder="Olá {{name}}! 💙 Semana do Cliente na Clínica Tanah: 20% de desconto em consultas de dermatologia esta semana. Agende pelo WhatsApp!"
+          <textarea className="input" rows={5} placeholder="Olá {{name}}! 💙 Semana do Cliente na Clínica Tanah…"
             value={message} onChange={(e) => setMessage(e.target.value)} required data-testid="campaign-message" />
           <p className="text-xs text-slate-400 mt-1">{t('whatsapp.campaign_hint')}</p>
         </div>
         <FormActions saving={saving} onCancel={onClose} />
       </form>
     </Modal>
+  );
+}
+
+function TemplatesView() {
+  const { t, locale } = useI18n();
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api.get('/api/whatsapp/templates')
+      .then((d) => setTemplates(d.templates || []))
+      .catch((e) => setError(t(apiErrorKey(e))))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, [locale]);
+
+  const remove = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    try {
+      await api.del(`/api/whatsapp/templates/${deleting.id}`);
+      setDeleting(null);
+      load();
+    } catch (e: any) {
+      setError(t(apiErrorKey(e)));
+      setDeleting(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setStatus = async (tpl: any, status: string) => {
+    try {
+      await api.put(`/api/whatsapp/templates/${tpl.id}`, { status });
+      load();
+    } catch (e: any) {
+      setError(t(apiErrorKey(e)));
+    }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="templates-view">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500 max-w-2xl">{t('whatsapp.templates_info')}</p>
+        <button onClick={() => setShowForm(true)} className="btn-primary shrink-0" data-testid="new-template">
+          + {t('whatsapp.new_template')}
+        </button>
+      </div>
+      {error && <FormError message={error} />}
+      {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {templates.map((tpl) => (
+          <div key={tpl.id} className="card p-4 space-y-2" data-testid={`template-${tpl.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="font-semibold text-slate-900">{tpl.name}</div>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  <span className="badge-blue">{t(`whatsapp.cat_${tpl.category}`)}</span>
+                  <span className={`badge ${tpl.status === 'approved' ? 'badge-green' : tpl.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
+                    {t(`whatsapp.tpl_status_${tpl.status}`)}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => setDeleting(tpl)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title={t('common.delete')}>
+                <IconTrash />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600 whitespace-pre-wrap">{tpl.body}</p>
+            {tpl.status !== 'approved' && (
+              <button onClick={() => setStatus(tpl, 'approved')} className="btn-secondary text-xs" data-testid={`approve-${tpl.id}`}>
+                {t('whatsapp.mark_approved')}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {showForm && <TemplateForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}
+      {deleting && <ConfirmDialog name={deleting.name} busy={busy} onCancel={() => setDeleting(null)} onConfirm={remove} />}
+    </div>
+  );
+}
+
+function TemplateForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('marketing');
+  const [body, setBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await api.post('/api/whatsapp/templates', { name, category, body, status: 'approved' });
+      onSaved();
+    } catch (err: any) {
+      setError(t(apiErrorKey(err)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={t('whatsapp.new_template')} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <FormError message={error} />
+        <div>
+          <label className="label">{t('common.name')} *</label>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} required data-testid="template-name" />
+        </div>
+        <div>
+          <label className="label">{t('whatsapp.category')}</label>
+          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)} data-testid="template-category">
+            <option value="marketing">{t('whatsapp.cat_marketing')}</option>
+            <option value="utility">{t('whatsapp.cat_utility')}</option>
+            <option value="authentication">{t('whatsapp.cat_authentication')}</option>
+          </select>
+        </div>
+        <div>
+          <label className="label">{t('whatsapp.campaign_message')} *</label>
+          <textarea className="input" rows={5} value={body} onChange={(e) => setBody(e.target.value)} required data-testid="template-body" />
+          <p className="text-xs text-slate-400 mt-1">{t('whatsapp.campaign_hint')}</p>
+        </div>
+        <FormActions saving={saving} onCancel={onClose} />
+      </form>
+    </Modal>
+  );
+}
+
+function AutomationsView() {
+  const { t, locale } = useI18n();
+  const [autos, setAutos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [running, setRunning] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    api.get('/api/whatsapp/automations')
+      .then((d) => setAutos(d.automations || []))
+      .catch((e) => setError(t(apiErrorKey(e))))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, [locale]);
+
+  const toggle = async (a: any) => {
+    try {
+      await api.put(`/api/whatsapp/automations/${a.id}`, { enabled: !a.enabled });
+      load();
+    } catch (e: any) {
+      setError(t(apiErrorKey(e)));
+    }
+  };
+
+  const run = async (a: any) => {
+    setRunning(a.id);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post(`/api/whatsapp/automations/${a.id}/run`, {});
+      setNotice(t('whatsapp.automation_ran', { sent: res.sent ?? 0, failed: res.failed ?? 0 }));
+      load();
+    } catch (e: any) {
+      setError(e.body?.error === 'disabled' ? t('whatsapp.automation_disabled') : t(apiErrorKey(e)));
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4" data-testid="automations-view">
+      <p className="text-sm text-slate-500 max-w-3xl">{t('whatsapp.automations_info')}</p>
+      {error && <FormError message={error} />}
+      {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">{notice}</div>}
+      {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
+      <div className="grid gap-3">
+        {autos.map((a) => (
+          <div key={a.id} className="card p-4 flex flex-col sm:flex-row sm:items-start gap-3 justify-between" data-testid={`automation-${a.key}`}>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-900">{a.name}</span>
+                <span className={`badge ${a.enabled ? 'badge-green' : 'badge-yellow'}`}>
+                  {a.enabled ? t('whatsapp.active') : t('whatsapp.inactive')}
+                </span>
+                <span className="text-xs text-slate-400 font-mono">{a.key}</span>
+              </div>
+              <p className="text-sm text-slate-500 mt-1">{a.description}</p>
+              <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap border-l-2 border-clinic-200 pl-3">{a.message}</p>
+              {a.last_run_at && (
+                <p className="text-xs text-slate-400 mt-2">
+                  {t('whatsapp.last_run')}: {a.last_run_at} · {t('whatsapp.sent_count')}: {a.last_sent_count}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => toggle(a)} className="btn-secondary text-xs" data-testid={`toggle-${a.key}`}>
+                {a.enabled ? t('whatsapp.disable') : t('whatsapp.enable')}
+              </button>
+              <button onClick={() => run(a)} disabled={!!running || !a.enabled} className="btn-primary text-xs" data-testid={`run-${a.key}`}>
+                {running === a.id ? '…' : t('whatsapp.run_now')}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AudienceView() {
+  const { t, locale } = useI18n();
+  const [data, setData] = useState<any>(null);
+  const [segment, setSegment] = useState<string>('all_consented');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    api.get(`/api/whatsapp/audience?segment=${encodeURIComponent(segment)}`)
+      .then(setData)
+      .catch((e) => setError(t(apiErrorKey(e))))
+      .finally(() => setLoading(false));
+  }, [locale, segment]);
+
+  return (
+    <div className="space-y-4" data-testid="audience-view">
+      <p className="text-sm text-slate-500 max-w-3xl">{t('whatsapp.audience_hub_info')}</p>
+      {error && <FormError message={error} />}
+      {data && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {AUDIENCE_OPTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSegment(s)}
+              className={`card p-4 text-left transition-all ${segment === s ? 'ring-2 ring-clinic-400' : 'hover:bg-slate-50'}`}
+              data-testid={`segment-${s}`}
+            >
+              <div className="text-xs text-slate-500 mb-1">{t(`whatsapp.segment_${s}`)}</div>
+              <div className="text-2xl font-bold text-slate-900">{data.segments?.[s] ?? '—'}</div>
+            </button>
+          ))}
+          <div className="card p-4">
+            <div className="text-xs text-slate-500 mb-1">{t('whatsapp.opted_out_wa')}</div>
+            <div className="text-2xl font-bold text-rose-600">{data.opted_out_whatsapp ?? 0}</div>
+          </div>
+          <div className="card p-4">
+            <div className="text-xs text-slate-500 mb-1">{t('whatsapp.with_phone')}</div>
+            <div className="text-2xl font-bold text-slate-900">{data.with_phone ?? 0}</div>
+          </div>
+        </div>
+      )}
+      {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
+      {data?.preview && (
+        <div className="card overflow-x-auto">
+          <div className="px-4 py-3 border-b font-semibold text-sm">{t('whatsapp.segment_preview')} — {t(`whatsapp.segment_${segment}`)}</div>
+          <table className="w-full">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="table-th">{t('common.name')}</th>
+                <th className="table-th">{t('common.phone')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.preview.length === 0 && (
+                <tr><td colSpan={2} className="table-td text-center text-slate-400 py-6">{t('common.no_data')}</td></tr>
+              )}
+              {data.preview.map((p: any) => (
+                <tr key={p.id} className="hover:bg-slate-50">
+                  <td className="table-td">{p.full_name}</td>
+                  <td className="table-td font-mono text-sm">{p.phone}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalyticsView() {
+  const { t, locale } = useI18n();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/api/whatsapp/analytics')
+      .then(setData)
+      .catch((e) => setError(t(apiErrorKey(e))))
+      .finally(() => setLoading(false));
+  }, [locale]);
+
+  if (loading) return <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>;
+  if (error) return <FormError message={error} />;
+  if (!data) return null;
+
+  const kpis = [
+    { label: t('whatsapp.outbound_30d'), value: data.outbound },
+    { label: t('whatsapp.inbound_30d'), value: data.inbound },
+    { label: t('whatsapp.delivery_rate'), value: `${data.delivery_rate}%` },
+    { label: t('whatsapp.read_rate'), value: `${data.read_rate}%` },
+    { label: t('whatsapp.templates_approved'), value: data.templates_approved },
+    { label: t('whatsapp.automations_on'), value: data.automations_enabled },
+  ];
+
+  return (
+    <div className="space-y-4" data-testid="analytics-view">
+      <p className="text-sm text-slate-500">{t('whatsapp.analytics_info')}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {kpis.map((k) => (
+          <div key={k.label} className="card p-4 text-center">
+            <div className="text-xs text-slate-500 mb-1 truncate">{k.label}</div>
+            <div className="text-2xl font-bold text-slate-900">{k.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="card overflow-x-auto">
+        <div className="px-4 py-3 border-b font-semibold text-sm">{t('whatsapp.tab_campaigns')}</div>
+        <table className="w-full">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="table-th">{t('whatsapp.campaign_name')}</th>
+              <th className="table-th">{t('common.status')}</th>
+              <th className="table-th">{t('whatsapp.sent_count')}</th>
+              <th className="table-th">{t('whatsapp.failed_count')}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {(data.campaigns || []).length === 0 && (
+              <tr><td colSpan={4} className="table-td text-center text-slate-400 py-6">{t('common.no_data')}</td></tr>
+            )}
+            {(data.campaigns || []).map((c: any) => (
+              <tr key={c.id}>
+                <td className="table-td">{c.name}</td>
+                <td className="table-td">{c.status}</td>
+                <td className="table-td">{c.sent_count}</td>
+                <td className="table-td">{c.failed_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -417,7 +833,7 @@ function SurveysView() {
       setNotice(t('whatsapp.survey_dispatched', { count: res.dispatched }));
       load();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
+      setError(t(apiErrorKey(e)));
     } finally {
       setDispatching(false);
     }
@@ -511,7 +927,7 @@ function NewChatModal({ onClose, onStart }: { onClose: () => void; onStart: (pho
       }
       onStart(phone);
     } catch (err: any) {
-      setError(err.body?.error === 'opted_out' ? t('whatsapp.opted_out_error') : (err.message || t('errors.generic')));
+      setError(err.body?.error === 'opted_out' ? t('whatsapp.opted_out_error') : t(apiErrorKey(err)));
     } finally {
       setSaving(false);
     }

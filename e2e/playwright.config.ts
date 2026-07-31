@@ -30,7 +30,7 @@ export default defineConfig({
     command: 'node serve.mjs',
     cwd: __dirname,
     url: `${BASE_URL}/api/health`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
