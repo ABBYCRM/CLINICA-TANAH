@@ -271,6 +271,43 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
       `).run(surveyId, tenantId, ctx.patient_id, ctx.appointment_id ?? null, ctx.score, comment);
       logAudit({ tenantId, action: 'nps_survey_received', resourceType: 'satisfaction_survey', resourceId: surveyId,
                  afterValue: { score: ctx.score }, legalBasis: 'consent_art7_I' });
+      try {
+        const { appendTimelineEvent } = await import('../services/patientJourney');
+        appendTimelineEvent({
+          tenantId,
+          patientId: ctx.patient_id,
+          kind: 'survey',
+          title: 'survey_response',
+          subtitle: comment,
+          status: String(ctx.score),
+          meta: { score: ctx.score, appointment_id: ctx.appointment_id, survey_id: surveyId },
+        });
+        if (Number(ctx.score) <= 6) {
+          db.prepare(`
+            UPDATE patients SET open_complaint = 1, updated_at = datetime('now')
+            WHERE id = ? AND tenant_id = ?
+          `).run(ctx.patient_id, tenantId);
+          appendTimelineEvent({
+            tenantId,
+            patientId: ctx.patient_id,
+            kind: 'complaint',
+            title: 'service_recovery_opened',
+            subtitle: `NPS ${ctx.score}`,
+            status: 'high',
+            meta: { score: ctx.score, survey_id: surveyId },
+          });
+          await reply(phone, locale, 'nps_thanks', {}, tenantId);
+          await sendTextMessage(
+            phone,
+            'Sentimos muito que sua experiência não tenha sido satisfatória. Sua mensagem foi encaminhada ao responsável pela unidade, que entrará em contato para entender melhor o ocorrido.',
+            tenantId,
+          );
+          updateConversation(phone, tenantId, { state: 'idle', context: {} });
+          return;
+        }
+      } catch (e) {
+        console.error('survey timeline side-effect', e);
+      }
       updateConversation(phone, tenantId, { state: 'idle', context: {} });
       await reply(phone, locale, 'nps_thanks', {}, tenantId);
       await reply(phone, locale, 'bot_menu', {}, tenantId);

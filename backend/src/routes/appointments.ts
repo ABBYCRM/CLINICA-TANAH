@@ -5,6 +5,7 @@ import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 import { getDaySlots, getAvailableSlots, getPractitionerLoads } from '../services/availability';
+import { onAppointmentCompleted } from '../services/patientJourney';
 
 const router = Router();
 router.use(authenticate);
@@ -118,6 +119,17 @@ router.put('/:id', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req
     beforeValue: { status: before.status }, afterValue: d,
     legalBasis: 'contract_art7_V',
   });
+
+  // HubSpot journey: first-visit welcome + post-visit survey (idempotent)
+  if (d.status === 'completed' && before.status !== 'completed') {
+    void onAppointmentCompleted({
+      tenantId: req.tenantId!,
+      appointmentId: req.params.id,
+      actorId: req.user!.id,
+      actorEmail: req.user!.email,
+    }).catch((err) => console.error('journey side-effect failed', err));
+  }
+
   res.json({ ok: true });
 });
 

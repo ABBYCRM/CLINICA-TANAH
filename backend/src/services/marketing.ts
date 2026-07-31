@@ -287,19 +287,23 @@ export async function runAutomation(tenantId: string, automationId: string, loca
       if (ok) sent++; else failed++;
     }
   } else if (auto.key === 'welcome') {
-    // Recent patients (last 24h) who haven't received a bot outbound yet
+    // First completed visit, welcome not yet sent (idempotent patient flag)
     const rows = db.prepare(`
       SELECT p.id, p.full_name, p.phone FROM patients p
-      WHERE ${baseConsentFilter(tenantId)}
-        AND p.created_at >= datetime('now', '-1 day')
-        AND NOT EXISTS (
-          SELECT 1 FROM whatsapp_messages m WHERE m.phone = p.phone AND m.tenant_id = p.tenant_id AND m.direction = 'out'
-        )
+      WHERE p.tenant_id = ?
+        AND p.phone IS NOT NULL AND p.phone != ''
+        AND p.welcome_message_sent_at IS NULL
+        AND COALESCE(p.do_not_contact, 0) = 0
+        AND p.first_completed_visit_at IS NOT NULL
+        AND ${optedOutClause(tenantId)}
       LIMIT 100
     `).all(tenantId) as any[];
+    const { maybeSendWelcomeMessage } = await import('./patientJourney');
     for (const p of rows) {
-      const ok = await sendPersonalized(tenantId, p.phone, p.full_name, auto.message, {}, false, locale);
-      if (ok) sent++; else failed++;
+      const r = await maybeSendWelcomeMessage({ tenantId, patientId: p.id, locale });
+      if (r.sent) sent++;
+      else if (r.reason === 'send_failed') failed++;
+      else skipped++;
     }
   } else {
     return { ok: false, error: 'unknown_key' as const, key: auto.key };

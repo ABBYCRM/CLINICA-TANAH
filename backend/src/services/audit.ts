@@ -54,7 +54,7 @@ export function logAudit(entry: AuditEntry): void {
 export function recordConsent(args: {
   subjectType: 'patient' | 'employee' | 'vendor';
   subjectId: string;
-  consentType: 'data_processing' | 'marketing' | 'whatsapp_communication' | 'health_data_processing';
+  consentType: string;
   granted: boolean;
   policyVersion: string;
   ipAddress?: string;

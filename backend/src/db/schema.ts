@@ -577,10 +577,39 @@ function migrate(): void {
     `ALTER TABLE patients ADD COLUMN phone_secondary TEXT`,
     `ALTER TABLE patients ADD COLUMN referral_source TEXT`,
     `ALTER TABLE patients ADD COLUMN notes TEXT`,
+    `ALTER TABLE patients ADD COLUMN lifecycle_stage TEXT NOT NULL DEFAULT 'new_patient'`,
+    `ALTER TABLE patients ADD COLUMN preferred_language TEXT DEFAULT 'pt-BR'`,
+    `ALTER TABLE patients ADD COLUMN assigned_professional_id TEXT`,
+    `ALTER TABLE patients ADD COLUMN welcome_message_sent_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN first_completed_visit_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN last_visit_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN recall_due_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN do_not_contact INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE patients ADD COLUMN open_complaint INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE patients ADD COLUMN tags TEXT`,
   ];
   for (const sql of patientCols) {
     try { openDb().exec(sql); } catch { /* column already exists */ }
   }
+
+  try {
+    openDb().exec(`
+      CREATE TABLE IF NOT EXISTS patient_timeline_events (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        status TEXT,
+        meta TEXT,
+        occurred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    openDb().exec(`CREATE INDEX IF NOT EXISTS idx_pte_patient ON patient_timeline_events(patient_id, occurred_at)`);
+    openDb().exec(`CREATE INDEX IF NOT EXISTS idx_pte_tenant ON patient_timeline_events(tenant_id)`);
+  } catch { /* exists */ }
 
   // ---- Multi-tenancy: default tenant owns everything that predates it
   openDb().prepare(`
@@ -723,9 +752,9 @@ export function seedMarketingDefaults(tenantId: string): void {
       ['reminder_2h', 'Lembrete 2 horas antes', 'Lembrete curto no dia da consulta.',
         'Olá {{name}}! Sua consulta é hoje às {{time}}. Estamos te esperando na Clínica Tanah.',
         JSON.stringify({ offset_hours: 2 }), { enabled: 1 }],
-      ['welcome', 'Boas-vindas a novos pacientes', 'Disparada quando um paciente é cadastrado com telefone e consentimento.',
-        'Olá {{name}}! Bem-vindo(a) à Clínica Tanah. Responda MENU para agendar sua primeira consulta.',
-        JSON.stringify({}), { enabled: 1 }],
+      ['welcome', 'Boas-vindas pós primeira consulta', 'Disparada uma vez após a primeira consulta concluída (checkout).',
+        'Olá {{name}}! Agradecemos por escolher a Clínica Tanah. Este é nosso canal oficial para confirmações e atendimento administrativo. Responda ATENDENTE ou PREFERÊNCIAS.',
+        JSON.stringify({ trigger: 'first_completed_visit' }), { enabled: 1 }],
       ['birthday', 'Feliz aniversário', 'Mensagem de aniversário (marketing) para pacientes consentidos.',
         'Feliz aniversário, {{name}}! 🎂 A Clínica Tanah deseja um dia maravilhoso. Responda MENU para agendar.',
         JSON.stringify({}), { enabled: 0 }],

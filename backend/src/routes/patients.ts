@@ -4,6 +4,14 @@ import { z } from 'zod';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit, recordConsent, hasActiveConsent } from '../services/audit';
+import {
+  canViewClinical,
+  CONSENT_PURPOSES,
+  getConsentLedger,
+  LIFECYCLE_STAGES,
+  setPatientConsent,
+  type ConsentPurpose,
+} from '../services/patientJourney';
 
 const router = Router();
 
@@ -50,6 +58,16 @@ const patientSchema = z.object({
   emergency_contact_phone: optStr(z.string()),
   lgpd_consent_granted: z.boolean().optional().default(false),
   lgpd_policy_version: z.string().optional().default('1.0'),
+  lifecycle_stage: z.enum([
+    'prospect','new_patient','active','in_treatment','follow_up_required',
+    'recall_due','inactive','do_not_contact','archived',
+  ]).optional(),
+  preferred_language: optStr(z.string()),
+  assigned_professional_id: optStr(z.string()),
+  recall_due_at: optStr(z.string()),
+  do_not_contact: z.boolean().optional(),
+  open_complaint: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 router.use(authenticate);
@@ -253,25 +271,38 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
     now, req.ip ?? null, d.lgpd_policy_version,
     now, now
   );
-  // Record formal LGPD consent
+  // Record formal LGPD consent + granular workspace purposes
   recordConsent({
     tenantId: req.tenantId,
     subjectType: 'patient', subjectId: id,
     consentType: 'health_data_processing',
     granted: true, policyVersion: d.lgpd_policy_version,
     ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
-    evidence: 'Consentimento fornecido durante o cadastro presencial/telefônico.',
+    evidence: JSON.stringify({ source: 'patient_registration' }),
+  });
+  recordConsent({
+    tenantId: req.tenantId,
+    subjectType: 'patient', subjectId: id,
+    consentType: 'data_processing',
+    granted: true, policyVersion: d.lgpd_policy_version,
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    evidence: JSON.stringify({ source: 'patient_registration' }),
   });
   if (d.phone) {
-    recordConsent({
-      tenantId: req.tenantId,
-      subjectType: 'patient', subjectId: id,
-      consentType: 'whatsapp_communication',
-      granted: true, policyVersion: d.lgpd_policy_version,
-      ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
-      evidence: 'Consentimento WhatsApp fornecido no cadastro.',
-    });
+    for (const purpose of ['whatsapp_communication', 'whatsapp_admin', 'appointment_reminders', 'post_visit_survey'] as const) {
+      recordConsent({
+        tenantId: req.tenantId,
+        subjectType: 'patient', subjectId: id,
+        consentType: purpose,
+        granted: true, policyVersion: d.lgpd_policy_version,
+        ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+        evidence: JSON.stringify({ source: 'patient_registration' }),
+      });
+    }
   }
+  try {
+    db.prepare(`UPDATE patients SET lifecycle_stage = 'new_patient' WHERE id = ?`).run(id);
+  } catch { /* col may miss on old db mid-migrate */ }
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
@@ -299,6 +330,8 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
     'health_insurance','health_insurance_number','blood_type',
     'allergies','chronic_conditions','medications_in_use',
     'emergency_contact_name','emergency_contact_phone',
+    'lifecycle_stage','preferred_language','assigned_professional_id',
+    'recall_due_at','do_not_contact','open_complaint','tags',
   ];
   const sets: string[] = [];
   const args: any[] = [];
@@ -308,6 +341,11 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
       let v = (d as any)[k];
       if (['allergies','chronic_conditions','medications_in_use'].includes(k) && Array.isArray(v)) {
         v = JSON.stringify(v);
+      }
+      if (k === 'tags' && Array.isArray(v)) v = JSON.stringify(v);
+      if (k === 'do_not_contact' || k === 'open_complaint') v = v ? 1 : 0;
+      if (k === 'lifecycle_stage' && v && !(LIFECYCLE_STAGES as readonly string[]).includes(String(v))) {
+        res.status(400).json({ error: 'invalid_lifecycle_stage' }); return;
       }
       args.push(v);
     }
@@ -361,11 +399,12 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   res.json({ ok: true, deleted_id: req.params.id });
 });
 
-/** HubSpot-style patient record: properties + timeline + association counts. */
+/** HubSpot-style patient workspace: header props + timeline + associations + consents. */
 router.get('/:id/record', (req: Request, res: Response) => {
   const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
   const parseArr = (v: any): string[] => { try { return v ? JSON.parse(v) : []; } catch { return []; } };
+  const clinicalOk = canViewClinical(req.user?.role);
 
   const appointments = db.prepare(`
     SELECT a.id, a.scheduled_at, a.type, a.status, a.notes, a.duration_minutes, a.source,
@@ -400,8 +439,21 @@ router.get('/:id/record', (req: Request, res: Response) => {
   const consents = db.prepare(`
     SELECT id, consent_type, granted, granted_at, revoked_at, policy_version
     FROM lgpd_consents WHERE subject_type = 'patient' AND subject_id = ?
-    ORDER BY granted_at DESC LIMIT 20
+    ORDER BY granted_at DESC LIMIT 40
   `).all(req.params.id) as any[];
+
+  const surveys = db.prepare(`
+    SELECT id, appointment_id, score, comment, created_at
+    FROM satisfaction_surveys WHERE patient_id = ? AND tenant_id = ?
+    ORDER BY created_at DESC LIMIT 20
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const durableEvents = db.prepare(`
+    SELECT id, kind, title, subtitle, status, meta, occurred_at AS at
+    FROM patient_timeline_events
+    WHERE patient_id = ? AND tenant_id = ?
+    ORDER BY occurred_at DESC LIMIT 80
+  `).all(req.params.id, req.tenantId) as any[];
 
   let waMessages: any[] = [];
   if (p.phone) {
@@ -413,10 +465,25 @@ router.get('/:id/record', (req: Request, res: Response) => {
     `).all(p.phone, req.tenantId) as any[];
   }
 
+  let assignedProfessional: any = null;
+  if (p.assigned_professional_id) {
+    assignedProfessional = db.prepare(`
+      SELECT id, full_name, role FROM users WHERE id = ? AND tenant_id = ?
+    `).get(p.assigned_professional_id, req.tenantId);
+  }
+  if (!assignedProfessional && appointments[0]) {
+    assignedProfessional = {
+      id: appointments[0].practitioner_id,
+      full_name: appointments[0].practitioner_name,
+      role: null,
+    };
+  }
+
+  const nowIso = new Date().toISOString().slice(0, 16);
   const upcoming = appointments.filter((a) =>
-    a.scheduled_at >= new Date().toISOString().slice(0, 16)
-    && !['cancelled', 'no_show', 'completed'].includes(a.status),
+    a.scheduled_at >= nowIso && !['cancelled', 'no_show', 'completed'].includes(a.status),
   );
+  const lastVisit = appointments.find((a) => a.status === 'completed') || null;
 
   type TimelineItem = {
     id: string; kind: string; at: string; title: string; subtitle?: string;
@@ -427,10 +494,10 @@ router.get('/:id/record', (req: Request, res: Response) => {
   for (const a of appointments) {
     timeline.push({
       id: `appt-${a.id}`, kind: 'appointment', at: a.scheduled_at,
-      title: a.type || 'appointment',
+      title: a.status === 'completed' ? 'appointment_completed' : (a.type || 'appointment'),
       subtitle: a.practitioner_name,
       status: a.status,
-      meta: { id: a.id, duration_minutes: a.duration_minutes, source: a.source },
+      meta: { id: a.id, duration_minutes: a.duration_minutes, source: a.source, type: a.type },
     });
   }
   for (const e of encounters) {
@@ -438,11 +505,11 @@ router.get('/:id/record', (req: Request, res: Response) => {
       id: `enc-${e.id}`, kind: 'encounter', at: e.started_at,
       title: 'encounter',
       subtitle: e.practitioner_name,
-      meta: {
+      meta: clinicalOk ? {
         id: e.id,
         assessment: e.assessment ? String(e.assessment).slice(0, 160) : null,
         icd10_codes: parseArr(e.icd10_codes),
-      },
+      } : { id: e.id, restricted: true },
     });
   }
   for (const pr of prescriptions) {
@@ -471,6 +538,33 @@ router.get('/:id/record', (req: Request, res: Response) => {
       meta: { id: m.id, direction: m.direction },
     });
   }
+  for (const s of surveys) {
+    timeline.push({
+      id: `survey-${s.id}`, kind: 'survey', at: s.created_at,
+      title: 'survey_response',
+      subtitle: s.comment ? String(s.comment).slice(0, 120) : undefined,
+      status: String(s.score),
+      meta: { id: s.id, score: s.score, appointment_id: s.appointment_id },
+    });
+  }
+  for (const c of consents.slice(0, 15)) {
+    timeline.push({
+      id: `consent-${c.id}`, kind: 'consent', at: c.revoked_at || c.granted_at,
+      title: c.revoked_at ? 'consent_revoked' : (c.granted ? 'consent_granted' : 'consent_denied'),
+      subtitle: c.consent_type,
+      status: c.revoked_at ? 'revoked' : (c.granted ? 'granted' : 'denied'),
+      meta: { purpose: c.consent_type },
+    });
+  }
+  for (const ev of durableEvents) {
+    let meta: any = undefined;
+    try { meta = ev.meta ? JSON.parse(ev.meta) : undefined; } catch { /* ignore */ }
+    timeline.push({
+      id: ev.id, kind: ev.kind, at: ev.at,
+      title: ev.title, subtitle: ev.subtitle || undefined,
+      status: ev.status || undefined, meta,
+    });
+  }
   if (p.notes) {
     timeline.push({
       id: `note-${p.id}`, kind: 'note', at: p.updated_at || p.created_at,
@@ -484,9 +578,17 @@ router.get('/:id/record', (req: Request, res: Response) => {
       title: 'patient_created',
     });
   }
-  timeline.sort((a, b) => String(b.at).localeCompare(String(a.at)));
 
-  const owner = appointments[0]?.practitioner_name || null;
+  // Dedupe by id (durable events may overlap appointment_completed)
+  const seen = new Set<string>();
+  const deduped = timeline.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  deduped.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+
+  const consentLedger = getConsentLedger(p.id);
 
   logAudit({
     tenantId: req.tenantId,
@@ -496,41 +598,135 @@ router.get('/:id/record', (req: Request, res: Response) => {
     legalBasis: 'health_protection_art7_VIII',
   });
 
+  const patientOut: any = {
+    ...p,
+    allergies: parseArr(p.allergies),
+    chronic_conditions: parseArr(p.chronic_conditions),
+    medications_in_use: parseArr(p.medications_in_use),
+    tags: parseArr(p.tags),
+    lifecycle_stage: p.lifecycle_stage || 'new_patient',
+  };
+  if (!clinicalOk) {
+    delete patientOut.allergies;
+    delete patientOut.chronic_conditions;
+    delete patientOut.medications_in_use;
+    delete patientOut.blood_type;
+  }
+
   res.json({
-    patient: {
-      ...p,
-      allergies: parseArr(p.allergies),
-      chronic_conditions: parseArr(p.chronic_conditions),
-      medications_in_use: parseArr(p.medications_in_use),
+    patient: patientOut,
+    permissions: {
+      clinical: clinicalOk,
+      marketing: ['admin', 'receptionist'].includes(req.user?.role || ''),
+      privacy: ['admin', 'dpo'].includes(req.user?.role || ''),
     },
-    owner_name: owner,
+    workspace: {
+      lifecycle_stage: patientOut.lifecycle_stage,
+      next_appointment: upcoming[0] || null,
+      last_visit: lastVisit,
+      assigned_professional: assignedProfessional,
+      communication_preference: consentLedger.find((c) => c.purpose === 'whatsapp_admin')?.granted
+        ? 'whatsapp'
+        : (consentLedger.find((c) => c.purpose === 'email_communication')?.granted ? 'email' : 'none'),
+      consent_ok: consentLedger.some((c) => c.purpose === 'health_data_processing' && c.granted)
+        || !!p.lgpd_consent_at,
+      open_complaint: !!p.open_complaint,
+      do_not_contact: !!p.do_not_contact,
+      welcome_sent: !!p.welcome_message_sent_at,
+    },
+    owner_name: assignedProfessional?.full_name || null,
     upcoming_appointments: upcoming.slice(0, 8),
-    timeline: timeline.slice(0, 80),
+    timeline: deduped.slice(0, 100),
+    consent_ledger: consentLedger,
+    surveys,
     associations: {
       appointments: { count: appointments.length, items: appointments.slice(0, 8) },
       encounters: {
         count: encounters.length,
-        items: encounters.slice(0, 8).map((e) => ({
-          ...e,
+        items: encounters.slice(0, 8).map((e) => clinicalOk ? {
+          id: e.id, started_at: e.started_at, ended_at: e.ended_at,
+          practitioner_name: e.practitioner_name,
           icd10_codes: parseArr(e.icd10_codes),
-          subjective: undefined,
-          objective: undefined,
-          plan: undefined,
-        })),
+          assessment: e.assessment ? String(e.assessment).slice(0, 120) : null,
+        } : {
+          id: e.id, started_at: e.started_at, practitioner_name: e.practitioner_name, restricted: true,
+        }),
       },
       prescriptions: {
         count: prescriptions.length,
-        items: prescriptions.slice(0, 8).map((pr) => ({
-          id: pr.id, created_at: pr.created_at,
-          practitioner_name: pr.practitioner_name,
-          sent_via_whatsapp: pr.sent_via_whatsapp,
-        })),
+        items: clinicalOk
+          ? prescriptions.slice(0, 8).map((pr) => ({
+              id: pr.id, created_at: pr.created_at,
+              practitioner_name: pr.practitioner_name,
+              sent_via_whatsapp: pr.sent_via_whatsapp,
+            }))
+          : [],
       },
       invoices: { count: invoices.length, items: invoices.slice(0, 8) },
       consents: { count: consents.length, items: consents.slice(0, 8) },
       whatsapp: { count: waMessages.length, items: waMessages.slice(0, 5) },
+      surveys: { count: surveys.length, items: surveys.slice(0, 8) },
     },
   });
+});
+
+/** Update granular consent ledger from Patient Workspace. */
+router.put('/:id/consents', requireRole('admin', 'doctor', 'nurse', 'receptionist', 'dpo'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const purpose = String(req.body?.purpose || '');
+  if (!(CONSENT_PURPOSES as readonly string[]).includes(purpose)) {
+    res.status(400).json({ error: 'invalid_purpose', allowed: CONSENT_PURPOSES }); return;
+  }
+  const granted = !!req.body?.granted;
+  setPatientConsent({
+    patientId: req.params.id,
+    tenantId: req.tenantId!,
+    purpose: purpose as ConsentPurpose,
+    granted,
+    actorId: req.user!.id,
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'] as string,
+    source: 'patient_workspace',
+  });
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: granted ? 'grant_patient_consent' : 'revoke_patient_consent',
+    resourceType: 'patient', resourceId: req.params.id,
+    afterValue: { purpose, granted },
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: 'consent_art7_I',
+  });
+  res.json({ ok: true, ledger: getConsentLedger(req.params.id) });
+});
+
+/** Update lifecycle stage from Patient Workspace. */
+router.put('/:id/lifecycle', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const stage = String(req.body?.lifecycle_stage || '');
+  if (!(LIFECYCLE_STAGES as readonly string[]).includes(stage)) {
+    res.status(400).json({ error: 'invalid_lifecycle_stage', allowed: LIFECYCLE_STAGES }); return;
+  }
+  const doNotContact = stage === 'do_not_contact' ? 1 : (req.body?.do_not_contact ? 1 : 0);
+  db.prepare(`
+    UPDATE patients SET lifecycle_stage = ?, do_not_contact = ?, updated_at = datetime('now')
+    WHERE id = ? AND tenant_id = ?
+  `).run(stage, doNotContact, req.params.id, req.tenantId);
+  db.prepare(`
+    INSERT INTO patient_timeline_events
+      (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+    VALUES (?, ?, ?, 'lifecycle', 'lifecycle_changed', ?, ?, ?, datetime('now'))
+  `).run(
+    `pte_lc_${Date.now().toString(36)}`,
+    req.tenantId,
+    req.params.id,
+    `${p.lifecycle_stage || 'new_patient'} → ${stage}`,
+    stage,
+    JSON.stringify({ from: p.lifecycle_stage, to: stage }),
+  );
+  res.json({ ok: true, lifecycle_stage: stage });
 });
 
 // Clinical snapshot for the scheduler drawer — everything the medical team
