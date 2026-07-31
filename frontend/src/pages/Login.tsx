@@ -6,16 +6,13 @@ import { ApiError } from '../lib/api';
 
 function LogoMark({ className = 'w-11 h-11' }: { className?: string }) {
   return (
-    <div className={`${className} rounded-2xl bg-gradient-to-br from-clinic-400 to-clinic-600 shadow-lg shadow-clinic-900/30 flex items-center justify-center ring-1 ring-white/20`}>
-      <svg viewBox="0 0 24 24" className="w-3/5 h-3/5 text-white" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <div className={`brand-medallion ${className}`}>
+      <svg viewBox="0 0 24 24" className="w-3/5 h-3/5" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M12 5v14M5 12h14" />
       </svg>
     </div>
   );
 }
-
-const inputShell =
-  'group relative flex items-center rounded-xl border border-slate-300 bg-white shadow-sm transition-all duration-200 focus-within:border-clinic-500 focus-within:ring-4 focus-within:ring-clinic-500/15 hover:border-slate-400';
 
 export default function Login() {
   const { t, locale, setLocale, locales, localeLabels } = useI18n();
@@ -71,34 +68,49 @@ export default function Login() {
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-950">
-      {/* Brand panel — desktop */}
-      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-slate-900 via-clinic-950 to-slate-900 p-12 text-white">
-        <div className="pointer-events-none absolute -top-32 -left-24 h-96 w-96 rounded-full bg-clinic-500/25 blur-3xl animate-drift" aria-hidden="true" />
-        <div className="pointer-events-none absolute bottom-0 right-0 h-[28rem] w-[28rem] rounded-full bg-sky-500/15 blur-3xl animate-drift-alt" aria-hidden="true" />
-        <div className="pointer-events-none absolute top-1/3 right-1/4 h-40 w-40 rounded-full bg-clinic-300/10 blur-2xl animate-drift" aria-hidden="true" />
+    <div className="login-desk min-h-screen flex">
+      {/* Brand panel — wood grain plane */}
+      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden shell-wood p-12 text-[#eef5ea]">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-40 animate-drift"
+          style={{
+            background:
+              'radial-gradient(ellipse 70% 50% at 15% 20%, rgba(143,168,122,0.35), transparent 55%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(90,70,50,0.3), transparent 50%)',
+          }}
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-overlay"
+          style={{
+            backgroundImage:
+              'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.7\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")',
+          }}
+          aria-hidden="true"
+        />
 
         <div className="relative animate-fade-in-down">
           <div className="flex items-center gap-4">
-            <LogoMark />
-            <div>
-              <div className="text-xl font-semibold tracking-tight">{t('app.name')}</div>
-              <div className="text-sm text-clinic-200/80">{t('app.tagline')}</div>
-            </div>
+            <LogoMark className="w-12 h-12" />
+            <div className="text-sm text-[#9bb89a]">{t('app.tagline')}</div>
           </div>
         </div>
 
-        <div className="relative space-y-8">
-          <h2 className="text-4xl xl:text-5xl font-semibold leading-tight tracking-tight animate-fade-in-up delay-100">
-            {t('auth.brand_title')}
-          </h2>
-          <p className="max-w-md text-base text-slate-300/90 leading-relaxed animate-fade-in-up delay-200">
+        <div className="relative space-y-6">
+          <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight animate-fade-in-up delay-100">
+            {t('app.name')}
+          </h1>
+          <p className="max-w-md text-[1.05rem] text-[#c5d4c4] leading-relaxed animate-fade-in-up delay-200">
             {t('auth.brand_subtitle')}
           </p>
-          <ul className="space-y-4 animate-fade-in-up delay-300">
+          <ul className="space-y-3.5 animate-fade-in-up delay-300">
             {features.map((f) => (
-              <li key={f.label} className="flex items-center gap-3 text-sm text-slate-200">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-clinic-200 ring-1 ring-white/15 backdrop-blur-sm">
+              <li key={f.label} className="flex items-center gap-3 text-sm text-[#d7e4d3]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#eef5ea] border border-white/10"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 6px rgba(0,0,0,0.2)',
+                  }}
+                >
                   {f.icon}
                 </span>
                 {f.label}
@@ -107,55 +119,65 @@ export default function Login() {
           </ul>
         </div>
 
-        <div className="relative flex items-center gap-2 text-xs text-slate-400 animate-fade-in delay-300">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-clinic-300" aria-hidden="true">
+        <div className="relative flex items-center gap-2 text-xs text-[#8aa58a] animate-fade-in delay-300">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
           <span>{t('auth.secure_notice')}</span>
-          <span className="text-slate-600">·</span>
+          <span className="text-[#5a705a]">·</span>
           <span className="truncate">{t('app.address')}</span>
         </div>
       </aside>
 
       {/* Form panel */}
-      <main className="relative flex flex-1 items-center justify-center overflow-hidden bg-slate-50 px-0 py-0 lg:px-8 lg:py-8">
-        <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
-          <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-clinic-100/70 blur-3xl" />
-          <div className="absolute bottom-0 -left-16 h-72 w-72 rounded-full bg-sky-100/60 blur-3xl" />
+      <main className="relative flex flex-1 items-center justify-center overflow-hidden px-0 py-0 lg:px-8 lg:py-8">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-[#9bb89a]/25 blur-3xl animate-drift" />
+          <div className="absolute bottom-0 -left-16 h-72 w-72 rounded-full bg-[#8a6a45]/12 blur-3xl animate-drift-alt" />
         </div>
 
         <div className="relative w-full max-w-md max-lg:self-start px-4 sm:px-8 pb-8 lg:px-0 lg:pb-0">
-          {/* Mobile brand header — gradient bleeds to the screen edges, card overlaps it */}
-          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden bg-gradient-to-br from-slate-900 via-clinic-950 to-slate-900 px-6 pt-12 pb-24 text-center text-white lg:hidden">
-            <div className="pointer-events-none absolute -top-16 -right-10 h-56 w-56 rounded-full bg-clinic-500/30 blur-3xl animate-drift" aria-hidden="true" />
-            <div className="pointer-events-none absolute -bottom-20 -left-10 h-48 w-48 rounded-full bg-sky-500/20 blur-3xl animate-drift-alt" aria-hidden="true" />
+          {/* Mobile brand header — full-bleed wood */}
+          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden shell-wood px-6 pt-12 pb-24 text-center text-[#eef5ea] lg:hidden">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-50 animate-leaf"
+              style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(143,168,122,0.4), transparent 55%)' }}
+              aria-hidden="true"
+            />
             <div className="relative flex flex-col items-center animate-fade-in-down">
               <LogoMark className="w-14 h-14" />
-              <h1 className="mt-3 text-xl font-semibold tracking-tight">{t('app.name')}</h1>
-              <p className="mt-1 text-sm text-clinic-200/80">{t('app.tagline')}</p>
+              <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight">{t('app.name')}</h1>
+              <p className="mt-1 text-sm text-[#9bb89a]">{t('app.tagline')}</p>
             </div>
           </div>
 
-          <div className="card relative animate-fade-in-up border-slate-200/80 p-6 shadow-xl shadow-slate-900/5 sm:p-8" data-testid="login-card">
+          <div className="panel-inset relative animate-fade-in-up p-6 sm:p-8" data-testid="login-card">
             <div className="mb-6 hidden lg:block">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{t('auth.welcome')}</h1>
-              <p className="mt-1 text-sm text-slate-500">{t('auth.subtitle')}</p>
+              <h2 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('auth.welcome')}</h2>
+              <p className="mt-1 text-sm text-[#5c6558]">{t('auth.subtitle')}</p>
             </div>
 
-            {/* Locale switcher */}
             <div className="mb-6 flex justify-center" data-testid="locale-switcher">
-              <div className="inline-flex rounded-full bg-slate-100 p-1 ring-1 ring-slate-200">
+              <div
+                className="inline-flex rounded-xl p-0.5"
+                style={{
+                  background: 'linear-gradient(180deg, #dde6d9, #eef3ea)',
+                  border: '1px solid rgba(63,92,66,0.22)',
+                  boxShadow: 'inset 0 2px 4px rgba(40,55,35,0.12)',
+                }}
+              >
                 {locales.map((l) => (
                   <button
                     key={l}
                     type="button"
                     onClick={() => setLocale(l)}
                     aria-pressed={l === locale}
-                    className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+                    className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
                       l === locale
-                        ? 'bg-white text-clinic-700 shadow-sm ring-1 ring-slate-200'
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? 'text-white shadow-knob'
+                        : 'text-[#5c6558] hover:text-[#243328]'
                     }`}
+                    style={l === locale ? { background: 'linear-gradient(180deg, #5f8768, #3f5c42)' } : undefined}
                   >
                     {localeLabels[l]}
                   </button>
@@ -168,7 +190,12 @@ export default function Login() {
                 <div
                   data-testid="login-error"
                   role="alert"
-                  className="animate-shake flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm text-rose-700"
+                  className="animate-shake flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-sm text-[#6e3228]"
+                  style={{
+                    background: 'linear-gradient(180deg, #f5e4df, #edd4cd)',
+                    border: '1px solid rgba(143,74,61,0.35)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+                  }}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true">
                     <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
@@ -179,42 +206,30 @@ export default function Login() {
 
               <div>
                 <label htmlFor="login-email" className="label">{t('auth.email')}</label>
-                <div className={inputShell}>
-                  <span className="pointer-events-none pl-3.5 text-slate-400 transition-colors group-focus-within:text-clinic-600">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
-                      <rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" />
-                    </svg>
-                  </span>
-                  <input
-                    id="login-email"
-                    data-testid="login-email"
-                    type="email"
-                    autoComplete="email"
-                    inputMode="email"
-                    placeholder="nome@clinica-tanah.com.br"
-                    className="w-full rounded-xl bg-transparent px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
+                <input
+                  id="login-email"
+                  data-testid="login-email"
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  placeholder="nome@clinica-tanah.com.br"
+                  className="input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
               </div>
 
               <div>
                 <label htmlFor="login-password" className="label">{t('auth.password')}</label>
-                <div className={inputShell}>
-                  <span className="pointer-events-none pl-3.5 text-slate-400 transition-colors group-focus-within:text-clinic-600">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
-                      <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
-                    </svg>
-                  </span>
+                <div className="relative">
                   <input
                     id="login-password"
                     data-testid="login-password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     placeholder="••••••••"
-                    className="w-full rounded-xl bg-transparent px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                    className="input pr-11"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -224,7 +239,7 @@ export default function Login() {
                     data-testid="toggle-password"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
-                    className="mr-2 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-[#7a8476] transition-colors hover:bg-[#e2ebe0] hover:text-[#3f5c42]"
                   >
                     {showPassword ? (
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
@@ -242,7 +257,7 @@ export default function Login() {
               <button
                 type="submit"
                 data-testid="login-submit"
-                className="btn-primary h-11 w-full rounded-xl text-[15px] font-semibold shadow-clinic-600/20 transition-all duration-200 hover:shadow-lg hover:shadow-clinic-600/25"
+                className="btn-primary h-11 w-full text-[15px]"
                 disabled={loading}
               >
                 {loading ? (
@@ -259,10 +274,16 @@ export default function Login() {
               </button>
             </form>
 
-            <details className="group mt-6 rounded-xl border border-slate-200 bg-slate-50/80 text-xs text-slate-600 open:shadow-sm">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 font-medium text-slate-700 transition-colors hover:text-slate-900 [&::-webkit-details-marker]:hidden">
+            <details className="group mt-6 rounded-xl text-xs text-[#5c6558] open:shadow-sm"
+              style={{
+                background: 'linear-gradient(180deg, #eef3ea, #e2ebe0)',
+                border: '1px solid rgba(63,92,66,0.2)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+              }}
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 font-semibold text-[#334a36] transition-colors hover:text-[#243328] [&::-webkit-details-marker]:hidden">
                 <span className="flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-clinic-600" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#3f5c42]" aria-hidden="true">
                     <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
                   </svg>
                   {t('auth.demo_accounts')}
@@ -271,8 +292,8 @@ export default function Login() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </summary>
-              <div className="space-y-1 border-t border-slate-200 px-3.5 py-3">
-                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-slate-400">{t('auth.demo_password_hint')}</div>
+              <div className="space-y-1 border-t border-[rgba(63,92,66,0.15)] px-3.5 py-3">
+                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-[#7a8476]">{t('auth.demo_password_hint')}</div>
                 <div className="font-mono">admin@clinica-tanah.com.br</div>
                 <div className="font-mono">silva@clinica-tanah.com.br</div>
                 <div className="font-mono">santos@clinica-tanah.com.br</div>
@@ -281,8 +302,8 @@ export default function Login() {
             </details>
           </div>
 
-          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-slate-400 animate-fade-in delay-200">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-clinic-500" aria-hidden="true">
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[#7a8476] animate-fade-in delay-200">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#3f5c42]" aria-hidden="true">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
             {t('auth.secure_notice')}

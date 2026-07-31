@@ -97,21 +97,21 @@ export default function WhatsApp() {
     <div className="space-y-4" data-testid="whatsapp-marketing">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t('whatsapp.title')}</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('whatsapp.title')}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{t('whatsapp.subtitle')}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-lg">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto max-w-full" data-testid="whatsapp-tabs">
             {TABS.map((k) => (
               <button key={k} onClick={() => setTab(k)}
-                className={`px-2.5 py-1.5 text-sm rounded-md transition-all ${tab === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}
+                className={`shrink-0 px-3 py-2 text-sm rounded-md transition-all whitespace-nowrap ${tab === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}
                 data-testid={`tab-${k}`}>
                 {t(`whatsapp.tab_${k}`)}
               </button>
             ))}
           </div>
           {tab === 'chat' && (
-            <button onClick={() => setNewChatOpen(true)} className="btn-primary" data-testid="new-chat">+ {t('whatsapp.new_chat')}</button>
+            <button onClick={() => setNewChatOpen(true)} className="btn-primary w-full sm:w-auto justify-center whitespace-nowrap" data-testid="new-chat">+ {t('whatsapp.new_chat')}</button>
           )}
         </div>
       </div>
@@ -132,12 +132,12 @@ export default function WhatsApp() {
               </span>
             </>
           )}
-          <span className="flex-1" />
-          <button onClick={testConnection} disabled={ping.state === 'loading'} className="btn-secondary text-xs" data-testid="test-connection">
-            {ping.state === 'loading' ? '…' : `⚡ ${t('whatsapp.test_connection')}`}
+          <span className="hidden sm:block flex-1" />
+          <button onClick={testConnection} disabled={ping.state === 'loading'} className="btn-secondary text-xs w-full sm:w-auto justify-center" data-testid="test-connection">
+            {ping.state === 'loading' ? '…' : t('whatsapp.test_connection')}
           </button>
           {ping.state === 'ok' && <span className="badge-green" data-testid="ping-ok">✓ {t('whatsapp.connection_ok')}{ping.detail ? ` — ${ping.detail}` : ''}</span>}
-          {ping.state === 'fail' && <span className="badge-red" data-testid="ping-fail">✕ {t('whatsapp.connection_failed')}{ping.detail ? ` — ${ping.detail}` : ''}</span>}
+          {ping.state === 'fail' && <span className="badge-red break-words" data-testid="ping-fail">✕ {t('whatsapp.connection_failed')}{ping.detail ? ` — ${ping.detail}` : ''}</span>}
         </div>
       )}
 
@@ -151,7 +151,7 @@ export default function WhatsApp() {
       {tab === 'surveys' && <SurveysView />}
 
       {tab === 'chat' && (
-      <div className="grid md:grid-cols-3 gap-4 h-[600px]">
+      <div className="grid md:grid-cols-3 gap-4 h-[min(70vh,600px)] min-h-[420px]">
         <div className="card overflow-y-auto">
           <div className="p-3 border-b bg-slate-50 font-semibold text-sm">{t('whatsapp.conversations')}</div>
           {conversations.map((c) => (
@@ -696,7 +696,7 @@ function AudienceView() {
               data-testid={`segment-${s}`}
             >
               <div className="text-xs text-slate-500 mb-1">{t(`whatsapp.segment_${s}`)}</div>
-              <div className="text-2xl font-bold text-slate-900">{data.segments?.[s] ?? '—'}</div>
+              <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{data.segments?.[s] ?? '—'}</div>
             </button>
           ))}
           <div className="card p-4">
@@ -705,7 +705,7 @@ function AudienceView() {
           </div>
           <div className="card p-4">
             <div className="text-xs text-slate-500 mb-1">{t('whatsapp.with_phone')}</div>
-            <div className="text-2xl font-bold text-slate-900">{data.with_phone ?? 0}</div>
+            <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{data.with_phone ?? 0}</div>
           </div>
         </div>
       )}
@@ -772,7 +772,7 @@ function AnalyticsView() {
         {kpis.map((k) => (
           <div key={k.label} className="card p-4 text-center">
             <div className="text-xs text-slate-500 mb-1 truncate">{k.label}</div>
-            <div className="text-2xl font-bold text-slate-900">{k.value}</div>
+            <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{k.value}</div>
           </div>
         ))}
       </div>

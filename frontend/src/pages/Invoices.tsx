@@ -85,8 +85,8 @@ export default function Invoices() {
     <div className="space-y-4" data-testid="invoices-page">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t('invoices.title')}</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('invoices.title')}</h1>
+          <p className="text-sm text-[#5c6558] mt-0.5">
             {ocrReady ? t('invoices.ocr_ready') : t('invoices.ocr_not_configured')}
           </p>
         </div>
@@ -388,7 +388,7 @@ function InvoiceForm({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold text-slate-800">{t('invoices.upload_title')}</div>
-              <p className="text-xs text-slate-500 mt-0.5">{t('invoices.upload_hint')}</p>
+              <p className="text-xs text-[#5c6558] mt-0.5">{t('invoices.upload_hint')}</p>
             </div>
             <button type="button" className="btn-secondary text-sm" disabled={ocrBusy} onClick={() => fileRef.current?.click()} data-testid="invoice-upload-btn">
               {ocrBusy ? t('invoices.ocr_running') : t('invoices.upload_cta')}

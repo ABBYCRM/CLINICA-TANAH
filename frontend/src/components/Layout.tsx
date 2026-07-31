@@ -79,16 +79,16 @@ export default function Layout() {
   ];
 
   const brand = (compact: boolean) => (
-    <div className="p-4 border-b border-slate-800 flex items-center gap-3">
-      <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-clinic-400 to-clinic-600 flex items-center justify-center text-white shadow-md shadow-black/30 ring-1 ring-white/10">
+    <div className="p-4 border-b border-black/25 flex items-center gap-3">
+      <div className="brand-medallion w-10 h-10 shrink-0">
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </div>
       {!compact && (
-        <div className="overflow-hidden">
-          <div className="font-semibold text-white truncate tracking-tight">{tenantLabel}</div>
-          <div className="text-xs text-slate-400 truncate">{t('app.tagline')}</div>
+        <div className="overflow-hidden min-w-0">
+          <div className="font-display font-semibold text-[#eef5ea] truncate tracking-tight text-[15px]">{tenantLabel}</div>
+          <div className="text-[11px] text-[#9bb89a] truncate">{t('app.tagline')}</div>
         </div>
       )}
     </div>
@@ -104,14 +104,10 @@ export default function Layout() {
           onClick={onNavigate}
           title={compact ? label : undefined}
           className={({ isActive }) =>
-            `group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-              isActive
-                ? 'bg-clinic-600 text-white font-medium shadow-md shadow-clinic-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`
+            `group nav-chip ${isActive ? 'nav-chip-active font-semibold' : 'nav-chip-idle'}`
           }
         >
-          <Icon className="w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+          <Icon className="w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-105" />
           {!compact && <span className="truncate">{label}</span>}
         </NavLink>
       ))}
@@ -119,32 +115,36 @@ export default function Layout() {
   );
 
   const sidebarFooter = (compact: boolean) => (
-    <div className="p-3 border-t border-slate-800 text-xs space-y-2">
+    <div className="p-3 border-t border-black/25 text-xs space-y-2">
       {!compact && (
         <>
           <div>
-            <div className="text-slate-400 mb-1.5">{t('common.language')}</div>
-            <div className="inline-flex rounded-lg bg-slate-800 p-0.5">
+            <div className="text-[#8aa58a] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
+            <div className="inline-flex rounded-xl p-0.5 border border-white/10"
+              style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.15))', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.35)' }}>
               {locales.map((l) => (
                 <button
                   key={l}
                   onClick={() => setLocale(l)}
                   aria-pressed={l === locale}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-200 ${
-                    l === locale ? 'bg-clinic-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                    l === locale
+                      ? 'text-white shadow-knob'
+                      : 'text-[#9bb89a] hover:text-[#eef5ea]'
                   }`}
+                  style={l === locale ? { background: 'linear-gradient(180deg, #5f8768, #3f5c42)' } : undefined}
                 >
                   {l === 'pt-BR' ? 'PT' : l === 'es' ? 'ES' : 'EN'}
                 </button>
               ))}
             </div>
           </div>
-          <div className="pt-2 border-t border-slate-800">
-            <div className="text-slate-200 font-medium truncate">{user?.full_name}</div>
-            <div className="text-slate-500 truncate capitalize">{user?.role}</div>
+          <div className="pt-2 border-t border-black/25">
+            <div className="text-[#e2ebe0] font-semibold truncate">{user?.full_name}</div>
+            <div className="text-[#7a947a] truncate capitalize">{user?.role}</div>
             <button
               onClick={handleLogout}
-              className="mt-2 inline-flex items-center gap-1.5 text-rose-400 transition-colors hover:text-rose-300"
+              className="mt-2 inline-flex items-center gap-1.5 text-[#d4a89a] transition-colors hover:text-[#efd0c8]"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" />
@@ -158,11 +158,11 @@ export default function Layout() {
   );
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* Desktop sidebar */}
+    <div className="min-h-screen flex">
+      {/* Desktop sidebar — wood/moss panel */}
       <aside
         data-testid="sidebar"
-        className={`${sidebarOpen ? 'w-64' : 'w-[4.5rem]'} hidden lg:flex transition-[width] duration-300 ease-fluid bg-slate-900 text-slate-200 flex-col shrink-0`}
+        className={`${sidebarOpen ? 'w-64' : 'w-[4.5rem]'} hidden lg:flex transition-[width] duration-300 ease-fluid shell-wood text-[#c5d4c4] flex-col shrink-0`}
       >
         {brand(!sidebarOpen)}
         {navList(undefined, !sidebarOpen)}
@@ -173,14 +173,14 @@ export default function Layout() {
       <div
         data-testid="drawer-backdrop"
         onClick={() => setMobileOpen(false)}
-        className={`lg:hidden fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`lg:hidden fixed inset-0 z-40 bg-[#141c16]/55 backdrop-blur-[2px] transition-opacity duration-300 ${
           mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         aria-hidden="true"
       />
       <aside
         data-testid="mobile-drawer"
-        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-slate-900 text-slate-200 flex flex-col shadow-2xl transition-transform duration-300 ease-fluid ${
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] shell-wood text-[#c5d4c4] flex flex-col transition-transform duration-300 ease-fluid ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-hidden={!mobileOpen}
@@ -190,7 +190,7 @@ export default function Layout() {
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
-            className="absolute top-4 right-4 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            className="absolute top-4 right-4 rounded-lg p-1.5 text-[#9bb89a] transition-colors hover:bg-white/10 hover:text-white"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -203,12 +203,13 @@ export default function Layout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <header className="sticky top-0 z-30 shell-header px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <button
             data-testid="mobile-menu-button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
-            className="lg:hidden rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="lg:hidden rounded-xl p-2 text-[#3f5c42] transition-all hover:brightness-105"
+            style={{ background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(40,55,35,0.12)', border: '1px solid rgba(63,92,66,0.22)' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M4 6h16M4 12h16M4 18h16" />
@@ -217,15 +218,16 @@ export default function Layout() {
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Toggle sidebar"
-            className="hidden lg:block rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="hidden lg:block rounded-xl p-2 text-[#3f5c42] transition-all hover:brightness-105"
+            style={{ background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(40,55,35,0.12)', border: '1px solid rgba(63,92,66,0.22)' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M4 6h16M4 12h16M4 18h10" />
             </svg>
           </button>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-slate-800 truncate" data-testid="active-clinic">{tenantLabel}</div>
-            <div className="text-xs text-slate-500 truncate hidden sm:block">{t('app.address')}</div>
+            <div className="font-display text-[15px] font-semibold text-[#243328] truncate" data-testid="active-clinic">{tenantLabel}</div>
+            <div className="text-xs text-[#5c6558] truncate hidden sm:block">{t('app.address')}</div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-fade-in">

@@ -132,13 +132,13 @@ export default function Payroll() {
   return (
     <div className="space-y-4" data-testid="payroll-page">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('payroll.title')}</h1>
           <p className="text-sm text-[#5c6558] mt-0.5">
             {t('payroll.legal_banner', { year: meta?.year || 2026, wage: money(meta?.minimum_wage || 1621, locale) })}
           </p>
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-employee">
+        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary whitespace-nowrap shrink-0" data-testid="new-employee">
           + {t('payroll.new_employee')}
         </button>
       </div>
@@ -146,23 +146,23 @@ export default function Payroll() {
       {error && <FormError message={error} />}
 
       <div className="card p-4 space-y-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-end gap-3">
+          <div className="min-w-0 sm:w-auto">
             <label className="label">{t('payroll.period')}</label>
-            <input type="month" className="input w-auto" value={period} onChange={(e) => setPeriod(e.target.value)} />
+            <input type="month" className="input w-full sm:w-auto" value={period} onChange={(e) => setPeriod(e.target.value)} />
           </div>
-          <div>
+          <div className="min-w-0 flex-1 sm:flex-none sm:min-w-[12rem]">
             <label className="label">{t('payroll.run_type')}</label>
-            <select className="input w-auto min-w-[12rem]" value={runType} onChange={(e) => setRunType(e.target.value)} data-testid="run-type">
+            <select className="input w-full" value={runType} onChange={(e) => setRunType(e.target.value)} data-testid="run-type">
               {RUN_TYPES.map((rt) => (
                 <option key={rt.value} value={rt.value}>{t(rt.labelKey)}</option>
               ))}
             </select>
           </div>
-          <button type="button" className="btn-secondary" onClick={() => setOverridesOpen((v) => !v)}>
+          <button type="button" className="btn-secondary w-full sm:w-auto justify-center" onClick={() => setOverridesOpen((v) => !v)}>
             {overridesOpen ? t('payroll.hide_inputs') : t('payroll.period_inputs')}
           </button>
-          <button onClick={runPayroll} className="btn-primary" data-testid="run-payroll">{t('payroll.new_run')}</button>
+          <button onClick={runPayroll} className="btn-primary w-full sm:w-auto justify-center" data-testid="run-payroll">{t('payroll.new_run')}</button>
         </div>
         {overridesOpen && (
           <div className="rounded-xl border border-[rgba(63,92,66,0.18)] overflow-x-auto">
@@ -552,7 +552,7 @@ function EmployeeForm({ initial, minimumWage, onClose, onSaved }: {
           <label className="label">{t('payroll.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="label">{t('payroll.cpf')} *</label>
             <input className="input" maxLength={11} value={form.cpf}
@@ -613,12 +613,12 @@ function EmployeeForm({ initial, minimumWage, onClose, onSaved }: {
             <input type="number" min={0} step={0.01} className="input" value={form.other_discounts}
               onChange={(e) => set('other_discounts', e.target.value)} />
           </div>
-          <div className="col-span-2 flex flex-wrap gap-4 items-center">
+          <div className="sm:col-span-2 flex flex-col sm:flex-row flex-wrap gap-4 items-stretch sm:items-center">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.vale_transporte} onChange={(e) => set('vale_transporte', e.target.checked)} />
               {t('payroll.vt')}
             </label>
-            <div className="flex-1 min-w-[10rem]">
+            <div className="flex-1 min-w-0 sm:min-w-[10rem]">
               <label className="label">{t('payroll.vt_cost')}</label>
               <input type="number" min={0} step={0.01} className="input" value={form.vt_monthly_cost}
                 onChange={(e) => set('vt_monthly_cost', e.target.value)} disabled={!form.vale_transporte} />
@@ -636,7 +636,7 @@ function EmployeeForm({ initial, minimumWage, onClose, onSaved }: {
             <label className="label">{t('payroll.agency')}</label>
             <input className="input" value={form.bank_agency} onChange={(e) => set('bank_agency', e.target.value)} />
           </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="label">{t('payroll.account')}</label>
             <input className="input" value={form.bank_account_number} onChange={(e) => set('bank_account_number', e.target.value)} />
           </div>

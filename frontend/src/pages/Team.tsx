@@ -94,12 +94,12 @@ export default function Team() {
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('team.title')}</h1>
           <p className="text-sm text-[#5c6558] mt-0.5">{t('team.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-[#5c6558] cursor-pointer">
             <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} data-testid="show-inactive" />
             {t('team.show_inactive')}
           </label>
-          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-user">
+          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary whitespace-nowrap" data-testid="new-user">
             + {t('team.new_user')}
           </button>
         </div>
@@ -234,18 +234,18 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
           <label className="label">{t('team.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required data-testid="user-name" />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 sm:col-span-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-1">
             <label className="label">{t('common.email')} *</label>
             <input type="email" className="input" value={form.email} onChange={(e) => set('email', e.target.value)} required />
           </div>
-          <div className="col-span-2 sm:col-span-1">
+          <div className="sm:col-span-1">
             <label className="label">{t('team.role')} *</label>
             <select className="input" value={form.role} onChange={(e) => set('role', e.target.value)} data-testid="user-role">
               {ROLES.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
             </select>
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <label className="label">{initial ? t('team.password_new_hint') : `${t('team.password')} *`}</label>
             <input type="password" className="input" autoComplete="new-password" placeholder={t('team.password_min')}
               value={form.password} onChange={(e) => set('password', e.target.value)} required={!initial} minLength={initial ? 0 : 8} />

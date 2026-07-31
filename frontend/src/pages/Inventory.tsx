@@ -59,7 +59,7 @@ export default function Inventory() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('inventory.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('inventory.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
             {(['items', 'batches', 'movements', 'alerts'] as const).map((k) => (
@@ -98,7 +98,7 @@ export default function Inventory() {
             </ul>
           </div>
           <div className="card p-4">
-            <h3 className="font-semibold text-amber-700 mb-3">⏰ {t('dashboard.expiring_batches')}</h3>
+            <h3 className="font-semibold text-amber-700 mb-3">{t('dashboard.expiring_batches')}</h3>
             {alerts.expiring_soon.length === 0 && <div className="text-sm text-slate-400">OK</div>}
             <ul className="space-y-2">
               {alerts.expiring_soon.map((b: any) => (
