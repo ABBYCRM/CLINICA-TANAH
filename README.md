@@ -4,9 +4,11 @@ LGPD-compliant clinic management platform for **Clínica Tanah** in São Paulo /
 Trilingual (Português / Español / English), with WhatsApp bot for appointments, full inventory & vendor
 management, double-entry accounting, Brazilian payroll (INSS/IRRF/FGTS), and complete audit trail.
 
-🌐 **Live**: https://clinica-tanah.onrender.com
+🌐 **Live (DigitalOcean)**: https://clinica-tanah-bbqu7.ondigitalocean.app
+📱 **PWA**: installable on Android, iOS (Safari → Add to Home Screen), and Windows (Edge/Chrome → Install)
 🔒 **LGPD Mode**: Strict (Lei 13.709/2018 + CFM 2.314/2022)
 💬 **WhatsApp Bot**: Trilingual, with appointment booking + opt-out
+🏢 **Multi-tenant**: one deployment, many clinics (superadmin → Clínicas)
 
 ---
 
@@ -29,7 +31,7 @@ npm start
 
 | Email | Role | Password |
 |---|---|---|
-| `admin@clinica-tanah.com.br` | Admin / Dra. Helena Tanaka | `clinica2026` |
+| `admin@clinica-tanah.com.br` | Admin / Dra. Helena Tanaka (**superadmin**) | `clinica2026` |
 | `dpo@clinica-tanah.com.br` | DPO / Dr. Marcos Vieira | `clinica2026` |
 | `silva@clinica-tanah.com.br` | Doctor / Dr. Roberto Silva | `clinica2026` |
 | `santos@clinica-tanah.com.br` | Doctor / Dra. Beatriz Santos | `clinica2026` |
@@ -43,7 +45,7 @@ npm start
 ## Feature set (granular)
 
 ### Clinical core
-- **Patient registration** with full Brazilian address (CEP, bairro, cidade, UF), CPF, RG, convênio, blood type, allergies, chronic conditions, emergency contact.
+- **MedX-parity patient record** — full identification (CPF, RG + issuing body, CNS/SUS card, mother/father names), contact (2 phones, email), complete Brazilian address, sociodemographics (marital status, occupation, education, nationality, birthplace, IBGE race/color), referral source, health insurance + card number, blood type, allergies, chronic conditions, medications in use, emergency contact, admin notes.
 - **SOAP encounters** with ICD-10/CID-10 diagnosis codes, ICD auto-suggested, signatures.
 - **Prescriptions** in PDF-ready format, one-click **send via WhatsApp**.
 - **Appointment management** with practitioner schedule, status workflow (scheduled → confirmed → arrived → in progress → completed / cancelled / no_show), sources (reception, phone, website, **WhatsApp bot**).
@@ -52,11 +54,14 @@ npm start
 
 ### WhatsApp bot (trilingual, Meta Cloud API ready)
 - **State machine** for appointment booking: `idle → awaiting_cpf → awaiting_specialty → awaiting_date → confirmed`
+- **Real cancellation flow**: bot lists upcoming appointments, patient picks one, it's cancelled.
+- **NPS satisfaction surveys**: dispatch to patients with completed appointments; bot collects 0–10 score + comment; KPIs (NPS, promoters/detractors) in the UI.
+- **Campaigns / promotions**: customer-appreciation-day blasts to every consented, non-opted-out patient, with `{{name}}` personalization and automatic LGPD opt-out footer.
 - **LGPD consent flow**: bot asks, patient replies SIM/NÃO, consent is recorded with IP + timestamp.
-- **Opt-out**: any time, patient can reply `SAIR` / `STOP` / `SALIR` and be removed from all lists.
+- **Opt-out**: any time, patient can reply `SAIR` / `STOP` / `SALIR` and be removed from all lists (staff sends are blocked too).
+- **Webhook hardening**: X-Hub-Signature-256 verification (`META_WA_APP_SECRET`), delivery status callbacks, mark-as-read, non-text fallback replies.
 - **Specialty menu** in PT/ES/EN.
-- **Patient lookup** by CPF before showing any PHI (privacy by design).
-- **Live mode**: set `META_WA_TOKEN` + `META_WA_PHONE_ID` to send via Meta Cloud API.
+- **Live mode**: set `META_WA_TOKEN` + `META_WA_PHONE_ID` (+ `META_WA_APP_SECRET` for signature verification) to send via Meta Cloud API; `/api/whatsapp/ping` tests connectivity from the UI.
 - **Dry-run mode**: messages are stored in DB but not sent — used for testing & the in-app simulator.
 - **In-app simulator**: at `/whatsapp` in the UI, type as if you were a patient and see the bot reply in real time.
 
@@ -178,6 +183,16 @@ npm start
 | `POST` | `/api/whatsapp/send` | admin/doctor/nurse/receptionist | Staff send to patient |
 | `POST` | `/api/whatsapp/simulate` | JWT | Test the bot from the UI |
 | `GET` | `/api/whatsapp/status` | JWT | Live / dry-run + counts |
+| `GET` | `/api/whatsapp/ping` | admin/receptionist | Live Meta connectivity check |
+| `DELETE` | `/api/whatsapp/conversations/:phone` | admin/receptionist | Delete conversation + messages |
+| `GET` | `/api/whatsapp/surveys` | JWT | NPS aggregate + responses |
+| `POST` | `/api/whatsapp/surveys/dispatch` | admin/receptionist | Send NPS question to completed appointments |
+| `GET`/`POST` | `/api/whatsapp/campaigns` | JWT / admin+receptionist | Promotional campaigns |
+| `POST` | `/api/whatsapp/campaigns/:id/dispatch` | admin/receptionist | Blast campaign to consented patients |
+| `DELETE` | `/api/whatsapp/campaigns/:id` | admin/receptionist | Delete draft campaign |
+| `GET`/`POST` | `/api/users` | admin | Staff management |
+| `PUT`/`DELETE` | `/api/users/:id` | admin | Update / deactivate staff |
+| `GET` | `/api/users/directory` | JWT | Staff picker for scheduling |
 | `POST` | `/api/whatsapp/webhook` | Meta | Receive WhatsApp messages |
 | `GET` | `/api/whatsapp/webhook` | Meta | Webhook verification |
 | `GET` | `/api/lgpd/policy` | JWT | Public policy summary |
@@ -202,16 +217,72 @@ npm start
 | **art. 48** — Incident notification | `audit_log` captures anomalous access patterns; staff can review. |
 | **art. 50** — Good practices | DPO designated publicly, retention policy documented, opt-out mechanism in every WhatsApp message. |
 
-## Deploy
+## Testing
 
 ```bash
-# On Render (auto via render.yaml):
+# Unit tests (backend, vitest)
+npm test
+
+# E2E — boots the real app (seeded SQLite + built frontend) and checks
+# every spec on desktop Chrome AND a mobile (Pixel 7) viewport:
+#   · sign-in render / locale switch / invalid + valid login
+#   · mobile: no horizontal overflow, drawer navigation
+#   · API smoke: health, auth, patients RBAC
+npm run test:e2e
+
+# Only the mobile e2e check / only desktop
+npm run test:e2e:mobile
+npm run test:e2e:desktop
+
+# First time only — install the Chromium browser
+npm run e2e:install
+```
+
+The e2e suite also runs in CI (`.github/workflows/e2e.yml`) on every push/PR.
+
+## Deploy
+
+### DigitalOcean App Platform (recommended)
+
+```bash
+# Requires doctl authenticated against your DO account
+doctl apps create --spec .do/app.yaml
+# then open the app URL printed by:
+doctl apps list
+```
+
+Or in the [DigitalOcean dashboard](https://cloud.digitalocean.com/apps):
+1. **Create App** → GitHub → `ABBYCRM/CLINICA-TANAH`
+2. Use the Dockerfile at the repo root (or paste `.do/app.yaml`)
+3. Set secret `JWT_SECRET` (and optional Meta WhatsApp vars)
+4. Confirm volume mount `/data` for SQLite persistence
+5. Deploy → frontend + API share the same HTTPS origin (required for PWA install)
+
+**Frontend URL** = the App Platform default ingress, e.g.  
+`https://clinica-tanah-xxxxx.ondigitalocean.app`  
+(login page is `/login`; the same URL is what users “Install” as the PWA)
+
+### Progressive Web App
+
+The Vite build ships a Web App Manifest + service worker (`vite-plugin-pwa`):
+- **Android / Chrome / Edge / Windows**: install banner or browser “Install app”
+- **iOS Safari**: Share → **Add to Home Screen** (banner shows the steps)
+- Icons: 192 / 512 / maskable + Apple touch icon + Windows tile
+- API calls are never cached offline (`NetworkOnly`); the shell works offline
+
+### Render (optional)
+
+```bash
+# On Render (render.yaml):
 # - Build: cd .. && npm install:all && npm run build:frontend && cd backend && npm run build
 # - Start: node dist/server.js
 # - Health: /api/health
+```
 
-# Manual:
-npm run build      # builds both
+### Manual
+
+```bash
+npm run build      # builds both (+ PWA assets)
 npm run seed       # seeds the SQLite DB
 npm start          # serves on $PORT (default 3001)
 ```

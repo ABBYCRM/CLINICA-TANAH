@@ -42,6 +42,20 @@ export function initSchema(): void {
     -- ============================================================
     -- USERS / STAFF (RBAC for LGPD access control)
     -- ============================================================
+    -- ============================================================
+    -- TENANTS — one deployment, many clinics (row-level isolation)
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      cnpj TEXT,
+      address TEXT,
+      phone TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -322,6 +336,13 @@ export function initSchema(): void {
       other_discounts REAL NOT NULL DEFAULT 0,
       dependents INTEGER NOT NULL DEFAULT 0,
       bank_account TEXT,                 -- JSON
+      vale_transporte INTEGER NOT NULL DEFAULT 0,
+      vt_monthly_cost REAL NOT NULL DEFAULT 0,
+      night_shift INTEGER NOT NULL DEFAULT 0,
+      cbo_code TEXT,
+      esocial_category TEXT DEFAULT '101',
+      contract_type TEXT DEFAULT 'clt',
+      registration_number TEXT,
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -435,6 +456,92 @@ export function initSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_wamsg_phone ON whatsapp_messages(phone);
 
     -- ============================================================
+    -- SATISFACTION SURVEYS (NPS pós-consulta via WhatsApp bot)
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS satisfaction_surveys (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+      appointment_id TEXT REFERENCES appointments(id),
+      score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 10),
+      comment TEXT,
+      source TEXT NOT NULL DEFAULT 'whatsapp_bot',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(appointment_id)              -- one survey per appointment
+    );
+    CREATE INDEX IF NOT EXISTS idx_survey_patient ON satisfaction_surveys(patient_id);
+
+    -- ============================================================
+    -- CAMPAIGNS / PROMOTIONS (customer appreciation day blasts)
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      message TEXT NOT NULL,             -- opt-out footer appended automatically
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','sending','sent','failed')),
+      audience TEXT NOT NULL DEFAULT 'all_consented',
+      scheduled_for TEXT,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      dispatched_at TEXT
+    );
+
+    -- ============================================================
+    -- WHATSAPP MARKETING — Meta-style templates + clinic automations
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS wa_templates (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('marketing','utility','authentication')),
+      language TEXT NOT NULL DEFAULT 'pt_BR',
+      body TEXT NOT NULL,
+      header TEXT,
+      footer TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','approved','rejected')),
+      meta_name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_templates_tenant ON wa_templates(tenant_id);
+
+    CREATE TABLE IF NOT EXISTS wa_automations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      message TEXT NOT NULL,
+      template_id TEXT REFERENCES wa_templates(id),
+      config TEXT,                       -- JSON: offset_hours, inactive_days, etc.
+      last_run_at TEXT,
+      last_sent_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_automations_tenant ON wa_automations(tenant_id);
+
+    -- ============================================================
+    -- API TOKENS — programmatic access to the whole CRM
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      prefix TEXT NOT NULL,              -- display hint: ct_a1b2c3…
+      token_hash TEXT UNIQUE NOT NULL,   -- sha256 hex; plaintext is shown once
+      scope TEXT NOT NULL DEFAULT 'read_write' CHECK(scope IN ('read','read_write')),
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT,
+      expires_at TEXT,
+      revoked_at TEXT
+    );
+
+    -- ============================================================
     -- SYSTEM SETTINGS (clinic-level config)
     -- ============================================================
     CREATE TABLE IF NOT EXISTS settings (
@@ -443,4 +550,326 @@ export function initSchema(): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  migrate();
+}
+
+/** Fixed id of the tenant that owns all pre-multitenancy data. */
+export const DEFAULT_TENANT_ID = 't_clinica_tanah';
+
+/**
+ * Idempotent column migrations for existing databases.
+ * CREATE TABLE IF NOT EXISTS never alters live tables — add new
+ * MedX-parity patient fields here when they're missing.
+ */
+function migrate(): void {
+  const patientCols = [
+    `ALTER TABLE patients ADD COLUMN rg_issuer TEXT`,
+    `ALTER TABLE patients ADD COLUMN marital_status TEXT`,
+    `ALTER TABLE patients ADD COLUMN occupation TEXT`,
+    `ALTER TABLE patients ADD COLUMN education_level TEXT`,
+    `ALTER TABLE patients ADD COLUMN nationality TEXT`,
+    `ALTER TABLE patients ADD COLUMN birthplace TEXT`,
+    `ALTER TABLE patients ADD COLUMN mother_name TEXT`,
+    `ALTER TABLE patients ADD COLUMN father_name TEXT`,
+    `ALTER TABLE patients ADD COLUMN race_color TEXT`,
+    `ALTER TABLE patients ADD COLUMN cns TEXT`, // Cartão SUS
+    `ALTER TABLE patients ADD COLUMN phone_secondary TEXT`,
+    `ALTER TABLE patients ADD COLUMN referral_source TEXT`,
+    `ALTER TABLE patients ADD COLUMN notes TEXT`,
+    `ALTER TABLE patients ADD COLUMN lifecycle_stage TEXT NOT NULL DEFAULT 'new_patient'`,
+    `ALTER TABLE patients ADD COLUMN preferred_language TEXT DEFAULT 'pt-BR'`,
+    `ALTER TABLE patients ADD COLUMN assigned_professional_id TEXT`,
+    `ALTER TABLE patients ADD COLUMN welcome_message_sent_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN first_completed_visit_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN last_visit_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN recall_due_at TEXT`,
+    `ALTER TABLE patients ADD COLUMN do_not_contact INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE patients ADD COLUMN open_complaint INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE patients ADD COLUMN tags TEXT`,
+  ];
+  for (const sql of patientCols) {
+    try { openDb().exec(sql); } catch { /* column already exists */ }
+  }
+
+  try {
+    openDb().exec(`
+      CREATE TABLE IF NOT EXISTS patient_timeline_events (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        status TEXT,
+        meta TEXT,
+        occurred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    openDb().exec(`CREATE INDEX IF NOT EXISTS idx_pte_patient ON patient_timeline_events(patient_id, occurred_at)`);
+    openDb().exec(`CREATE INDEX IF NOT EXISTS idx_pte_tenant ON patient_timeline_events(tenant_id)`);
+  } catch { /* exists */ }
+
+  // Patient Workspace Phase 2 — tasks, service tickets, documents
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS patient_tasks (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'follow_up',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      status TEXT NOT NULL DEFAULT 'open',
+      due_at TEXT,
+      assigned_to TEXT,
+      created_by TEXT,
+      related_ticket_id TEXT,
+      related_appointment_id TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ptasks_patient ON patient_tasks(patient_id, status);
+    CREATE INDEX IF NOT EXISTS idx_ptasks_tenant ON patient_tasks(tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS service_tickets (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'patient_experience',
+      priority TEXT NOT NULL DEFAULT 'high',
+      status TEXT NOT NULL DEFAULT 'open',
+      title TEXT NOT NULL,
+      description TEXT,
+      survey_id TEXT,
+      survey_score INTEGER,
+      assigned_to TEXT,
+      resolution TEXT,
+      outcome TEXT,
+      marketing_paused INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_stickets_patient ON service_tickets(patient_id, status);
+    CREATE INDEX IF NOT EXISTS idx_stickets_tenant ON service_tickets(tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS patient_documents (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      doc_type TEXT NOT NULL DEFAULT 'form',
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      signed_at TEXT,
+      file_url TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_pdocs_patient ON patient_documents(patient_id);
+  `);
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN recall_interval_days INTEGER`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN recall_notified_at TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_name TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_phone TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_relationship TEXT`); } catch { /* exists */ }
+
+  // ---- Multi-tenancy: default tenant owns everything that predates it
+  openDb().prepare(`
+    INSERT OR IGNORE INTO tenants (id, slug, name, address, phone)
+    VALUES (?, 'clinica-tanah', 'Clínica Tanah',
+            'Rua Augusta, 1234 — Consolação, São Paulo / SP — CEP 01304-001', '+55 11 3000-0000')
+  `).run(DEFAULT_TENANT_ID);
+
+  const tenantTables = [
+    'users', 'patients', 'appointments', 'encounters', 'prescriptions',
+    'vendors', 'inventory_items', 'inventory_batches', 'stock_movements',
+    'purchase_orders', 'chart_of_accounts', 'journal_entries', 'invoices',
+    'employees', 'payroll_runs', 'payslips',
+    'lgpd_consents', 'lgpd_data_requests',
+    'whatsapp_conversations', 'whatsapp_messages',
+    'satisfaction_surveys', 'campaigns', 'api_tokens', 'audit_log',
+  ];
+  for (const table of tenantTables) {
+    try {
+      openDb().exec(`ALTER TABLE ${table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT '${DEFAULT_TENANT_ID}'`);
+    } catch { /* column already exists */ }
+  }
+  try { openDb().exec(`ALTER TABLE users ADD COLUMN is_superadmin INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN vale_transporte INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN vt_monthly_cost REAL NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN night_shift INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN cbo_code TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN esocial_category TEXT DEFAULT '101'`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN contract_type TEXT DEFAULT 'clt'`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE employees ADD COLUMN registration_number TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_patients_tenant ON patients(tenant_id)`); } catch { /* exists */ }
+  try { openDb().exec(`CREATE INDEX IF NOT EXISTS idx_appt_tenant ON appointments(tenant_id)`); } catch { /* exists */ }
+
+  // Campaign audience / template linkage for marketing blasts
+  try { openDb().exec(`ALTER TABLE campaigns ADD COLUMN template_id TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE campaigns ADD COLUMN category TEXT NOT NULL DEFAULT 'marketing'`); } catch { /* exists */ }
+
+  // Ensure marketing tables exist on DBs created before this migration
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS wa_templates (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('marketing','utility','authentication')),
+      language TEXT NOT NULL DEFAULT 'pt_BR',
+      body TEXT NOT NULL,
+      header TEXT,
+      footer TEXT,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending','approved','rejected')),
+      meta_name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS wa_automations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      message TEXT NOT NULL,
+      template_id TEXT REFERENCES wa_templates(id),
+      config TEXT,
+      last_run_at TEXT,
+      last_sent_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, key)
+    );
+  `);
+
+  // Invoice document attachments + NVIDIA OCR metadata
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS invoice_documents (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      invoice_id TEXT REFERENCES invoices(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      storage_path TEXT NOT NULL,
+      ocr_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(ocr_status IN ('pending','processing','done','failed','skipped')),
+      ocr_model TEXT,
+      ocr_raw_text TEXT,
+      ocr_json TEXT,
+      ocr_error TEXT,
+      uploaded_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_inv_docs_invoice ON invoice_documents(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_inv_docs_tenant ON invoice_documents(tenant_id);
+  `);
+  try { openDb().exec(`ALTER TABLE invoices ADD COLUMN ocr_last_at TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE invoices ADD COLUMN document_count INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+
+  seedMarketingDefaults(DEFAULT_TENANT_ID);
+  ensureRecallAutomation(DEFAULT_TENANT_ID);
+}
+
+function ensureRecallAutomation(tenantId: string): void {
+  const db = openDb();
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO wa_automations
+        (id, tenant_id, key, name, description, enabled, message, config)
+      VALUES (?, ?, 'recall', 'Recall / acompanhamento',
+        'Avisa pacientes com recall_due_at nos próximos 30 dias (sem citar procedimento).',
+        1,
+        'Olá {{name}}. Já está próximo do período recomendado para seu próximo acompanhamento na Clínica Tanah. Gostaria de verificar horários disponíveis?',
+        ?)
+    `).run(
+      `auto_recall_${tenantId}`,
+      tenantId,
+      JSON.stringify({ days_before: 30 }),
+    );
+  } catch { /* ignore */ }
+}
+
+/** Seed clinic marketing templates + automations once per tenant (idempotent). */
+export function seedMarketingDefaults(tenantId: string): void {
+  const db = openDb();
+  const hasTpl = (db.prepare(`SELECT COUNT(*) AS c FROM wa_templates WHERE tenant_id = ?`).get(tenantId) as any).c;
+  if (hasTpl === 0) {
+    const templates: Array<[string, string, string, string, string]> = [
+      ['tpl_welcome', 'Boas-vindas', 'utility',
+        'Olá {{name}}! Bem-vindo(a) à Clínica Tanah. Estamos felizes em cuidar de você. Responda MENU para agendar.', 'approved'],
+      ['tpl_reminder_24h', 'Lembrete 24h', 'utility',
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah no dia {{date}}, às {{time}}.\n\nEscolha uma opção:\n1 — Confirmar\n2 — Remarcar\n3 — Cancelar', 'approved'],
+      ['tpl_reminder_2h', 'Lembrete 2h', 'utility',
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah hoje às {{time}}.\n\n1 — Confirmar | 2 — Remarcar | 3 — Cancelar', 'approved'],
+      ['tpl_promo', 'Campanha promocional', 'marketing',
+        'Olá {{name}}! 💙 Semana especial na Clínica Tanah: condições exclusivas para você. Agende pelo WhatsApp. Responda SAIR para não receber promoções.', 'approved'],
+      ['tpl_birthday', 'Aniversário', 'marketing',
+        'Feliz aniversário, {{name}}! 🎂 A Clínica Tanah deseja um dia maravilhoso. Ganhe 10% de desconto em consultas este mês — responda MENU para agendar.', 'approved'],
+      ['tpl_nps', 'Pesquisa NPS', 'utility',
+        'Olá {{name}}! Como foi sua experiência conosco? Responda com uma nota de 0 a 10.', 'approved'],
+      ['tpl_noshow', 'Falta / no-show', 'utility',
+        'Olá {{name}}, sentimos sua falta na consulta de {{date}}. Quer remarcar? Responda MENU ou ligue para a clínica.', 'approved'],
+      ['tpl_reengage', 'Reativação', 'marketing',
+        'Olá {{name}}! Faz um tempo que não nos vemos. Que tal agendar um check-up na Clínica Tanah? Responda MENU. SAIR para optar por sair.', 'approved'],
+      ['tpl_payment', 'Lembrete de pagamento', 'utility',
+        'Olá {{name}}! Identificamos uma fatura em aberto ({{invoice}}). Podemos ajudar com o pagamento? Responda esta mensagem ou fale com a recepção.', 'approved'],
+    ];
+    const ins = db.prepare(`
+      INSERT OR IGNORE INTO wa_templates (id, tenant_id, name, category, language, body, status, meta_name)
+      VALUES (?, ?, ?, ?, 'pt_BR', ?, ?, ?)
+    `);
+    for (const [id, name, cat, body, status] of templates) {
+      ins.run(`${id}_${tenantId}`, tenantId, name, cat, body, status, id);
+    }
+  }
+
+  const hasAuto = (db.prepare(`SELECT COUNT(*) AS c FROM wa_automations WHERE tenant_id = ?`).get(tenantId) as any).c;
+  if (hasAuto === 0) {
+    const autos: Array<[string, string, string, string, string, object]> = [
+      ['reminder_24h', 'Lembrete 24 horas antes', 'Envia lembrete utilitário 24h antes da consulta confirmada/agendada.',
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah no dia {{date}}, às {{time}}.\n\nEscolha uma opção:\n1 — Confirmar\n2 — Remarcar\n3 — Cancelar',
+        JSON.stringify({ offset_hours: 24 }), { enabled: 1 }],
+      ['reminder_2h', 'Lembrete 2 horas antes', 'Lembrete curto no dia da consulta.',
+        'Olá {{name}}. Você tem um agendamento na Clínica Tanah hoje às {{time}}.\n\n1 — Confirmar | 2 — Remarcar | 3 — Cancelar',
+        JSON.stringify({ offset_hours: 2 }), { enabled: 1 }],
+      ['welcome', 'Boas-vindas pós primeira consulta', 'Disparada uma vez após a primeira consulta concluída (checkout).',
+        'Olá {{name}}! Agradecemos por escolher a Clínica Tanah. Este é nosso canal oficial para confirmações e atendimento administrativo. Responda ATENDENTE ou PREFERÊNCIAS.',
+        JSON.stringify({ trigger: 'first_completed_visit' }), { enabled: 1 }],
+      ['birthday', 'Feliz aniversário', 'Mensagem de aniversário (marketing) para pacientes consentidos.',
+        'Feliz aniversário, {{name}}! 🎂 A Clínica Tanah deseja um dia maravilhoso. Responda MENU para agendar.',
+        JSON.stringify({}), { enabled: 0 }],
+      ['no_show', 'Follow-up de falta', 'Contato após consulta marcada como no_show.',
+        'Olá {{name}}, sentimos sua falta na consulta de {{date}}. Quer remarcar? Responda MENU.',
+        JSON.stringify({ lookback_days: 3 }), { enabled: 1 }],
+      ['inactive_90d', 'Reengajamento 90 dias', 'Pacientes sem consulta nos últimos 90 dias.',
+        'Olá {{name}}! Faz um tempo que não nos vemos. Que tal um check-up? Responda MENU. SAIR para optar por sair.',
+        JSON.stringify({ inactive_days: 90 }), { enabled: 0 }],
+      ['nps_auto', 'NPS automático pós-consulta', 'Pesquisa de satisfação após consultas concluídas (últimas 48h).',
+        'Olá {{name}}! Como foi sua experiência conosco? Responda com uma nota de 0 a 10.',
+        JSON.stringify({ within_hours: 48 }), { enabled: 1 }],
+      ['payment_reminder', 'Lembrete de fatura', 'Faturas emitidas/atrasadas com paciente vinculado.',
+        'Olá {{name}}! Há uma fatura em aberto ({{invoice}}). Podemos ajudar? Fale com a recepção.',
+        JSON.stringify({}), { enabled: 0 }],
+      ['recall', 'Recall / acompanhamento', 'Avisa pacientes com recall_due_at nos próximos 30 dias (sem citar procedimento).',
+        'Olá {{name}}. Já está próximo do período recomendado para seu próximo acompanhamento na Clínica Tanah. Gostaria de verificar horários disponíveis?',
+        JSON.stringify({ days_before: 30 }), { enabled: 1 }],
+    ];
+    const insA = db.prepare(`
+      INSERT OR IGNORE INTO wa_automations
+        (id, tenant_id, key, name, description, enabled, message, config)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const [key, name, desc, message, config, flags] of autos) {
+      insA.run(`auto_${key}_${tenantId}`, tenantId, key, name, desc, (flags as any).enabled ? 1 : 0, message, config);
+    }
+  }
+  ensureRecallAutomation(tenantId);
 }
