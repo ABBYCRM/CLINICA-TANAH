@@ -10,7 +10,7 @@ import { recordConsent, logAudit } from '../services/audit';
 import { t, type Locale } from '../services/i18n';
 import {
   sendTextMessage, persistIncoming, getOrCreateConversation, updateConversation,
-  verifyWebhookSignature, markAsRead, applyStatusUpdate, pingMeta,
+  verifyWebhookSignature, markAsRead, applyStatusUpdate, pingMeta, isLive,
 } from '../services/whatsapp';
 
 const router = Router();
@@ -103,7 +103,25 @@ async function handleMessage(phone: string, body: string, locale: Locale): Promi
         return;
       }
       if (['3', 'cancelar', 'cancel'].some(k => lower.includes(k))) {
-        await sendTextMessage(phone, locale === 'en' ? 'Reply CANCEL <appointment_id> to cancel.' : locale === 'es' ? 'Responde CANCELAR <id_cita> para cancelar.' : 'Responda CANCELAR <id_da_consulta> para cancelar. Ex: CANCELAR abc123');
+        const appts = db.prepare(`
+          SELECT a.id, a.scheduled_at, u.full_name AS practitioner
+          FROM appointments a JOIN users u ON u.id = a.practitioner_id
+          WHERE a.patient_id = (SELECT id FROM patients WHERE phone = ?)
+            AND a.scheduled_at >= datetime('now')
+            AND a.status NOT IN ('cancelled','no_show','completed')
+          ORDER BY a.scheduled_at ASC LIMIT 9
+        `).all(phone) as any[];
+        if (!appts.length) {
+          await reply(phone, locale, 'cancel_none');
+          await reply(phone, locale, 'bot_menu');
+          return;
+        }
+        const list = appts.map((a, i) => {
+          const [d, h] = a.scheduled_at.split(' ');
+          return `${i + 1}️⃣ ${d.split('-').reverse().join('/')} ${h.slice(0, 5)} — ${a.practitioner}`;
+        }).join('\n');
+        updateConversation(phone, { state: 'awaiting_cancel_choice', context: { ...ctx, cancel_ids: appts.map(a => a.id) } });
+        await reply(phone, locale, 'cancel_ask_choice', { list });
         return;
       }
       if (['4', 'humano', 'atendente', 'recepção', 'reception', 'agente'].some(k => lower.includes(k))) {
@@ -201,6 +219,64 @@ async function handleMessage(phone: string, body: string, locale: Locale): Promi
       });
       updateConversation(phone, { state: 'idle', context: {} });
       logAudit({ action: 'whatsapp_booking_created', resourceType: 'appointment', resourceId: apptId, legalBasis: 'contract_art7_V' });
+      return;
+    }
+
+    case 'awaiting_cancel_choice': {
+      const ids: string[] = ctx.cancel_ids || [];
+      if (lower === '0') {
+        updateConversation(phone, { state: 'idle', context: {} });
+        await reply(phone, locale, 'bot_menu');
+        return;
+      }
+      const idx = parseInt(lower, 10) - 1;
+      if (Number.isNaN(idx) || idx < 0 || idx >= ids.length) {
+        await reply(phone, locale, 'cancel_invalid');
+        return;
+      }
+      const appt = db.prepare(`
+        SELECT a.id, a.scheduled_at, u.full_name AS practitioner
+        FROM appointments a JOIN users u ON u.id = a.practitioner_id WHERE a.id = ?
+      `).get(ids[idx]) as any;
+      if (!appt) {
+        await reply(phone, locale, 'cancel_invalid');
+        return;
+      }
+      db.prepare(`UPDATE appointments SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?`).run(appt.id);
+      logAudit({ action: 'whatsapp_booking_cancelled', resourceType: 'appointment', resourceId: appt.id, legalBasis: 'contract_art7_V' });
+      updateConversation(phone, { state: 'idle', context: {} });
+      const [d, h] = appt.scheduled_at.split(' ');
+      await reply(phone, locale, 'cancel_done', {
+        date: d.split('-').reverse().join('/'), time: h.slice(0, 5), practitioner: appt.practitioner,
+      });
+      await reply(phone, locale, 'bot_menu');
+      return;
+    }
+
+    case 'awaiting_nps_score': {
+      const score = parseInt(lower, 10);
+      if (Number.isNaN(score) || score < 0 || score > 10) {
+        await reply(phone, locale, 'nps_invalid');
+        return;
+      }
+      updateConversation(phone, { state: 'awaiting_nps_comment', context: { ...ctx, score } });
+      await reply(phone, locale, 'nps_ask_comment', { score });
+      return;
+    }
+
+    case 'awaiting_nps_comment': {
+      const skipWords = ['pular', 'saltar', 'skip', 'pular.', 'não', 'nao', 'no'];
+      const comment = skipWords.includes(lower) ? null : text.slice(0, 1000);
+      const surveyId = uuid();
+      db.prepare(`
+        INSERT INTO satisfaction_surveys (id, patient_id, appointment_id, score, comment, source)
+        VALUES (?, ?, ?, ?, ?, 'whatsapp_bot')
+      `).run(surveyId, ctx.patient_id, ctx.appointment_id ?? null, ctx.score, comment);
+      logAudit({ action: 'nps_survey_received', resourceType: 'satisfaction_survey', resourceId: surveyId,
+                 afterValue: { score: ctx.score }, legalBasis: 'consent_art7_I' });
+      updateConversation(phone, { state: 'idle', context: {} });
+      await reply(phone, locale, 'nps_thanks');
+      await reply(phone, locale, 'bot_menu');
       return;
     }
 
@@ -339,6 +415,132 @@ router.get('/status', authenticate, (_req, res) => {
 // Live connectivity check — actually calls the Meta Graph API
 router.get('/ping', authenticate, requireRole('admin','receptionist'), async (_req, res) => {
   res.json(await pingMeta());
+});
+
+/* ------------------------------------------------------------------
+ * Satisfaction surveys (NPS) — dispatched after completed appointments
+ * ------------------------------------------------------------------ */
+
+router.get('/surveys', authenticate, (req: Request, res: Response) => {
+  const rows = db.prepare(`
+    SELECT s.*, p.full_name AS patient_name
+    FROM satisfaction_surveys s JOIN patients p ON p.id = s.patient_id
+    ORDER BY s.created_at DESC LIMIT 200
+  `).all() as any[];
+  const total = rows.length;
+  const avg = total ? rows.reduce((s, r) => s + r.score, 0) / total : 0;
+  const promoters = rows.filter((r) => r.score >= 9).length;
+  const detractors = rows.filter((r) => r.score <= 6).length;
+  const nps = total ? Math.round(((promoters - detractors) / total) * 100) : 0;
+  res.json({ total, average: Math.round(avg * 100) / 100, nps, promoters, passives: total - promoters - detractors, detractors, surveys: rows });
+});
+
+// Send the NPS question to patients with recently completed appointments
+// who haven't answered yet. Bot picks it up from state awaiting_nps_score.
+router.post('/surveys/dispatch', authenticate, requireRole('admin','receptionist'), async (req: Request, res: Response) => {
+  const days = Math.min(parseInt(req.body?.days ?? '7', 10) || 7, 90);
+  const pending = db.prepare(`
+    SELECT a.id AS appointment_id, a.scheduled_at, p.id AS patient_id, p.full_name, p.phone
+    FROM appointments a
+    JOIN patients p ON p.id = a.patient_id
+    WHERE a.status = 'completed'
+      AND a.scheduled_at >= datetime('now', ?)
+      AND a.scheduled_at <= datetime('now')
+      AND p.lgpd_opt_out_marketing = 0
+      AND NOT EXISTS (SELECT 1 FROM satisfaction_surveys s WHERE s.appointment_id = a.id)
+      AND p.phone NOT IN (SELECT phone FROM whatsapp_conversations WHERE opted_out = 1)
+    ORDER BY a.scheduled_at DESC LIMIT 100
+  `).all(`-${days} days`) as any[];
+
+  let dispatched = 0;
+  const locale = (process.env.DEFAULT_LOCALE as Locale) || 'pt-BR';
+  for (const row of pending) {
+    const conv = getOrCreateConversation(row.phone);
+    if (conv.state !== 'idle' && conv.state !== 'lgpd_optout') continue; // don't hijack an active flow
+    updateConversation(row.phone, {
+      state: 'awaiting_nps_score',
+      patient_id: row.patient_id,
+      context: { patient_id: row.patient_id, appointment_id: row.appointment_id, survey: true },
+    });
+    const firstName = row.full_name.split(' ')[0];
+    await reply(row.phone, locale, 'nps_ask', { name: `, ${firstName}` });
+    dispatched++;
+  }
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'nps_dispatch',
+             afterValue: { dispatched, window_days: days }, legalBasis: 'consent_art7_I' });
+  res.json({ ok: true, dispatched, candidates: pending.length, dry_run: !isLive() });
+});
+
+/* ------------------------------------------------------------------
+ * Campaigns / promotions (customer appreciation day, offers…)
+ * ------------------------------------------------------------------ */
+
+router.get('/campaigns', authenticate, (_req: Request, res: Response) => {
+  const rows = db.prepare(`
+    SELECT c.*, u.full_name AS created_by_name FROM campaigns c
+    LEFT JOIN users u ON u.id = c.created_by ORDER BY c.created_at DESC LIMIT 100
+  `).all();
+  res.json({ campaigns: rows });
+});
+
+router.post('/campaigns', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const { name, message, scheduled_for } = req.body ?? {};
+  if (!name || !message || typeof name !== 'string' || typeof message !== 'string') {
+    res.status(400).json({ error: 'validation', required: ['name', 'message'] });
+    return;
+  }
+  const id = uuid();
+  db.prepare(`
+    INSERT INTO campaigns (id, name, message, scheduled_for, created_by)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, name.trim(), message.trim(), scheduled_for ?? null, req.user!.id);
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'campaign_created',
+             resourceType: 'campaign', resourceId: id, afterValue: { name }, legalBasis: 'consent_art7_I' });
+  res.status(201).json({ id });
+});
+
+// Blast the campaign to every consented, non-opted-out patient (LGPD art. 7º I)
+router.post('/campaigns/:id/dispatch', authenticate, requireRole('admin','receptionist'), async (req: Request, res: Response) => {
+  const campaign = db.prepare(`SELECT * FROM campaigns WHERE id = ?`).get(req.params.id) as any;
+  if (!campaign) { res.status(404).json({ error: 'not_found' }); return; }
+  if (campaign.status === 'sent') { res.status(409).json({ error: 'already_sent' }); return; }
+
+  const audience = db.prepare(`
+    SELECT p.id, p.full_name, p.phone FROM patients p
+    WHERE p.phone IS NOT NULL AND p.phone != ''
+      AND p.lgpd_consent_at IS NOT NULL
+      AND p.lgpd_opt_out_marketing = 0
+      AND p.phone NOT IN (SELECT phone FROM whatsapp_conversations WHERE opted_out = 1)
+  `).all() as any[];
+
+  db.prepare(`UPDATE campaigns SET status = 'sending' WHERE id = ?`).run(campaign.id);
+  const locale = (process.env.DEFAULT_LOCALE as Locale) || 'pt-BR';
+  const footer = t(locale, 'whatsapp.promo_footer', {});
+  let sent = 0, failed = 0;
+  for (const p of audience) {
+    const firstName = p.full_name.split(' ')[0];
+    const body = campaign.message.replaceAll('{{name}}', firstName) + footer;
+    const result = await sendTextMessage(p.phone, body);
+    if (result.ok) sent++; else failed++;
+  }
+  db.prepare(`
+    UPDATE campaigns SET status = 'sent', sent_count = ?, failed_count = ?, skipped_count = 0,
+           dispatched_at = datetime('now') WHERE id = ?
+  `).run(sent, failed, campaign.id);
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'campaign_dispatched',
+             resourceType: 'campaign', resourceId: campaign.id,
+             afterValue: { sent, failed, audience: audience.length }, legalBasis: 'consent_art7_I' });
+  res.json({ ok: true, sent, failed, audience: audience.length, dry_run: !isLive() });
+});
+
+router.delete('/campaigns/:id', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const campaign = db.prepare(`SELECT id, status FROM campaigns WHERE id = ?`).get(req.params.id) as any;
+  if (!campaign) { res.status(404).json({ error: 'not_found' }); return; }
+  if (campaign.status !== 'draft') { res.status(409).json({ error: 'not_draft', message: 'Only draft campaigns can be deleted.' }); return; }
+  db.prepare(`DELETE FROM campaigns WHERE id = ?`).run(req.params.id);
+  logAudit({ actorId: req.user!.id, actorEmail: req.user!.email, action: 'campaign_deleted',
+             resourceType: 'campaign', resourceId: req.params.id, legalBasis: 'legal_obligation_art7_II' });
+  res.json({ ok: true, deleted_id: req.params.id });
 });
 
 export { handleMessage, detectUserLocale, SPECIALTIES };

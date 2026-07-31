@@ -43,7 +43,7 @@ npm start
 ## Feature set (granular)
 
 ### Clinical core
-- **Patient registration** with full Brazilian address (CEP, bairro, cidade, UF), CPF, RG, convênio, blood type, allergies, chronic conditions, emergency contact.
+- **MedX-parity patient record** — full identification (CPF, RG + issuing body, CNS/SUS card, mother/father names), contact (2 phones, email), complete Brazilian address, sociodemographics (marital status, occupation, education, nationality, birthplace, IBGE race/color), referral source, health insurance + card number, blood type, allergies, chronic conditions, medications in use, emergency contact, admin notes.
 - **SOAP encounters** with ICD-10/CID-10 diagnosis codes, ICD auto-suggested, signatures.
 - **Prescriptions** in PDF-ready format, one-click **send via WhatsApp**.
 - **Appointment management** with practitioner schedule, status workflow (scheduled → confirmed → arrived → in progress → completed / cancelled / no_show), sources (reception, phone, website, **WhatsApp bot**).
@@ -52,11 +52,14 @@ npm start
 
 ### WhatsApp bot (trilingual, Meta Cloud API ready)
 - **State machine** for appointment booking: `idle → awaiting_cpf → awaiting_specialty → awaiting_date → confirmed`
+- **Real cancellation flow**: bot lists upcoming appointments, patient picks one, it's cancelled.
+- **NPS satisfaction surveys**: dispatch to patients with completed appointments; bot collects 0–10 score + comment; KPIs (NPS, promoters/detractors) in the UI.
+- **Campaigns / promotions**: customer-appreciation-day blasts to every consented, non-opted-out patient, with `{{name}}` personalization and automatic LGPD opt-out footer.
 - **LGPD consent flow**: bot asks, patient replies SIM/NÃO, consent is recorded with IP + timestamp.
-- **Opt-out**: any time, patient can reply `SAIR` / `STOP` / `SALIR` and be removed from all lists.
+- **Opt-out**: any time, patient can reply `SAIR` / `STOP` / `SALIR` and be removed from all lists (staff sends are blocked too).
+- **Webhook hardening**: X-Hub-Signature-256 verification (`META_WA_APP_SECRET`), delivery status callbacks, mark-as-read, non-text fallback replies.
 - **Specialty menu** in PT/ES/EN.
-- **Patient lookup** by CPF before showing any PHI (privacy by design).
-- **Live mode**: set `META_WA_TOKEN` + `META_WA_PHONE_ID` to send via Meta Cloud API.
+- **Live mode**: set `META_WA_TOKEN` + `META_WA_PHONE_ID` (+ `META_WA_APP_SECRET` for signature verification) to send via Meta Cloud API; `/api/whatsapp/ping` tests connectivity from the UI.
 - **Dry-run mode**: messages are stored in DB but not sent — used for testing & the in-app simulator.
 - **In-app simulator**: at `/whatsapp` in the UI, type as if you were a patient and see the bot reply in real time.
 
@@ -178,6 +181,16 @@ npm start
 | `POST` | `/api/whatsapp/send` | admin/doctor/nurse/receptionist | Staff send to patient |
 | `POST` | `/api/whatsapp/simulate` | JWT | Test the bot from the UI |
 | `GET` | `/api/whatsapp/status` | JWT | Live / dry-run + counts |
+| `GET` | `/api/whatsapp/ping` | admin/receptionist | Live Meta connectivity check |
+| `DELETE` | `/api/whatsapp/conversations/:phone` | admin/receptionist | Delete conversation + messages |
+| `GET` | `/api/whatsapp/surveys` | JWT | NPS aggregate + responses |
+| `POST` | `/api/whatsapp/surveys/dispatch` | admin/receptionist | Send NPS question to completed appointments |
+| `GET`/`POST` | `/api/whatsapp/campaigns` | JWT / admin+receptionist | Promotional campaigns |
+| `POST` | `/api/whatsapp/campaigns/:id/dispatch` | admin/receptionist | Blast campaign to consented patients |
+| `DELETE` | `/api/whatsapp/campaigns/:id` | admin/receptionist | Delete draft campaign |
+| `GET`/`POST` | `/api/users` | admin | Staff management |
+| `PUT`/`DELETE` | `/api/users/:id` | admin | Update / deactivate staff |
+| `GET` | `/api/users/directory` | JWT | Staff picker for scheduling |
 | `POST` | `/api/whatsapp/webhook` | Meta | Receive WhatsApp messages |
 | `GET` | `/api/whatsapp/webhook` | Meta | Webhook verification |
 | `GET` | `/api/lgpd/policy` | JWT | Public policy summary |

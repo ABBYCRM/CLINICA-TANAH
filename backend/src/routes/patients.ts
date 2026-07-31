@@ -17,8 +17,21 @@ const patientSchema = z.object({
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   cpf: optStr(z.string().regex(/^\d{11}$/)),
   rg: optStr(z.string()),
+  rg_issuer: optStr(z.string()),
   gender: optStr(z.string()),
+  marital_status: optStr(z.string()),
+  occupation: optStr(z.string()),
+  education_level: optStr(z.string()),
+  nationality: optStr(z.string()),
+  birthplace: optStr(z.string()),
+  mother_name: optStr(z.string()),
+  father_name: optStr(z.string()),
+  race_color: optStr(z.string()),
+  cns: optStr(z.string().regex(/^\d{15}$/)),
+  referral_source: optStr(z.string()),
+  notes: optStr(z.string()),
   phone: z.string().min(8),
+  phone_secondary: optStr(z.string()),
   email: optStr(z.string().email()),
   address_zip: optStr(z.string()),
   address_street: optStr(z.string()),
@@ -93,20 +106,26 @@ router.post('/', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: 
   const id = uuid();
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO patients (id, full_name, social_name, birth_date, cpf, rg, gender, phone, email,
+    INSERT INTO patients (id, full_name, social_name, birth_date, cpf, rg, rg_issuer, gender, phone, phone_secondary, email,
                           address_zip, address_street, address_number, address_complement,
                           address_neighborhood, address_city, address_state,
+                          marital_status, occupation, education_level, nationality, birthplace,
+                          mother_name, father_name, race_color, cns, referral_source, notes,
                           health_insurance, health_insurance_number, blood_type,
                           allergies, chronic_conditions, medications_in_use,
                           emergency_contact_name, emergency_contact_phone,
                           lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version,
                           created_at, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     id, d.full_name, d.social_name ?? null, d.birth_date, d.cpf ?? null, d.rg ?? null,
-    d.gender ?? null, d.phone, d.email ?? null,
+    d.rg_issuer ?? null, d.gender ?? null, d.phone, d.phone_secondary ?? null, d.email ?? null,
     d.address_zip ?? null, d.address_street ?? null, d.address_number ?? null, d.address_complement ?? null,
     d.address_neighborhood ?? null, d.address_city ?? null, d.address_state ?? null,
+    d.marital_status ?? null, d.occupation ?? null, d.education_level ?? null, d.nationality ?? null,
+    d.birthplace ?? null, d.mother_name ?? null, d.father_name ?? null, d.race_color ?? null,
+    d.cns ?? null, d.referral_source ?? null, d.notes ?? null,
     d.health_insurance ?? null, d.health_insurance_number ?? null, d.blood_type ?? null,
     JSON.stringify(d.allergies), JSON.stringify(d.chronic_conditions), JSON.stringify(d.medications_in_use),
     d.emergency_contact_name ?? null, d.emergency_contact_phone ?? null,
@@ -148,9 +167,11 @@ router.put('/:id', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   const d = parsed.data;
   const allowed = [
-    'full_name','social_name','birth_date','cpf','rg','gender','phone','email',
+    'full_name','social_name','birth_date','cpf','rg','rg_issuer','gender','phone','phone_secondary','email',
     'address_zip','address_street','address_number','address_complement',
     'address_neighborhood','address_city','address_state',
+    'marital_status','occupation','education_level','nationality','birthplace',
+    'mother_name','father_name','race_color','cns','referral_source','notes',
     'health_insurance','health_insurance_number','blood_type',
     'allergies','chronic_conditions','medications_in_use',
     'emergency_contact_name','emergency_contact_phone',

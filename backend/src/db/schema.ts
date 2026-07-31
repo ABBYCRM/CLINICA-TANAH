@@ -435,6 +435,39 @@ export function initSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_wamsg_phone ON whatsapp_messages(phone);
 
     -- ============================================================
+    -- SATISFACTION SURVEYS (NPS pós-consulta via WhatsApp bot)
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS satisfaction_surveys (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+      appointment_id TEXT REFERENCES appointments(id),
+      score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 10),
+      comment TEXT,
+      source TEXT NOT NULL DEFAULT 'whatsapp_bot',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(appointment_id)              -- one survey per appointment
+    );
+    CREATE INDEX IF NOT EXISTS idx_survey_patient ON satisfaction_surveys(patient_id);
+
+    -- ============================================================
+    -- CAMPAIGNS / PROMOTIONS (customer appreciation day blasts)
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      message TEXT NOT NULL,             -- opt-out footer appended automatically
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','sending','sent','failed')),
+      audience TEXT NOT NULL DEFAULT 'all_consented',
+      scheduled_for TEXT,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      dispatched_at TEXT
+    );
+
+    -- ============================================================
     -- SYSTEM SETTINGS (clinic-level config)
     -- ============================================================
     CREATE TABLE IF NOT EXISTS settings (
@@ -443,4 +476,32 @@ export function initSchema(): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  migrate();
+}
+
+/**
+ * Idempotent column migrations for existing databases.
+ * CREATE TABLE IF NOT EXISTS never alters live tables — add new
+ * MedX-parity patient fields here when they're missing.
+ */
+function migrate(): void {
+  const patientCols = [
+    `ALTER TABLE patients ADD COLUMN rg_issuer TEXT`,
+    `ALTER TABLE patients ADD COLUMN marital_status TEXT`,
+    `ALTER TABLE patients ADD COLUMN occupation TEXT`,
+    `ALTER TABLE patients ADD COLUMN education_level TEXT`,
+    `ALTER TABLE patients ADD COLUMN nationality TEXT`,
+    `ALTER TABLE patients ADD COLUMN birthplace TEXT`,
+    `ALTER TABLE patients ADD COLUMN mother_name TEXT`,
+    `ALTER TABLE patients ADD COLUMN father_name TEXT`,
+    `ALTER TABLE patients ADD COLUMN race_color TEXT`,
+    `ALTER TABLE patients ADD COLUMN cns TEXT`, // Cartão SUS
+    `ALTER TABLE patients ADD COLUMN phone_secondary TEXT`,
+    `ALTER TABLE patients ADD COLUMN referral_source TEXT`,
+    `ALTER TABLE patients ADD COLUMN notes TEXT`,
+  ];
+  for (const sql of patientCols) {
+    try { openDb().exec(sql); } catch { /* column already exists */ }
+  }
 }

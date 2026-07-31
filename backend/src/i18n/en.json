@@ -297,7 +297,17 @@
     "no_slots": "No slots available on that date. Please choose another day.",
     "not_found": "I couldn't find your registration. I'll transfer you to reception. Please wait.",
     "transfer_to_human": "👩‍💼 A receptionist will reply shortly. Thank you for your patience!",
-    "unsupported_type": "I received your attachment, but I can only read text messages for now. Please type your request. 🙏"
+    "unsupported_type": "I received your attachment, but I can only read text messages for now. Please type your request. 🙏",
+    "cancel_ask_choice": "Which appointment would you like to cancel? Reply with the number:\n\n{{list}}\n\n0️⃣ Back to menu",
+    "cancel_none": "You have no upcoming appointments to cancel. 👍",
+    "cancel_invalid": "Invalid number. Reply with the appointment number to cancel or 0 to go back.",
+    "cancel_done": "✅ Appointment cancelled: {{date}} at {{time}} with {{practitioner}}. Message us anytime to rebook!",
+    "nps_ask": "Hi{{name}}! 😊 How was your experience at {{clinic}}?\n\nFrom 0 to 10, how likely are you to recommend us to friends and family? (0 = not likely, 10 = very likely)",
+    "nps_ask_comment": "Thanks for the {{score}}! 💙 Want to leave a comment about your care? Type your message or reply SKIP.",
+    "nps_thanks": "Thank you so much for your feedback! It helps us take better care of you. 💙",
+    "nps_invalid": "Please reply with a number from 0 to 10.",
+    "promo_footer": "\n\n_Reply STOP to opt out of promotional messages._",
+    "survey_intro_skip": "skip"
   },
   "lgpd": {
     "title": "LGPD — General Data Protection Law",

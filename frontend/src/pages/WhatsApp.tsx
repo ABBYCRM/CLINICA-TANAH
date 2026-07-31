@@ -5,6 +5,7 @@ import { Modal, ConfirmDialog, FormError, FormActions, IconTrash } from '../comp
 
 export default function WhatsApp() {
   const { t, locale } = useI18n();
+  const [tab, setTab] = useState<'chat' | 'campaigns' | 'surveys'>('chat');
   const [status, setStatus] = useState<any>(null);
   const [conversations, setConversations] = useState<any[]>([]);
   const [activePhone, setActivePhone] = useState<string | null>(null);
@@ -88,7 +89,20 @@ export default function WhatsApp() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{t('whatsapp.title')}</h1>
-        <button onClick={() => setNewChatOpen(true)} className="btn-primary" data-testid="new-chat">+ {t('whatsapp.new_chat')}</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+            {(['chat', 'campaigns', 'surveys'] as const).map((k) => (
+              <button key={k} onClick={() => setTab(k)}
+                className={`px-3 py-1.5 text-sm rounded-md transition-all ${tab === k ? 'bg-white shadow-sm text-clinic-700 font-medium' : 'text-slate-600 hover:text-slate-900'}`}
+                data-testid={`tab-${k}`}>
+                {t(`whatsapp.tab_${k}`)}
+              </button>
+            ))}
+          </div>
+          {tab === 'chat' && (
+            <button onClick={() => setNewChatOpen(true)} className="btn-primary" data-testid="new-chat">+ {t('whatsapp.new_chat')}</button>
+          )}
+        </div>
       </div>
 
       {status && (
@@ -118,6 +132,10 @@ export default function WhatsApp() {
 
       {error && <FormError message={error} />}
 
+      {tab === 'campaigns' && <CampaignsView />}
+      {tab === 'surveys' && <SurveysView />}
+
+      {tab === 'chat' && (
       <div className="grid md:grid-cols-3 gap-4 h-[600px]">
         {/* Conversations list */}
         <div className="card overflow-y-auto">
@@ -202,6 +220,7 @@ export default function WhatsApp() {
           )}
         </div>
       </div>
+      )}
 
       {newChatOpen && (
         <NewChatModal
@@ -216,6 +235,258 @@ export default function WhatsApp() {
           onCancel={() => setDeleting(null)}
           onConfirm={removeConversation}
         />
+      )}
+    </div>
+  );
+}
+
+function CampaignsView() {
+  const { t, locale } = useI18n();
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [dispatching, setDispatching] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api.get('/api/whatsapp/campaigns')
+      .then((d) => setCampaigns(d.campaigns))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [locale]);
+
+  const dispatch = async (c: any) => {
+    setDispatching(c.id);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post(`/api/whatsapp/campaigns/${c.id}/dispatch`, {});
+      setNotice(t('whatsapp.dispatched_toast', { sent: res.sent, failed: res.failed }));
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setDispatching(null);
+    }
+  };
+
+  const remove = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    try {
+      await api.del(`/api/whatsapp/campaigns/${deleting.id}`);
+      setDeleting(null);
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+      setDeleting(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500 max-w-2xl">{t('whatsapp.audience_info')}</p>
+        <button onClick={() => setShowForm(true)} className="btn-primary shrink-0" data-testid="new-campaign">
+          + {t('whatsapp.new_campaign')}
+        </button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 animate-fade-in">{notice}</div>}
+
+      <div className="grid gap-3">
+        {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
+        {!loading && campaigns.length === 0 && <div className="card p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+        {campaigns.map((c) => (
+          <div key={c.id} className="card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-slate-900">{c.name}</span>
+                  <span className={`badge ${c.status === 'sent' ? 'badge-green' : c.status === 'draft' ? 'badge-yellow' : 'badge-blue'}`}>{c.status}</span>
+                </div>
+                <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{c.message}</p>
+                <div className="text-xs text-slate-400 mt-2">
+                  {c.created_by_name} · {c.created_at}
+                  {c.status === 'sent' && (
+                    <span> · {t('whatsapp.sent_count')}: <b className="text-emerald-700">{c.sent_count}</b> · {t('whatsapp.failed_count')}: <b className={c.failed_count ? 'text-rose-600' : ''}>{c.failed_count}</b></span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {c.status === 'draft' && (
+                  <>
+                    <button onClick={() => dispatch(c)} disabled={dispatching === c.id} className="btn-primary text-xs" data-testid={`dispatch-${c.id}`}>
+                      {dispatching === c.id ? '…' : `🚀 ${t('whatsapp.dispatch')}`}
+                    </button>
+                    <button onClick={() => setDeleting(c)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors" title={t('common.delete')}>
+                      <IconTrash />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showForm && (
+        <CampaignForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />
+      )}
+      {deleting && (
+        <ConfirmDialog name={deleting.name} busy={busy} onCancel={() => setDeleting(null)} onConfirm={remove} />
+      )}
+    </div>
+  );
+}
+
+function CampaignForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await api.post('/api/whatsapp/campaigns', { name, message });
+      onSaved();
+    } catch (err: any) {
+      setError(err.message || t('errors.generic'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={t('whatsapp.new_campaign')} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <FormError message={error} />
+        <div>
+          <label className="label">{t('whatsapp.campaign_name')} *</label>
+          <input className="input" placeholder="Dia do Cliente — Agosto" value={name} onChange={(e) => setName(e.target.value)} required data-testid="campaign-name" />
+        </div>
+        <div>
+          <label className="label">{t('whatsapp.campaign_message')} *</label>
+          <textarea className="input" rows={5} placeholder="Olá {{name}}! 💙 Semana do Cliente na Clínica Tanah: 20% de desconto em consultas de dermatologia esta semana. Agende pelo WhatsApp!"
+            value={message} onChange={(e) => setMessage(e.target.value)} required data-testid="campaign-message" />
+          <p className="text-xs text-slate-400 mt-1">{t('whatsapp.campaign_hint')}</p>
+        </div>
+        <FormActions saving={saving} onCancel={onClose} />
+      </form>
+    </Modal>
+  );
+}
+
+function SurveysView() {
+  const { t, locale } = useI18n();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [dispatching, setDispatching] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    api.get('/api/whatsapp/surveys')
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [locale]);
+
+  const dispatch = async () => {
+    setDispatching(true);
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post('/api/whatsapp/surveys/dispatch', { days: 7 });
+      setNotice(t('whatsapp.survey_dispatched', { count: res.dispatched }));
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setDispatching(false);
+    }
+  };
+
+  const npsColor = (nps: number) => nps >= 50 ? 'text-emerald-700' : nps >= 0 ? 'text-amber-700' : 'text-rose-600';
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500 max-w-2xl">{t('whatsapp.no_surveys')}</p>
+        <button onClick={dispatch} disabled={dispatching} className="btn-primary shrink-0" data-testid="dispatch-surveys">
+          {dispatching ? '…' : `📨 ${t('whatsapp.survey_dispatch')}`}
+        </button>
+      </div>
+
+      {error && <FormError message={error} />}
+      {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 animate-fade-in">{notice}</div>}
+
+      {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
+
+      {!loading && data && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {[
+              { label: 'NPS', value: data.nps, cls: npsColor(data.nps) },
+              { label: t('whatsapp.avg_score'), value: data.average, cls: 'text-slate-900' },
+              { label: t('whatsapp.responses'), value: data.total, cls: 'text-slate-900' },
+              { label: t('whatsapp.promoters'), value: data.promoters, cls: 'text-emerald-700' },
+              { label: t('whatsapp.passives'), value: data.passives, cls: 'text-amber-700' },
+              { label: t('whatsapp.detractors'), value: data.detractors, cls: 'text-rose-600' },
+            ].map((c) => (
+              <div key={c.label} className="card p-4 text-center" data-testid={`survey-kpi-${c.label}`}>
+                <div className="text-xs text-slate-500 mb-1 truncate">{c.label}</div>
+                <div className={`text-2xl font-bold ${c.cls}`}>{c.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="table-th">{t('common.date')}</th>
+                    <th className="table-th">{t('appointments.patient')}</th>
+                    <th className="table-th text-center">{t('whatsapp.score')}</th>
+                    <th className="table-th">{t('whatsapp.comment')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.surveys.length === 0 && (
+                    <tr><td colSpan={4} className="table-td text-center py-6 text-slate-400">{t('common.no_data')}</td></tr>
+                  )}
+                  {data.surveys.map((s: any) => (
+                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="table-td whitespace-nowrap text-xs">{s.created_at}</td>
+                      <td className="table-td">{s.patient_name}</td>
+                      <td className="table-td text-center">
+                        <span className={`badge ${s.score >= 9 ? 'badge-green' : s.score >= 7 ? 'badge-yellow' : 'badge-red'}`}>{s.score}</span>
+                      </td>
+                      <td className="table-td text-sm text-slate-600">{s.comment || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
