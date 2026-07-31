@@ -189,7 +189,7 @@ export default function Patients() {
       {error && <div className="mb-3"><FormError message={error} /></div>}
 
       {/* Saved views */}
-      <div className="crm-views flex flex-wrap items-center gap-1 border-b border-slate-200">
+      <div className="crm-views flex flex-wrap items-center gap-1">
         {VIEWS.map((v) => {
           const count = viewCounts[v];
           const active = view === v;

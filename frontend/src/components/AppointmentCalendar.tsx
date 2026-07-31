@@ -314,7 +314,7 @@ export function AppointmentDrawer({ appointment, onClose, onStatusChange, onEdit
             <h3 className="text-xs font-semibold uppercase tracking-wider text-[#8a7048] mb-3">
               {t('appointments.patient_summary')}
             </h3>
-            {!summary && <div className="text-sm text-[#8a8174]">{t('common.loading')}</div>}
+            {!summary && <div className="text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>}
             {p && (
               <div className="space-y-4 animate-fade-in">
                 <dl className="appt-drawer-facts">
@@ -360,11 +360,11 @@ export function AppointmentDrawer({ appointment, onClose, onStatusChange, onEdit
 
                 {summary.recent_encounters.length > 0 && (
                   <div>
-                    <div className="text-xs font-semibold text-[#8a8174] uppercase tracking-wide mb-1.5">{t('appointments.recent_encounters')}</div>
+                    <div className="text-xs font-semibold text-[color:var(--ink-muted)] uppercase tracking-wide mb-1.5">{t('appointments.recent_encounters')}</div>
                     <ul className="space-y-1.5 text-sm">
                       {summary.recent_encounters.map((e: any) => (
                         <li key={e.id} className="border-l-2 border-[#a8843d] pl-3">
-                          <span className="text-[#8a8174]">{e.started_at?.slice(0, 10)}</span> — {e.assessment || '—'}
+                          <span className="text-[color:var(--ink-muted)]">{e.started_at?.slice(0, 10)}</span> — {e.assessment || '—'}
                           {e.icd10_codes.length > 0 && <span className="ml-1 badge-blue">{e.icd10_codes.join(', ')}</span>}
                         </li>
                       ))}
@@ -372,7 +372,7 @@ export function AppointmentDrawer({ appointment, onClose, onStatusChange, onEdit
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 gap-1.5 text-xs text-[#6b645a] pt-1 border-t border-[rgba(139,115,85,0.25)]">
+                <div className="grid grid-cols-1 gap-1.5 text-xs text-[color:var(--ink-muted)] pt-1 border-t border-[rgba(139,115,85,0.25)]">
                   <div>{t('appointments.prescriptions_count')}: <b className="text-[#3a342c]">{summary.prescriptions_count}</b></div>
                   {p.emergency_contact_name && (
                     <div>

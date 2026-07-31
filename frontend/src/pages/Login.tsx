@@ -147,7 +147,7 @@ export default function Login() {
           <div className="panel-inset relative animate-fade-in-up p-6 sm:p-8" data-testid="login-card">
             <div className="mb-6 hidden lg:block">
               <h2 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('auth.welcome')}</h2>
-              <p className="mt-1 text-sm text-[#6b645a]">{t('auth.subtitle')}</p>
+              <p className="mt-1 text-sm text-[color:var(--ink-muted)]">{t('auth.subtitle')}</p>
             </div>
 
             <div className="mb-6 flex justify-center" data-testid="locale-switcher">
@@ -168,7 +168,7 @@ export default function Login() {
                     className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
                       l === locale
                         ? 'text-[#2a1f16] shadow-knob'
-                        : 'text-[#6b5646] hover:text-[#2a1f16]'
+                        : 'text-[color:var(--ink)] hover:text-[color:var(--ink)]'
                     }`}
                     style={l === locale ? { background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)' } : undefined}
                   >
@@ -234,7 +234,7 @@ export default function Login() {
                     data-testid="toggle-password"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2 text-[#8a8174] transition-colors hover:bg-[#e8dfd1] hover:text-[#3a342c]"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2 text-[color:var(--ink-muted)] transition-colors hover:bg-[#e8dfd1] hover:text-[#3a342c]"
                   >
                     {showPassword ? (
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
@@ -270,7 +270,7 @@ export default function Login() {
             </form>
           </div>
 
-          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[#8a8174] animate-fade-in delay-200">
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[color:var(--ink-muted)] animate-fade-in delay-200">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#6B7280]" aria-hidden="true">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>

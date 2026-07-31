@@ -37,7 +37,7 @@ export default function Dashboard() {
   if (loading && !data) {
     return (
       <div className="flex min-h-[30vh] items-center justify-center" data-testid="dashboard-loading">
-        <div className="panel-inset px-6 py-4 text-sm text-[#6b645a]">{t('common.loading')}</div>
+        <div className="panel-inset px-6 py-4 text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>
       </div>
     );
   }
@@ -102,14 +102,14 @@ export default function Dashboard() {
             className={`stat-tile tone-${c.tone} animate-fade-in-up`}
             style={{ animationDelay: `${i * 0.05}s` }}
           >
-            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[#7a8476]">{c.label}</p>
+            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[color:var(--ink-muted)]">{c.label}</p>
             <p className="mt-3 font-display text-[1.7rem] font-semibold leading-none tracking-tight text-[#3a342c]">
               {c.value}
             </p>
           </div>
         ))}
         <div className="stat-tile tone-moss animate-fade-in-up delay-300">
-          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[#7a8476]">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[color:var(--ink-muted)]">
             {t('dashboard.monthly_revenue')}
           </p>
           <p className="mt-3 font-display text-[1.45rem] font-semibold leading-none tracking-tight text-[#3a342c]">
@@ -141,7 +141,7 @@ export default function Dashboard() {
             <tbody>
               {data.upcoming_appointments.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="table-td text-center text-[#7a8476] py-8">{t('common.no_data')}</td>
+                  <td colSpan={5} className="table-td text-center text-[color:var(--ink-muted)] py-8">{t('common.no_data')}</td>
                 </tr>
               )}
               {data.upcoming_appointments.map((a: any, i: number) => (

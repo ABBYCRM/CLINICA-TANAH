@@ -134,7 +134,7 @@ export default function Payroll() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="page-title">{t('payroll.title')}</h1>
-          <p className="text-sm text-[#6b645a] mt-0.5">
+          <p className="page-subtitle">
             {t('payroll.legal_banner', { year: meta?.year || 2026, wage: money(meta?.minimum_wage || 1621, locale) })}
           </p>
         </div>
@@ -243,25 +243,25 @@ export default function Payroll() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-semibold text-[#3a342c] break-words">{e.full_name}</div>
-                  <div className="text-xs font-mono text-[#6b645a]">{e.cpf}</div>
+                  <div className="text-xs font-mono text-[color:var(--ink-muted)]">{e.cpf}</div>
                 </div>
                 <span className="badge-blue shrink-0">{e.role}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.base_salary')}</div>
+                  <div className="text-[11px] uppercase tracking-wide text-[color:var(--ink-muted)]">{t('payroll.base_salary')}</div>
                   <div className="font-mono font-semibold text-[#3a342c]">{money(e.base_salary, locale)}</div>
                 </div>
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.admission_date')}</div>
+                  <div className="text-[11px] uppercase tracking-wide text-[color:var(--ink-muted)]">{t('payroll.admission_date')}</div>
                   <div>{e.admission_date}</div>
                 </div>
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.dependents')}</div>
+                  <div className="text-[11px] uppercase tracking-wide text-[color:var(--ink-muted)]">{t('payroll.dependents')}</div>
                   <div>{e.dependents}</div>
                 </div>
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.vt')}</div>
+                  <div className="text-[11px] uppercase tracking-wide text-[color:var(--ink-muted)]">{t('payroll.vt')}</div>
                   <div>{e.vale_transporte ? t('common.yes') : t('common.no')}</div>
                 </div>
               </div>
@@ -384,11 +384,11 @@ export default function Payroll() {
         >
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
-              <div><div className="text-xs text-[#7a8476] uppercase">{t('payroll.gross')}</div><div className="font-mono font-semibold">{money(runDetail.run.total_gross, locale)}</div></div>
-              <div><div className="text-xs text-[#7a8476] uppercase">{t('payroll.inss')}</div><div className="font-mono">{money(runDetail.run.total_inss, locale)}</div></div>
-              <div><div className="text-xs text-[#7a8476] uppercase">{t('payroll.irrf')}</div><div className="font-mono">{money(runDetail.run.total_irrf, locale)}</div></div>
-              <div><div className="text-xs text-[#7a8476] uppercase">{t('payroll.fgts')}</div><div className="font-mono">{money(runDetail.run.total_fgts, locale)}</div></div>
-              <div><div className="text-xs text-[#7a8476] uppercase">{t('payroll.net')}</div><div className="font-mono font-bold">{money(runDetail.run.total_net, locale)}</div></div>
+              <div><div className="text-xs text-[color:var(--ink-muted)] uppercase">{t('payroll.gross')}</div><div className="font-mono font-semibold">{money(runDetail.run.total_gross, locale)}</div></div>
+              <div><div className="text-xs text-[color:var(--ink-muted)] uppercase">{t('payroll.inss')}</div><div className="font-mono">{money(runDetail.run.total_inss, locale)}</div></div>
+              <div><div className="text-xs text-[color:var(--ink-muted)] uppercase">{t('payroll.irrf')}</div><div className="font-mono">{money(runDetail.run.total_irrf, locale)}</div></div>
+              <div><div className="text-xs text-[color:var(--ink-muted)] uppercase">{t('payroll.fgts')}</div><div className="font-mono">{money(runDetail.run.total_fgts, locale)}</div></div>
+              <div><div className="text-xs text-[color:var(--ink-muted)] uppercase">{t('payroll.net')}</div><div className="font-mono font-bold">{money(runDetail.run.total_net, locale)}</div></div>
             </div>
             <div className="overflow-x-auto rounded-xl border border-[rgba(63,92,66,0.16)]">
               <table className="w-full">
@@ -453,7 +453,7 @@ function PayslipView({ slip, locale, t, onClose }: { slip: any; locale: string; 
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-display text-lg font-semibold text-[#3a342c]">{t('payroll.holerite')} — {slip.employee_name}</h3>
-          <p className="text-xs text-[#6b645a] font-mono mt-0.5">CPF {slip.cpf} · {slip.role}</p>
+          <p className="text-xs text-[color:var(--ink-muted)] font-mono mt-0.5">CPF {slip.cpf} · {slip.role}</p>
         </div>
         <button type="button" className="btn-secondary text-xs" onClick={onClose}>{t('common.back')}</button>
       </div>
@@ -472,21 +472,21 @@ function PayslipView({ slip, locale, t, onClose }: { slip: any; locale: string; 
                 <td className="table-td font-mono text-xs">{l.code}</td>
                 <td className="table-td">
                   {l.description}
-                  {l.reference ? <span className="text-xs text-[#7a8476] ml-1">({l.reference})</span> : null}
+                  {l.reference ? <span className="text-xs text-[color:var(--ink-muted)] ml-1">({l.reference})</span> : null}
                 </td>
-                <td className={`table-td text-right font-mono ${l.type === 'deduction' ? 'text-rose-700' : l.type === 'info' ? 'text-[#6b645a]' : 'text-emerald-800'}`}>
+                <td className={`table-td text-right font-mono ${l.type === 'deduction' ? 'text-rose-700' : l.type === 'info' ? 'text-[color:var(--ink-muted)]' : 'text-emerald-800'}`}>
                   {money(l.amount, locale)}
                 </td>
               </tr>
             ))}
             {!lines.length && (
-              <tr><td colSpan={3} className="table-td text-center text-[#7a8476]">{t('common.no_data')}</td></tr>
+              <tr><td colSpan={3} className="table-td text-center text-[color:var(--ink-muted)]">{t('common.no_data')}</td></tr>
             )}
           </tbody>
         </table>
       </div>
       {breakdown?.legal && (
-        <p className="text-[11px] text-[#7a8476]">
+        <p className="text-[11px] text-[color:var(--ink-muted)]">
           {t('payroll.legal_footer', {
             year: breakdown.legal.year,
             wage: money(breakdown.legal.minimum_wage, locale),
@@ -587,7 +587,7 @@ function EmployeeForm({ initial, minimumWage, onClose, onSaved }: {
     <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('payroll.new_employee')} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <FormError message={error} />
-        <p className="text-xs text-[#6b645a]">{t('payroll.employee_legal_hint')}</p>
+        <p className="text-xs text-[color:var(--ink-muted)]">{t('payroll.employee_legal_hint')}</p>
         <div>
           <label className="label">{t('payroll.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required />

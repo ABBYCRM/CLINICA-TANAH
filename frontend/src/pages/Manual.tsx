@@ -87,7 +87,7 @@ export default function Manual() {
     <div className="space-y-6" data-testid="user-manual">
       <div>
         <h1 className="page-title">{t('manual.title')}</h1>
-        <p className="text-slate-500 text-sm mt-1 max-w-3xl">{t('manual.subtitle')}</p>
+        <p className="page-subtitle max-w-3xl">{t('manual.subtitle')}</p>
       </div>
 
       <div className="grid lg:grid-cols-[220px_1fr] gap-6 items-start">

@@ -126,7 +126,7 @@ export default function Accounting() {
 
       {tab === 'pl' && (
         loading && !pl ? (
-          <div className="card p-6 text-sm text-[#8a8174]">{t('common.loading')}</div>
+          <div className="card p-6 text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>
         ) : pl ? (
           <DreWorksheet
             initial={pl}
@@ -343,7 +343,7 @@ function DreWorksheet({
 
         <div className="flex-1 space-y-1">
           {items.length === 0 && (
-            <p className="text-sm text-[#8a8174] py-6 text-center">{t('common.no_data')}</p>
+            <p className="text-sm text-[color:var(--ink-muted)] py-6 text-center">{t('common.no_data')}</p>
           )}
           {items.map((line) => (
             <div
@@ -353,7 +353,7 @@ function DreWorksheet({
             >
               <div className="min-w-0">
                 <div className="text-sm font-medium text-[#3a342c] truncate">{line.name}</div>
-                <div className="text-[11px] font-mono text-[#8a8174]">{line.code}</div>
+                <div className="text-[11px] font-mono text-[color:var(--ink-muted)]">{line.code}</div>
               </div>
               <input
                 type="number"
@@ -371,7 +371,7 @@ function DreWorksheet({
               />
               <button
                 type="button"
-                className="inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg text-[#8a8174] hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                className="inline-flex items-center justify-center min-h-9 min-w-9 rounded-lg text-[color:var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700 transition-colors"
                 aria-label={t('common.delete')}
                 data-testid={`dre-delete-${line.id}`}
                 onClick={() => setDeleting(line)}
@@ -405,7 +405,7 @@ function DreWorksheet({
             {money(net)}
           </span>
         </div>
-        <p className="mt-1 text-xs text-[#8a8174]">{t('accounting.dre_hint')}</p>
+        <p className="mt-1 text-xs text-[color:var(--ink-muted)]">{t('accounting.dre_hint')}</p>
       </div>
 
       {adding && (

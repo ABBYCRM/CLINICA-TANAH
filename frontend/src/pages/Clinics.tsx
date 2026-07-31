@@ -71,7 +71,7 @@ export default function Clinics() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="page-title">{t('clinics.title')}</h1>
-          <p className="text-sm text-slate-500 mt-1">{t('clinics.subtitle')}</p>
+          <p className="page-subtitle">{t('clinics.subtitle')}</p>
         </div>
         <button onClick={() => setShowForm(true)} className="btn-primary" data-testid="new-clinic">
           + {t('clinics.new')}

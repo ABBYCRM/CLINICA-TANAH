@@ -92,10 +92,10 @@ export default function Team() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="page-title">{t('team.title')}</h1>
-          <p className="text-sm text-[#6b645a] mt-0.5">{t('team.subtitle')}</p>
+          <p className="page-subtitle">{t('team.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-[#6b645a] cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-[color:var(--leather-muted)] cursor-pointer">
             <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} data-testid="show-inactive" />
             {t('team.show_inactive')}
           </label>
@@ -120,11 +120,11 @@ export default function Team() {
                     {u.full_name}
                     {!u.active && <span className="ml-2 badge-slate">{t('team.inactive')}</span>}
                   </div>
-                  <div className="text-sm text-[#6b645a] break-all">{u.email}</div>
+                  <div className="text-sm text-[color:var(--ink-muted)] break-all">{u.email}</div>
                 </div>
                 <span className={roleBadge(u.role)}>{roleLabel(u.role)}</span>
               </div>
-              <div className="text-xs text-[#7a8476] space-y-0.5">
+              <div className="text-xs text-[color:var(--ink-muted)] space-y-0.5">
                 <div>CPF <span className="font-mono text-[#4a453c]">{u.cpf || '—'}</span></div>
                 <div>{u.council_number ? `${u.council_number}${u.council_state ? `/${u.council_state}` : ''}` : '—'}</div>
               </div>
@@ -264,7 +264,7 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
     <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('team.new_user')} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <FormError message={error} />
-        <p className="text-xs text-[#6b645a]">{t('team.legal_hint')}</p>
+        <p className="text-xs text-[color:var(--ink-muted)]">{t('team.legal_hint')}</p>
         <div>
           <label className="label">{t('team.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required data-testid="user-name" />

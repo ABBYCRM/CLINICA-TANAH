@@ -313,7 +313,7 @@ export default function PatientRecord() {
   };
 
   if (loading && !data) {
-    return <div className="panel-inset px-6 py-8 text-sm text-[#6b645a]">{t('common.loading')}</div>;
+    return <div className="panel-inset px-6 py-8 text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>;
   }
   if (error && !patient) {
     return (
@@ -374,7 +374,7 @@ export default function PatientRecord() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="font-display text-2xl font-semibold text-[#3a342c] truncate leading-tight">{displayName}</h1>
               {patient.social_name && (
-                <span className="text-sm text-[#6b645a]">({patient.full_name})</span>
+                <span className="text-sm text-[color:var(--ink-muted)]">({patient.full_name})</span>
               )}
               <span className="badge-slate font-mono text-[11px]">{patient.id?.slice(0, 12)}</span>
               {workspace.open_complaint ? <span className="badge-red">{t('patients.workspace.open_complaint')}</span> : null}
@@ -386,7 +386,7 @@ export default function PatientRecord() {
               <span>{t('patients.col_owner')}: {workspace.assigned_professional?.full_name || data.owner_name || t('patients.unassigned')}</span>
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-0.5">
-              <label className="text-xs font-semibold uppercase tracking-wide text-[#6b645a]">{t('patients.workspace.lifecycle')}</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">{t('patients.workspace.lifecycle')}</label>
               <select
                 className="crm-filter"
                 value={stage}
@@ -398,13 +398,13 @@ export default function PatientRecord() {
                   <option key={s} value={s}>{t(`patients.lifecycle.${s}`)}</option>
                 ))}
               </select>
-              <span className="text-xs text-[#6b645a]">
+              <span className="text-xs text-[color:var(--ink-muted)]">
                 {t('patients.workspace.next_appt')}:{' '}
                 {workspace.next_appointment
                   ? fmtDateTime(workspace.next_appointment.scheduled_at, locale)
                   : '—'}
               </span>
-              <span className="text-xs text-[#6b645a]">
+              <span className="text-xs text-[color:var(--ink-muted)]">
                 {t('patients.workspace.last_visit')}:{' '}
                 {workspace.last_visit ? fmtDateTime(workspace.last_visit.scheduled_at, locale) : '—'}
               </span>
@@ -459,7 +459,7 @@ export default function PatientRecord() {
           {(tab === 'overview' || tab === 'privacy') && (
             <div className="crm-record-panel space-y-3" data-testid="consent-ledger">
               <h2 className="crm-record-panel-title">{t('patients.workspace.consents')}</h2>
-              <p className="text-xs text-[#6b645a]">{t('patients.workspace.consents_hint')}</p>
+              <p className="text-xs text-[color:var(--ink-muted)]">{t('patients.workspace.consents_hint')}</p>
               <ul className="space-y-2">
                 {CONSENT_PURPOSES.map((purpose) => {
                   const row = consentLedger.find((c: any) => c.purpose === purpose);
@@ -468,7 +468,7 @@ export default function PatientRecord() {
                     <li key={purpose} className="flex items-center justify-between gap-2 text-sm">
                       <div className="min-w-0">
                         <div className="font-medium text-[#3a342c] truncate">{t(`patients.consent.${purpose}`)}</div>
-                        <div className="text-[11px] text-[#8a8174]">
+                        <div className="text-[11px] text-[color:var(--ink-muted)]">
                           {on ? fmtDateTime(row?.granted_at, locale) : (row?.revoked_at ? fmtDateTime(row.revoked_at, locale) : '—')}
                         </div>
                       </div>
@@ -504,7 +504,7 @@ export default function PatientRecord() {
                 {upcoming.slice(0, 3).map((a: any) => (
                   <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span className="font-medium">{fmtDateTime(a.scheduled_at, locale)}</span>
-                    <span className="text-[#6b645a]">{a.practitioner_name}</span>
+                    <span className="text-[color:var(--ink-muted)]">{a.practitioner_name}</span>
                     <span className={`badge ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>{a.status}</span>
                   </div>
                 ))}
@@ -513,20 +513,20 @@ export default function PatientRecord() {
           )}
 
           {tab === 'clinical' && !clinicalOk && (
-            <div className="p-4 text-sm text-[#6b645a]">{t('patients.workspace.clinical_restricted')}</div>
+            <div className="p-4 text-sm text-[color:var(--ink-muted)]">{t('patients.workspace.clinical_restricted')}</div>
           )}
 
           {tab === 'surveys' && (
             <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2">
               <h3 className="font-semibold text-sm">{t('patients.workspace.survey_history')}</h3>
-              {surveys.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {surveys.length === 0 && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
               {surveys.map((s: any) => (
                 <div key={s.id} className="crm-timeline-card flex items-center justify-between gap-2">
                   <span className="text-sm">{fmtDateTime(s.created_at, locale)}</span>
                   <span className={`badge ${s.score >= 9 ? 'badge-green' : s.score <= 6 ? 'badge-red' : 'badge-yellow'}`}>
                     {s.score}/10
                   </span>
-                  <span className="text-xs text-[#6b645a] truncate flex-1">{s.comment || '—'}</span>
+                  <span className="text-xs text-[color:var(--ink-muted)] truncate flex-1">{s.comment || '—'}</span>
                 </div>
               ))}
             </div>
@@ -539,7 +539,7 @@ export default function PatientRecord() {
                 <div key={tk.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">{tk.title}</div>
-                    <div className="text-xs text-[#6b645a]">{tk.description}</div>
+                    <div className="text-xs text-[color:var(--ink-muted)]">{tk.description}</div>
                   </div>
                   <span className="badge-red">{tk.priority}</span>
                   <button type="button" className="btn-secondary text-xs" onClick={() => resolveTicket(tk.id)}>
@@ -547,12 +547,12 @@ export default function PatientRecord() {
                   </button>
                 </div>
               ))}
-              {tasks.length === 0 && tickets.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {tasks.length === 0 && tickets.length === 0 && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
               {tasks.map((task: any) => (
                 <div key={task.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">{task.title}</div>
-                    <div className="text-xs text-[#6b645a]">{task.category} · {fmtDateTime(task.created_at, locale)}</div>
+                    <div className="text-xs text-[color:var(--ink-muted)]">{task.category} · {fmtDateTime(task.created_at, locale)}</div>
                   </div>
                   <span className={`badge ${task.status === 'open' ? 'badge-yellow' : 'badge-green'}`}>{task.status}</span>
                   {task.status === 'open' && (
@@ -568,7 +568,7 @@ export default function PatientRecord() {
           {tab === 'documents' && (
             <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2" data-testid="workspace-documents">
               <h3 className="font-semibold text-sm">{t('patients.workspace.documents_heading')}</h3>
-              {documents.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {documents.length === 0 && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
               {documents.map((d: any) => (
                 <div key={d.id} className="crm-timeline-card flex items-center justify-between gap-2">
                   <span className="text-sm font-medium truncate">{d.title}</span>
@@ -582,19 +582,19 @@ export default function PatientRecord() {
           {tab === 'audit' && (
             <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2" data-testid="workspace-audit">
               <h3 className="font-semibold text-sm">{t('patients.workspace.audit_heading')}</h3>
-              {!auditOk && <p className="text-sm text-[#6b645a]">{t('patients.workspace.audit_restricted')}</p>}
-              {auditOk && auditEvents.length === 0 && <p className="text-sm text-[#8a8174]">{t('common.no_data')}</p>}
+              {!auditOk && <p className="text-sm text-[color:var(--ink-muted)]">{t('patients.workspace.audit_restricted')}</p>}
+              {auditOk && auditEvents.length === 0 && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
               {auditOk && auditEvents.map((a: any) => (
                 <div key={a.id} className="crm-timeline-card text-sm">
                   <div className="font-medium">{a.action}</div>
-                  <div className="text-xs text-[#6b645a]">
+                  <div className="text-xs text-[color:var(--ink-muted)]">
                     {a.actor_email || '—'} · {fmtDateTime(a.created_at, locale)} · {a.legal_basis || '—'}
                   </div>
                 </div>
               ))}
               {privacyRequests.length > 0 && (
                 <div className="pt-2">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-[#6b645a] mb-1">{t('patients.workspace.privacy_requests')}</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1">{t('patients.workspace.privacy_requests')}</h4>
                   {privacyRequests.map((r: any) => (
                     <div key={r.id} className="crm-timeline-card flex justify-between gap-2 text-sm">
                       <span>{r.request_type}</span>
@@ -609,11 +609,11 @@ export default function PatientRecord() {
           {tab !== 'audit' && (
           <div className="p-4 space-y-5">
             {grouped.length === 0 && (
-              <div className="text-center text-sm text-[#8a8174] py-10">{t('common.no_data')}</div>
+              <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>
             )}
             {grouped.map(([month, items]) => (
               <div key={month}>
-                <div className="text-[11px] font-bold uppercase tracking-wider text-[#8a8174] mb-2">{month}</div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--ink-muted)] mb-2">{month}</div>
                 <ul className="space-y-2">
                   {items.map((item: any) => (
                     <li key={item.id} className="crm-timeline-card flex gap-3" data-testid={`timeline-${item.kind}`}>
@@ -628,8 +628,8 @@ export default function PatientRecord() {
                             </span>
                           )}
                         </div>
-                        {item.subtitle && <div className="text-sm text-[#6b645a] mt-0.5 break-words">{item.subtitle}</div>}
-                        <div className="text-[11px] text-[#8a8174] mt-1">{fmtDateTime(item.at, locale)}</div>
+                        {item.subtitle && <div className="text-sm text-[color:var(--ink-muted)] mt-0.5 break-words">{item.subtitle}</div>}
+                        <div className="text-[11px] text-[color:var(--ink-muted)] mt-1">{fmtDateTime(item.at, locale)}</div>
                       </div>
                     </li>
                   ))}
@@ -689,7 +689,7 @@ export default function PatientRecord() {
                   {recallBusy ? '…' : t('common.save')}
                 </button>
               </div>
-              <p className="text-[11px] text-[#8a8174]">{t('patients.workspace.recall_hint')}</p>
+              <p className="text-[11px] text-[color:var(--ink-muted)]">{t('patients.workspace.recall_hint')}</p>
             </div>
           )}
 

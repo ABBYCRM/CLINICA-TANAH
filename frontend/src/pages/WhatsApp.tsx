@@ -383,7 +383,7 @@ function CampaignsView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500 max-w-2xl">{t('whatsapp.audience_info')}</p>
+        <p className="page-subtitle max-w-2xl">{t('whatsapp.audience_info')}</p>
         <button onClick={() => setShowForm(true)} className="btn-primary shrink-0" data-testid="new-campaign">
           + {t('whatsapp.new_campaign')}
         </button>
@@ -573,7 +573,7 @@ function TemplatesView() {
   return (
     <div className="space-y-4" data-testid="templates-view">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500 max-w-2xl">{t('whatsapp.templates_info')}</p>
+        <p className="page-subtitle max-w-2xl">{t('whatsapp.templates_info')}</p>
         <button onClick={() => setShowForm(true)} className="btn-primary shrink-0" data-testid="new-template">
           + {t('whatsapp.new_template')}
         </button>
@@ -704,7 +704,7 @@ function AutomationsView() {
 
   return (
     <div className="space-y-4" data-testid="automations-view">
-      <p className="text-sm text-slate-500 max-w-3xl">{t('whatsapp.automations_info')}</p>
+      <p className="page-subtitle max-w-3xl">{t('whatsapp.automations_info')}</p>
       {error && <FormError message={error} />}
       {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800">{notice}</div>}
       {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
@@ -719,7 +719,7 @@ function AutomationsView() {
                 </span>
                 <span className="text-xs text-slate-400 font-mono">{a.key}</span>
               </div>
-              <p className="text-sm text-slate-500 mt-1">{a.description}</p>
+              <p className="text-sm text-[color:var(--ink-muted)] mt-1">{a.description}</p>
               <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap border-l-2 border-clinic-200 pl-3">{a.message}</p>
               {a.last_run_at && (
                 <p className="text-xs text-slate-400 mt-2">
@@ -759,7 +759,7 @@ function AudienceView() {
 
   return (
     <div className="space-y-4" data-testid="audience-view">
-      <p className="text-sm text-slate-500 max-w-3xl">{t('whatsapp.audience_hub_info')}</p>
+      <p className="page-subtitle max-w-3xl">{t('whatsapp.audience_hub_info')}</p>
       {error && <FormError message={error} />}
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -843,7 +843,7 @@ function AnalyticsView() {
 
   return (
     <div className="space-y-4" data-testid="analytics-view">
-      <p className="text-sm text-slate-500">{t('whatsapp.analytics_info')}</p>
+      <p className="page-subtitle">{t('whatsapp.analytics_info')}</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {kpis.map((k) => (
           <div key={k.label} className="card p-4 text-center">
@@ -920,7 +920,7 @@ function SurveysView() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500 max-w-2xl">{t('whatsapp.no_surveys')}</p>
+        <p className="page-subtitle max-w-2xl">{t('whatsapp.no_surveys')}</p>
         <button onClick={dispatch} disabled={dispatching} className="btn-primary shrink-0" data-testid="dispatch-surveys">
           {dispatching ? '…' : `📨 ${t('whatsapp.survey_dispatch')}`}
         </button>
