@@ -1,6 +1,7 @@
 /**
- * WhatsApp bot — state machine for appointment booking + LGPD consent + opt-out
- * Supports pt-BR, es, en (auto-detected from message content)
+ * WhatsApp bot — Flow Doctor conversation (PT-first) for appointments + marketing
+ * Covers booking, promos/campaigns, NPS, reminders/prefs, LGPD opt-out
+ * Supports pt-BR, es, en (auto-detected; Flow Doctor keywords force pt-BR)
  */
 import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
@@ -45,11 +46,55 @@ async function reply(phone: string, locale: Locale, key: string, vars: Record<st
   await sendTextMessage(phone, body, tenantId);
 }
 
+function isFlowDoctorKeyword(lower: string): boolean {
+  return [
+    'médico', 'medico', 'flow doctor', 'flowdoctor', 'fluxo', 'fluxo medico', 'fluxo médico',
+    'marketing', 'menu', 'doutor', 'doctor',
+  ].includes(lower);
+}
+
+async function replyFlowDoctorPromos(phone: string, locale: Locale, tenantId: string): Promise<void> {
+  const camps = db.prepare(`
+    SELECT name, message, status FROM campaigns
+    WHERE tenant_id = ?
+    ORDER BY created_at DESC LIMIT 3
+  `).all(tenantId) as Array<{ name: string; message: string; status: string }>;
+  if (!camps.length) {
+    const fallback = t(locale, 'whatsapp.flow_doctor_promos_fallback', {});
+    await reply(phone, locale, 'flow_doctor_promos', { list: fallback }, tenantId);
+    return;
+  }
+  const list = camps.map((c, i) => {
+    const preview = c.message.replace(/\s+/g, ' ').slice(0, 140);
+    return `${i + 1}. *${c.name}* (${c.status})\n${preview}${c.message.length > 140 ? '…' : ''}`;
+  }).join('\n\n');
+  await reply(phone, locale, 'flow_doctor_promos', { list }, tenantId);
+}
+
+async function startFlowDoctorNps(phone: string, locale: Locale, tenantId: string): Promise<void> {
+  const p = db.prepare(`SELECT id, full_name FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+  const first = p?.full_name ? ` ${String(p.full_name).split(' ')[0]}` : '';
+  updateConversation(phone, tenantId, {
+    state: 'awaiting_nps_score',
+    patient_id: p?.id,
+    context: { patient_id: p?.id ?? null, flow_doctor: true },
+  });
+  await reply(phone, locale, 'flow_doctor_nps_start', {}, tenantId);
+  await reply(phone, locale, 'nps_ask', { name: first }, tenantId);
+}
+
 async function handleMessage(phone: string, body: string, locale: Locale, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
   const conv = getOrCreateConversation(phone, tenantId);
   const ctx = conv.context ? JSON.parse(conv.context) : {};
   const text = body.trim();
   const lower = text.toLowerCase();
+
+  // Flow Doctor / marketing keywords always reply in Portuguese for this clinic channel
+  if (isFlowDoctorKeyword(lower)) {
+    updateConversation(phone, tenantId, { state: 'idle', context: { ...ctx, flow_doctor: true } });
+    await reply(phone, 'pt-BR', 'bot_menu', {}, tenantId);
+    return;
+  }
 
   // Global opt-out / privacy commands (administrative bot — not diagnostic)
   if (['sair', 'parar', 'stop', 'cancelar tudo', 'remover', 'exit', 'salir', 'unsubscribe'].includes(lower) && conv.state !== 'awaiting_consent') {
@@ -243,12 +288,12 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
         await reply(phone, locale, 'cancel_ask_choice', { list }, tenantId);
         return;
       }
-      if (['5', 'humano', 'atendente', 'recepção', 'reception', 'agente'].some(k => lower === k || lower.includes(k))) {
-        await reply(phone, locale, 'transfer_to_human', {}, tenantId);
+      if (['5', 'promo', 'promoção', 'promocao', 'campanha', 'campanhas', 'promoções', 'promocoes'].some(k => lower === k || lower.includes(k))) {
+        await replyFlowDoctorPromos(phone, locale, tenantId);
         return;
       }
-      if (['6', 'endereço', 'endereco', 'horário', 'horario', 'address', 'hours'].some(k => lower === k || lower.includes(k))) {
-        await reply(phone, locale, 'clinic_info', {}, tenantId);
+      if (['6', 'nps', 'satisfação', 'satisfacao', 'pesquisa', 'survey', 'avaliação', 'avaliacao'].some(k => lower === k || lower.includes(k))) {
+        await startFlowDoctorNps(phone, locale, tenantId);
         return;
       }
       if (['8', 'remover dados', 'deletar', 'apagar', 'lgpd', 'deletion', 'privacidade'].some(k => lower === k || lower.includes(k))) {
@@ -267,8 +312,16 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
         await reply(phone, locale, 'privacy_menu', {}, tenantId);
         return;
       }
-      // Default: show menu
-      await reply(phone, locale, 'bot_menu', {}, tenantId);
+      if (['9', 'humano', 'atendente', 'recepção', 'reception', 'agente'].some(k => lower === k || lower.includes(k))) {
+        await reply(phone, locale, 'transfer_to_human', {}, tenantId);
+        return;
+      }
+      if (['endereço', 'endereco', 'horário', 'horario', 'address', 'hours'].some(k => lower === k || lower.includes(k))) {
+        await reply(phone, locale, 'clinic_info', {}, tenantId);
+        return;
+      }
+      // Default: show Flow Doctor menu (PT-first for this clinic)
+      await reply(phone, locale === 'en' || locale === 'es' ? locale : 'pt-BR', 'bot_menu', {}, tenantId);
       return;
     }
 
@@ -553,11 +606,11 @@ router.delete('/conversations/:phone', authenticate, requireRole('admin','recept
   res.json({ ok: true, deleted_phone: phone });
 });
 
-// Simulator — for testing without Meta
+// Simulator — for testing Flow Doctor without Meta (defaults to pt-BR)
 router.post('/simulate', authenticate, async (req: Request, res: Response) => {
   const phone = req.body.phone as string;
   const body = req.body.body as string;
-  const locale: Locale = req.body.locale || detectUserLocale(body);
+  const locale: Locale = req.body.locale || 'pt-BR';
   if (!phone || !body) { res.status(400).json({ error: 'phone and body required' }); return; }
   persistIncoming(phone, body, undefined, req.tenantId!);
   await handleMessage(phone, body, locale, req.tenantId!);

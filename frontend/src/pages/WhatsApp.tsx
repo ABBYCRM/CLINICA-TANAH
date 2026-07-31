@@ -20,12 +20,13 @@ export default function WhatsApp() {
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [mode, setMode] = useState<'send' | 'simulate'>('send');
+  const [mode, setMode] = useState<'send' | 'simulate'>('simulate');
   const [error, setError] = useState('');
   const [ping, setPing] = useState<{ state: 'idle' | 'loading' | 'ok' | 'fail'; detail?: string }>({ state: 'idle' });
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [deleting, setDeleting] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
+  const [flowBusy, setFlowBusy] = useState(false);
 
   const loadConversations = () => {
     api.get('/api/whatsapp/conversations').then((d) => setConversations(d.conversations)).catch(console.error);
@@ -52,7 +53,7 @@ export default function WhatsApp() {
     setError('');
     try {
       if (mode === 'simulate') {
-        await api.post('/api/whatsapp/simulate', { phone: activePhone, body: input, locale });
+        await api.post('/api/whatsapp/simulate', { phone: activePhone, body: input, locale: 'pt-BR' });
       } else {
         await api.post('/api/whatsapp/send', { phone: activePhone, body: input });
       }
@@ -93,6 +94,27 @@ export default function WhatsApp() {
     }
   };
 
+  const startFlowDoctor = async (phone?: string | null) => {
+    const target = phone || activePhone;
+    if (!target) {
+      setNewChatOpen(true);
+      return;
+    }
+    setMode('simulate');
+    setFlowBusy(true);
+    setError('');
+    setActivePhone(target);
+    try {
+      await api.post('/api/whatsapp/simulate', { phone: target, body: 'médico', locale: 'pt-BR' });
+      loadMessages(target);
+      loadConversations();
+    } catch (e: any) {
+      setError(e.body?.error === 'opted_out' ? t('whatsapp.opted_out_error') : t(apiErrorKey(e)));
+    } finally {
+      setFlowBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4" data-testid="whatsapp-marketing">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -111,7 +133,17 @@ export default function WhatsApp() {
             ))}
           </div>
           {tab === 'chat' && (
-            <button onClick={() => setNewChatOpen(true)} className="btn-primary w-full sm:w-auto justify-center whitespace-nowrap" data-testid="new-chat">+ {t('whatsapp.new_chat')}</button>
+            <>
+              <button
+                onClick={() => startFlowDoctor(activePhone)}
+                disabled={flowBusy}
+                className="btn-secondary w-full sm:w-auto justify-center whitespace-nowrap"
+                data-testid="start-flow-doctor"
+              >
+                {flowBusy ? '…' : t('whatsapp.start_flow_doctor')}
+              </button>
+              <button onClick={() => setNewChatOpen(true)} className="btn-primary w-full sm:w-auto justify-center whitespace-nowrap" data-testid="new-chat">+ {t('whatsapp.new_chat')}</button>
+            </>
           )}
         </div>
       </div>
@@ -153,39 +185,39 @@ export default function WhatsApp() {
       {tab === 'chat' && (
       <div className="grid md:grid-cols-3 gap-4 h-[min(70vh,600px)] min-h-[420px]">
         <div
-          className="card overflow-y-auto text-[color:var(--ink)]"
-          style={{ background: 'linear-gradient(180deg, #f7f2ea, #efe6d8)' }}
+          className="card overflow-y-auto text-[#2c2118]"
+          style={{ backgroundColor: '#f4ead2', backgroundImage: 'linear-gradient(180deg, #f7f2ea, #efe6d8)' }}
         >
           <div
-            className="p-3 border-b border-[rgba(139,115,85,0.35)] font-semibold text-sm text-[color:var(--ink)]"
-            style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}
+            className="p-3 border-b border-[rgba(139,115,85,0.35)] font-semibold text-sm text-[#2c2118]"
+            style={{ backgroundColor: '#efe6d8', backgroundImage: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}
           >
             {t('whatsapp.conversations')}
           </div>
           {conversations.map((c) => (
-            <div key={c.id} className={`group relative border-b border-[rgba(139,115,85,0.28)] transition-colors ${activePhone === c.phone ? 'bg-[#e8dfd1]' : 'hover:bg-[#f3ece0]'}`}>
+            <div key={c.id} className={`group relative border-b border-[rgba(139,115,85,0.28)] transition-colors ${activePhone === c.phone ? 'bg-[#e4d9c6]' : 'hover:bg-[#f3ece0]'}`}>
               <button onClick={() => setActivePhone(c.phone)} className="w-full text-left p-3">
-                <div className="font-semibold text-sm pr-7 text-[color:var(--ink)]">{c.patient_name || c.phone}</div>
-                <div className="text-xs font-mono text-[color:var(--ink-muted)]">{c.phone}</div>
+                <div className="font-semibold text-sm pr-7 text-[#2c2118]">{c.patient_name || c.phone}</div>
+                <div className="text-xs font-mono text-[#5c4a3c]">{c.phone}</div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`badge ${c.lgpd_consent_granted ? 'badge-green' : 'badge-yellow'}`}>
                     {c.lgpd_consent_granted ? '✓ LGPD' : '⚠ LGPD'}
                   </span>
                   {c.opted_out ? <span className="badge-red">SAIR</span> : null}
-                  <span className="text-xs font-medium capitalize text-[color:var(--ink-muted)]">{c.state}</span>
+                  <span className="text-xs font-medium capitalize text-[#5c4a3c]">{c.state}</span>
                 </div>
               </button>
               <button
                 onClick={() => setDeleting(c)}
                 title={t('whatsapp.delete_conversation')}
-                className="absolute top-3 right-2 rounded-lg p-1.5 text-[color:var(--ink-muted)] transition-colors hover:bg-rose-50 hover:text-rose-700 opacity-0 group-hover:opacity-100"
+                className="absolute top-3 right-2 rounded-lg p-1.5 text-[#5c4a3c] transition-colors hover:bg-rose-50 hover:text-rose-700 opacity-0 group-hover:opacity-100"
               >
                 <IconTrash />
               </button>
             </div>
           ))}
           {conversations.length === 0 && (
-            <div className="p-6 text-center text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</div>
+            <div className="p-6 text-center text-sm text-[#5c4a3c]">{t('common.no_data')}</div>
           )}
         </div>
 
@@ -254,9 +286,25 @@ export default function WhatsApp() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center px-4 text-center text-base font-medium text-[color:var(--ink-muted)]"
-              style={{ background: 'linear-gradient(180deg, #f4efe6, #ebe2d4)' }}>
-              ← {t('whatsapp.simulator_help')}
+            <div
+              className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center"
+              style={{ backgroundColor: '#f4ead2', backgroundImage: 'linear-gradient(180deg, #f4efe6, #ebe2d4)' }}
+            >
+              <p className="text-base font-semibold text-[#2c2118] max-w-md">
+                {t('whatsapp.flow_doctor_empty')}
+              </p>
+              <p className="text-sm text-[#5c4a3c] max-w-md">
+                {t('whatsapp.flow_doctor_hint')}
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                data-testid="empty-start-flow-doctor"
+                disabled={flowBusy || conversations.length === 0}
+                onClick={() => startFlowDoctor(conversations[0]?.phone || activePhone)}
+              >
+                {flowBusy ? '…' : t('whatsapp.start_flow_doctor')}
+              </button>
             </div>
           )}
         </div>
@@ -937,7 +985,7 @@ function SurveysView() {
 }
 
 function NewChatModal({ onClose, onStart }: { onClose: () => void; onStart: (phone: string) => void }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [phone, setPhone] = useState('');
   const [firstMessage, setFirstMessage] = useState('');
   const [saving, setSaving] = useState(false);
@@ -951,7 +999,7 @@ function NewChatModal({ onClose, onStart }: { onClose: () => void; onStart: (pho
       if (firstMessage.trim()) {
         await api.post('/api/whatsapp/send', { phone, body: firstMessage });
       } else {
-        await api.post('/api/whatsapp/simulate', { phone, body: 'oi', locale });
+        await api.post('/api/whatsapp/simulate', { phone, body: 'médico', locale: 'pt-BR' });
       }
       onStart(phone);
     } catch (err: any) {

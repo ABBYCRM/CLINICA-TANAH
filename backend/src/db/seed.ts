@@ -285,8 +285,23 @@ for (let i = 0; i < 25; i++) {
 }
 console.log(`  ✓ 25 invoices`);
 
-// WHATSAPP CONVERSATION EXAMPLES
+// WHATSAPP — Flow Doctor marketing conversations (PT)
 const waPhones = ['+5511987654321', '+5511956781234', '+5511934567890'];
+const flowDoctorMenu =
+  'Olá! Sou o *Flow Doctor* da Clínica Tanah 🩺\nSeu assistente de WhatsApp em português para consultas e marketing.\n\n1 — Marcar consulta\n2 — Confirmar / minhas consultas\n3 — Remarcar\n4 — Cancelar consulta\n5 — Promoções e campanhas\n6 — Pesquisa de satisfação\n7 — Lembretes e preferências\n8 — Privacidade e LGPD\n9 — Atendente / endereço\n\nComandos: MÉDICO · MENU · SAIR · ATENDENTE';
+
+// Sample marketing campaign for Flow Doctor option 5
+db.prepare(`
+  INSERT INTO campaigns (id, tenant_id, name, message, status, audience, category, created_by, created_at)
+  VALUES (?, ?, ?, ?, 'draft', 'all_consented', 'marketing', ?, datetime('now'))
+`).run(
+  uuid(),
+  T,
+  'Check-up completo — outono',
+  'Olá {{name}}! A Clínica Tanah preparou um check-up completo com prioridade de agenda neste mês. Responda 1 no WhatsApp para marcar ou SAIR para não receber promoções.',
+  PRIMARY_USER_ID,
+);
+
 for (const p of waPhones) {
   const convId = uuid();
   db.prepare(`
@@ -297,12 +312,33 @@ for (const p of waPhones) {
     INSERT INTO whatsapp_messages (id, tenant_id, phone, direction, body, status, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(uuid(), T, p, 'in', 'Olá', 'received', new Date(Date.now() - 2*3600*1000).toISOString());
-  stmt.run(uuid(), T, p, 'out', 'Olá! Sou a assistente da Clínica Tanah. Como posso ajudar?', 'sent', new Date(Date.now() - 2*3600*1000).toISOString());
-  stmt.run(uuid(), T, p, 'in', '1', 'received', new Date(Date.now() - 1*3600*1000).toISOString());
-  stmt.run(uuid(), T, p, 'out', 'Qual especialidade você precisa? Digite o número: 1️⃣ Clínica Geral 2️⃣ Cardiologia 3️⃣ Dermatologia 4️⃣ Ginecologia 5️⃣ Pediatria 6️⃣ Ortopedia', 'sent', new Date(Date.now() - 1*3600*1000).toISOString());
+  const t0 = Date.now() - 2 * 3600 * 1000;
+  stmt.run(uuid(), T, p, 'in', 'Oi', 'received', new Date(t0).toISOString());
+  stmt.run(uuid(), T, p, 'out', flowDoctorMenu, 'sent', new Date(t0 + 30_000).toISOString());
+  if (p === '+5511987654321') {
+    // José — full marketing Flow Doctor demo thread
+    stmt.run(uuid(), T, p, 'in', '5', 'received', new Date(t0 + 120_000).toISOString());
+    stmt.run(
+      uuid(), T, p, 'out',
+      '📢 *Promoções e campanhas* da Clínica Tanah:\n\n1. *Check-up completo — outono* (draft)\nOlá {{name}}! A Clínica Tanah preparou um check-up completo com prioridade de agenda neste mês…\n\nPara agendar com a promoção, responda *1*.\nPara sair da lista de marketing, responda *SAIR*.\nDigite *MENU* para voltar.',
+      'sent', new Date(t0 + 150_000).toISOString(),
+    );
+    stmt.run(uuid(), T, p, 'in', '7', 'received', new Date(t0 + 240_000).toISOString());
+    stmt.run(
+      uuid(), T, p, 'out',
+      '⚙️ *Lembretes e preferências* (Flow Doctor):\n\n• Lembrete 24h e 2h antes da consulta\n• Boas-vindas após a primeira visita\n• Aniversário e reativação (90 dias)\n• Lembrete de pagamento (quando aplicável)\n• Pesquisa NPS pós-consulta\n\nComandos:\n• *SAIR* — parar novidades e promoções\n• *CANCELAR MENSAGENS* — escolher o que interromper\n• *ATENDENTE* — falar com a equipe',
+      'sent', new Date(t0 + 270_000).toISOString(),
+    );
+  } else {
+    stmt.run(uuid(), T, p, 'in', '1', 'received', new Date(t0 + 120_000).toISOString());
+    stmt.run(
+      uuid(), T, p, 'out',
+      'Para confirmar, informe seu CPF (somente números).',
+      'sent', new Date(t0 + 150_000).toISOString(),
+    );
+  }
 }
-console.log(`  ✓ WhatsApp conversation examples`);
+console.log(`  ✓ WhatsApp Flow Doctor conversation examples + campaign`);
 
 // SETTINGS
 const settings = [
