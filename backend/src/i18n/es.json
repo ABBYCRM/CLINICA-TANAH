@@ -296,7 +296,18 @@
     "booking_confirmed": "✅ ¡Cita agendada!\n\n📅 {{date}} a las {{time}}\n👨‍⚕️ {{practitioner}}\n📍 {{address}}\n\nRecibirá un recordatorio 24h antes. Para cancelar, responda CANCELAR.",
     "no_slots": "No hay horarios disponibles en esa fecha. Por favor elija otro día.",
     "not_found": "No encontré su registro. Le transferiré a recepción. Espere.",
-    "transfer_to_human": "👩‍💼 Un agente le responderá en instantes. ¡Gracias por la paciencia!"
+    "transfer_to_human": "👩‍💼 Un agente le responderá en instantes. ¡Gracias por la paciencia!",
+    "unsupported_type": "Recibí tu archivo, pero por ahora solo puedo leer mensajes de texto. Por favor, escribe tu solicitud. 🙏",
+    "cancel_ask_choice": "¿Qué cita quieres cancelar? Responde con el número:\n\n{{list}}\n\n0️⃣ Volver al menú",
+    "cancel_none": "No tienes citas futuras para cancelar. 👍",
+    "cancel_invalid": "Número inválido. Responde con el número de la cita que deseas cancelar o 0 para volver.",
+    "cancel_done": "✅ Cita cancelada: {{date}} a las {{time}} con {{practitioner}}. ¡Si quieres reprogramar, escríbenos!",
+    "nps_ask": "¡Hola{{name}}! 😊 ¿Cómo fue tu experiencia en {{clinic}}?\n\nDel 0 al 10, ¿qué tanto nos recomendarías con amigos y familiares? (0 = nada probable, 10 = muy probable)",
+    "nps_ask_comment": "¡Gracias por tu calificación de {{score}}! 💙 ¿Quieres dejar un comentario sobre la atención? Escribe tu mensaje o responde SALTAR.",
+    "nps_thanks": "¡Muchas gracias por tu opinión! Nos ayuda a cuidarte mejor. 💙",
+    "nps_invalid": "Por favor, responde con un número del 0 al 10.",
+    "promo_footer": "\n\n_Responde SALIR para no recibir más mensajes promocionales._",
+    "survey_intro_skip": "saltar"
   },
   "lgpd": {
     "title": "LGPD — Ley General de Protección de Datos",

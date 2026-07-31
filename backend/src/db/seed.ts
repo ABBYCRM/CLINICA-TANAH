@@ -4,7 +4,7 @@
  */
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
-import { db, initSchema } from './schema';
+import { db, initSchema, DEFAULT_TENANT_ID } from './schema';
 import { recordConsent } from '../services/audit';
 
 initSchema();
@@ -22,6 +22,9 @@ db.exec(`
   DELETE FROM lgpd_consents;
   DELETE FROM whatsapp_messages;
   DELETE FROM whatsapp_conversations;
+  DELETE FROM satisfaction_surveys;
+  DELETE FROM campaigns;
+  DELETE FROM api_tokens;
   DELETE FROM payslips;
   DELETE FROM payroll_runs;
   DELETE FROM employees;
@@ -42,7 +45,16 @@ db.exec(`
   DELETE FROM appointments;
   DELETE FROM patients;
   DELETE FROM settings;
+  DELETE FROM tenants;
 `);
+
+db.prepare(`
+  INSERT INTO tenants (id, slug, name, address, phone, cnpj)
+  VALUES (?, 'clinica-tanah', 'Clínica Tanah',
+          'Rua Augusta, 1234 — Consolação, São Paulo / SP — CEP 01304-001',
+          '+55 11 3000-0000', '12.345.678/0001-90')
+`).run(DEFAULT_TENANT_ID);
+const T = DEFAULT_TENANT_ID;
 
 // USERS / STAFF
 const staffData = [
@@ -60,13 +72,14 @@ const staffData = [
 const userIds: Record<string, string> = {};
 const passwordHash = bcrypt.hashSync('clinica2026', 10);
 const insertUser = db.prepare(`
-  INSERT INTO users (id, email, password_hash, full_name, role, cpf, council_number, council_state, active)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+  INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, cpf, council_number, council_state, active, is_superadmin)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 `);
 for (const u of staffData) {
   const id = uuid();
   userIds[u.email] = id;
-  insertUser.run(id, u.email, passwordHash, u.full_name, u.role, u.cpf, u.council_number, u.council_state);
+  const isSuper = u.email === 'admin@clinica-tanah.com.br' ? 1 : 0;
+  insertUser.run(id, T, u.email, passwordHash, u.full_name, u.role, u.cpf, u.council_number, u.council_state, isSuper);
 }
 console.log(`  ✓ ${staffData.length} users`);
 
@@ -86,14 +99,14 @@ const patientData = [
 
 const patientIds: string[] = [];
 const insertPatient = db.prepare(`
-  INSERT INTO patients (id, full_name, birth_date, cpf, rg, gender, phone, email, address_zip, address_street, address_number, address_neighborhood, address_city, address_state, health_insurance, health_insurance_number, blood_type, allergies, chronic_conditions, medications_in_use, emergency_contact_name, emergency_contact_phone, lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version, created_at, updated_at)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  INSERT INTO patients (id, tenant_id, full_name, birth_date, cpf, rg, gender, phone, email, address_zip, address_street, address_number, address_neighborhood, address_city, address_state, health_insurance, health_insurance_number, blood_type, allergies, chronic_conditions, medications_in_use, emergency_contact_name, emergency_contact_phone, lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version, created_at, updated_at)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 `);
 for (const p of patientData) {
   const id = uuid();
   patientIds.push(id);
   insertPatient.run(
-    id, p.full_name, p.birth_date, p.cpf, `${Math.floor(Math.random()*9+1)}${Math.floor(Math.random()*99999999)}`,
+    id, T, p.full_name, p.birth_date, p.cpf, `${Math.floor(Math.random()*9+1)}${Math.floor(Math.random()*99999999)}`,
     p.gender, p.phone, p.email,
     '01310-100', 'Rua Augusta', `${1000 + Math.floor(Math.random()*900)}`,
     p.address_neighborhood, 'São Paulo', 'SP',
@@ -101,13 +114,14 @@ for (const p of patientData) {
     JSON.stringify(p.allergies), JSON.stringify(p.chronic_conditions), JSON.stringify([]),
     'Familiar', '+5511900000000', now.toISOString(), '127.0.0.1', '1.0', now.toISOString(), now.toISOString()
   );
-  // Record LGPD consent
   recordConsent({
+    tenantId: T,
     subjectType: 'patient', subjectId: id, consentType: 'health_data_processing',
     granted: true, policyVersion: '1.0', ipAddress: '127.0.0.1',
     evidence: 'Cadastro presencial com assinatura digital do termo de consentimento.',
   });
   recordConsent({
+    tenantId: T,
     subjectType: 'patient', subjectId: id, consentType: 'whatsapp_communication',
     granted: true, policyVersion: '1.0', ipAddress: '127.0.0.1',
     evidence: 'Consentimento WhatsApp registrado no cadastro.',
@@ -125,13 +139,13 @@ const vendorData = [
 ];
 const vendorIds: string[] = [];
 const insertVendor = db.prepare(`
-  INSERT INTO vendors (id, legal_name, trade_name, cnpj, phone, email, contact_name, anvisa_license, address_city, address_state, active)
-  VALUES (?,?,?,?,?,?,?,?,?,?,1)
+  INSERT INTO vendors (id, tenant_id, legal_name, trade_name, cnpj, phone, email, contact_name, anvisa_license, address_city, address_state, active)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
 `);
 for (const v of vendorData) {
   const id = uuid();
   vendorIds.push(id);
-  insertVendor.run(id, v.legal_name, v.trade_name, v.cnpj, v.phone, v.email, v.contact_name, v.anvisa_license, v.address_city, v.address_state);
+  insertVendor.run(id, T, v.legal_name, v.trade_name, v.cnpj, v.phone, v.email, v.contact_name, v.anvisa_license, v.address_city, v.address_state);
 }
 console.log(`  ✓ ${vendorData.length} vendors`);
 
@@ -155,25 +169,25 @@ const itemsData = [
 ];
 const itemIds: string[] = [];
 const insertItem = db.prepare(`
-  INSERT INTO inventory_items (id, sku, name, category, unit, anvisa_registry, controlled, min_stock, max_stock, unit_cost, sale_price, active)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
+  INSERT INTO inventory_items (id, tenant_id, sku, name, category, unit, anvisa_registry, controlled, min_stock, max_stock, unit_cost, sale_price, active)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)
 `);
 for (const it of itemsData) {
   const id = uuid();
   itemIds.push(id);
-  insertItem.run(id, it.sku, it.name, it.category, it.unit, it.anvisa_registry,
+  insertItem.run(id, T, it.sku, it.name, it.category, it.unit, it.anvisa_registry,
                  (it as any).controlled ? 1 : 0, it.min_stock, it.max_stock, it.unit_cost, it.sale_price);
 }
 console.log(`  ✓ ${itemsData.length} inventory items`);
 
 // INVENTORY BATCHES — with realistic expiry dates
 const insertBatch = db.prepare(`
-  INSERT INTO inventory_batches (id, item_id, batch_number, expiry_date, quantity, vendor_id, cost_per_unit, received_at)
-  VALUES (?,?,?,?,?,?,?,?)
+  INSERT INTO inventory_batches (id, tenant_id, item_id, batch_number, expiry_date, quantity, vendor_id, cost_per_unit, received_at)
+  VALUES (?,?,?,?,?,?,?,?,?)
 `);
 const insertMovement = db.prepare(`
-  INSERT INTO stock_movements (id, item_id, batch_id, movement_type, quantity, reason, user_id, created_at)
-  VALUES (?,?,?,?,?,?,?,?)
+  INSERT INTO stock_movements (id, tenant_id, item_id, batch_id, movement_type, quantity, reason, user_id, created_at)
+  VALUES (?,?,?,?,?,?,?,?,?)
 `);
 itemIds.forEach((itemId, idx) => {
   const item = itemsData[idx];
@@ -185,8 +199,8 @@ itemIds.forEach((itemId, idx) => {
     remaining -= qty;
     const expiry = new Date(Date.now() + (60 + Math.floor(Math.random() * 800)) * 86400000).toISOString().slice(0, 10);
     const batchId = uuid();
-    insertBatch.run(batchId, itemId, `L${item.sku}-${b+1}-2026`, expiry, qty, vendorIds[idx % vendorIds.length], item.unit_cost, monthAgo);
-    insertMovement.run(uuid(), itemId, batchId, 'in', qty, 'purchase', userIds['farmacia@clinica-tanah.com.br'], monthAgo);
+    insertBatch.run(batchId, T, itemId, `L${item.sku}-${b+1}-2026`, expiry, qty, vendorIds[idx % vendorIds.length], item.unit_cost, monthAgo);
+    insertMovement.run(uuid(), T, itemId, batchId, 'in', qty, 'purchase', userIds['farmacia@clinica-tanah.com.br'], monthAgo);
   }
 });
 console.log(`  ✓ Inventory batches created`);
@@ -204,14 +218,14 @@ const employeeData = [
   { full_name: 'Roberto Lima Santos', cpf: '12312312345', pis: '111.22233.44-5', role: 'cleaner', base_salary: 2200.00, dependents: 0 },
 ];
 const insertEmployee = db.prepare(`
-  INSERT INTO employees (id, full_name, cpf, pis, ctps_number, ctps_series, role, admission_date, base_salary, weekly_hours, dependents)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  INSERT INTO employees (id, tenant_id, full_name, cpf, pis, ctps_number, ctps_series, role, admission_date, base_salary, weekly_hours, dependents)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
 `);
 const empIds: string[] = [];
 for (const e of employeeData) {
   const id = uuid();
   empIds.push(id);
-  insertEmployee.run(id, e.full_name, e.cpf, e.pis, '12345', '001', e.role, '2024-01-15', e.base_salary, 44, e.dependents);
+  insertEmployee.run(id, T, e.full_name, e.cpf, e.pis, '12345', '001', e.role, '2024-01-15', e.base_salary, 44, e.dependents);
 }
 console.log(`  ✓ ${employeeData.length} employees`);
 
@@ -220,8 +234,8 @@ const apptTypes = ['consultation','return','exam','procedure'];
 const apptStatuses = ['completed','completed','completed','scheduled','confirmed'];
 const doctorEmails = ['silva@clinica-tanah.com.br','santos@clinica-tanah.com.br','oliveira@clinica-tanah.com.br'];
 const insertAppt = db.prepare(`
-  INSERT INTO appointments (id, patient_id, practitioner_id, scheduled_at, duration_minutes, type, status, source, notes)
-  VALUES (?,?,?,?,?,?,?,?,?)
+  INSERT INTO appointments (id, tenant_id, patient_id, practitioner_id, scheduled_at, duration_minutes, type, status, source, notes)
+  VALUES (?,?,?,?,?,?,?,?,?,?)
 `);
 for (let day = -7; day <= 7; day++) {
   const date = new Date(Date.now() + day * 86400000);
@@ -233,7 +247,7 @@ for (let day = -7; day <= 7; day++) {
     const scheduled = `${dateStr} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
     const status = day < 0 ? 'completed' : apptStatuses[Math.floor(Math.random() * apptStatuses.length)];
     const doctorEmail = doctorEmails[Math.floor(Math.random() * doctorEmails.length)];
-    insertAppt.run(uuid(), patientIds[Math.floor(Math.random() * patientIds.length)],
+    insertAppt.run(uuid(), T, patientIds[Math.floor(Math.random() * patientIds.length)],
                    userIds[doctorEmail], scheduled, 30,
                    apptTypes[Math.floor(Math.random() * apptTypes.length)],
                    status, ['reception','whatsapp_bot','phone','website'][Math.floor(Math.random() * 4)],
@@ -244,8 +258,8 @@ console.log(`  ✓ Appointments across 15 days`);
 
 // ENCOUNTERS + PRESCRIPTIONS for past appointments
 const insertEncounter = db.prepare(`
-  INSERT INTO encounters (id, patient_id, practitioner_id, appointment_id, started_at, ended_at, subjective, objective, assessment, plan, icd10_codes, cid10_codes, notes)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+  INSERT INTO encounters (id, tenant_id, patient_id, practitioner_id, appointment_id, started_at, ended_at, subjective, objective, assessment, plan, icd10_codes, cid10_codes, notes)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 `);
 const pastAppts = db.prepare(`
   SELECT a.*, p.id AS pid FROM appointments a
@@ -256,7 +270,7 @@ const icd10 = ['I10','E11.9','J45','M54.5','R51','K21.9','J06.9','F41.1'];
 for (const a of pastAppts) {
   const eid = uuid();
   insertEncounter.run(
-    eid, a.patient_id, a.practitioner_id, a.id,
+    eid, T, a.patient_id, a.practitioner_id, a.id,
     a.scheduled_at, a.scheduled_at,
     'Paciente relata sintomas descritos na consulta anterior.',
     'Exame físico sem alterações significativas. PA: 130/85 mmHg. FC: 78 bpm.',
@@ -268,9 +282,9 @@ for (const a of pastAppts) {
   );
   // Prescription
   db.prepare(`
-    INSERT INTO prescriptions (id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp)
-    VALUES (?,?,?,?,?,?)
-  `).run(uuid(), eid, a.patient_id, a.practitioner_id, JSON.stringify([
+    INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp)
+    VALUES (?,?,?,?,?,?,?)
+  `).run(uuid(), T, eid, a.patient_id, a.practitioner_id, JSON.stringify([
     { medication: 'Dipirona 500mg', dosage: '1 cp', frequency: '6/6h se dor', duration: '5 dias', instructions: 'Tomar com água após refeições' },
     { medication: 'Paracetamol 750mg', dosage: '1 cp', frequency: '8/8h', duration: '7 dias', instructions: 'Em caso de febre' },
   ]), Math.random() < 0.6 ? 1 : 0);
@@ -279,14 +293,14 @@ console.log(`  ✓ ${pastAppts.length} clinical encounters + prescriptions`);
 
 // INVOICES — past month
 const insertInvoice = db.prepare(`
-  INSERT INTO invoices (id, invoice_number, patient_id, issue_date, due_date, total, status, payment_method, paid_at)
-  VALUES (?,?,?,?,?,?,?,?,?)
+  INSERT INTO invoices (id, tenant_id, invoice_number, patient_id, issue_date, due_date, total, status, payment_method, paid_at)
+  VALUES (?,?,?,?,?,?,?,?,?,?)
 `);
 for (let i = 0; i < 25; i++) {
   const issueDate = new Date(Date.now() - Math.floor(Math.random() * 30) * 86400000).toISOString().slice(0, 10);
   const total = [150, 180, 220, 250, 280, 320, 350, 400][Math.floor(Math.random() * 8)];
   const status = Math.random() < 0.7 ? 'paid' : (Math.random() < 0.5 ? 'issued' : 'overdue');
-  insertInvoice.run(uuid(), `INV-${String(1000 + i).padStart(4,'0')}`,
+  insertInvoice.run(uuid(), T, `INV-${String(1000 + i).padStart(4,'0')}`,
     patientIds[Math.floor(Math.random() * patientIds.length)],
     issueDate, issueDate, total, status,
     ['pix','credit_card','cash','health_insurance'][Math.floor(Math.random() * 4)],
@@ -299,17 +313,17 @@ const waPhones = ['+5511987654321', '+5511956781234', '+5511934567890'];
 for (const p of waPhones) {
   const convId = uuid();
   db.prepare(`
-    INSERT INTO whatsapp_conversations (id, phone, patient_id, state, lgpd_consent_granted, last_message_at, created_at, updated_at)
-    VALUES (?, ?, (SELECT id FROM patients WHERE phone = ?), 'idle', 1, datetime('now'), datetime('now'), datetime('now'))
-  `).run(convId, p, p);
+    INSERT INTO whatsapp_conversations (id, tenant_id, phone, patient_id, state, lgpd_consent_granted, last_message_at, created_at, updated_at)
+    VALUES (?, ?, ?, (SELECT id FROM patients WHERE phone = ? AND tenant_id = ?), 'idle', 1, datetime('now'), datetime('now'), datetime('now'))
+  `).run(convId, T, p, p, T);
   const stmt = db.prepare(`
-    INSERT INTO whatsapp_messages (id, phone, direction, body, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO whatsapp_messages (id, tenant_id, phone, direction, body, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(uuid(), p, 'in', 'Olá', 'received', new Date(Date.now() - 2*3600*1000).toISOString());
-  stmt.run(uuid(), p, 'out', 'Olá! Sou a assistente da Clínica Tanah. Como posso ajudar?', 'sent', new Date(Date.now() - 2*3600*1000).toISOString());
-  stmt.run(uuid(), p, 'in', '1', 'received', new Date(Date.now() - 1*3600*1000).toISOString());
-  stmt.run(uuid(), p, 'out', 'Qual especialidade você precisa? Digite o número: 1️⃣ Clínica Geral 2️⃣ Cardiologia 3️⃣ Dermatologia 4️⃣ Ginecologia 5️⃣ Pediatria 6️⃣ Ortopedia', 'sent', new Date(Date.now() - 1*3600*1000).toISOString());
+  stmt.run(uuid(), T, p, 'in', 'Olá', 'received', new Date(Date.now() - 2*3600*1000).toISOString());
+  stmt.run(uuid(), T, p, 'out', 'Olá! Sou a assistente da Clínica Tanah. Como posso ajudar?', 'sent', new Date(Date.now() - 2*3600*1000).toISOString());
+  stmt.run(uuid(), T, p, 'in', '1', 'received', new Date(Date.now() - 1*3600*1000).toISOString());
+  stmt.run(uuid(), T, p, 'out', 'Qual especialidade você precisa? Digite o número: 1️⃣ Clínica Geral 2️⃣ Cardiologia 3️⃣ Dermatologia 4️⃣ Ginecologia 5️⃣ Pediatria 6️⃣ Ortopedia', 'sent', new Date(Date.now() - 1*3600*1000).toISOString());
 }
 console.log(`  ✓ WhatsApp conversation examples`);
 
@@ -331,6 +345,10 @@ for (const [k, v] of settings) insertSetting.run(k, v);
 console.log(`  ✓ ${settings.length} settings`);
 
 console.log('\n✅ Seed complete!\n');
+console.log(`  Tenant: Clínica Tanah (${T})`);
 console.log('  Test users (password = clinica2026):');
-for (const u of staffData) console.log(`    ${u.email}  —  ${u.role}`);
+for (const u of staffData) {
+  const tag = u.email === 'admin@clinica-tanah.com.br' ? '  [superadmin]' : '';
+  console.log(`    ${u.email}  —  ${u.role}${tag}`);
+}
 console.log('');
