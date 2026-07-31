@@ -57,28 +57,145 @@ router.use(authenticate);
 // List patients — with search and pagination
 router.get('/', (req: Request, res: Response) => {
   const q = (req.query.q as string || '').trim();
-  const limit = Math.min(parseInt(req.query.limit as string || '50'), 200);
-  const offset = parseInt(req.query.offset as string || '0');
-  let rows: any[];
+  const view = (req.query.view as string || 'all').trim();
+  const insurance = (req.query.insurance as string || '').trim();
+  const gender = (req.query.gender as string || '').trim();
+  const createdFrom = (req.query.created_from as string || '').trim();
+  const createdTo = (req.query.created_to as string || '').trim();
+  const sort = (req.query.sort as string || 'name').trim();
+  const limit = Math.min(parseInt(req.query.limit as string || '25', 10) || 25, 200);
+  const offset = Math.max(parseInt(req.query.offset as string || '0', 10) || 0, 0);
+
+  const where: string[] = ['p.tenant_id = ?'];
+  const args: any[] = [req.tenantId];
+
   if (q) {
     const like = `%${q}%`;
-    rows = db.prepare(`
-      SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
-      FROM patients
-      WHERE tenant_id = ? AND (
-        full_name LIKE ? OR social_name LIKE ? OR cpf LIKE ? OR phone LIKE ?
-        OR REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') LIKE ?
-      )
-      ORDER BY full_name ASC LIMIT ? OFFSET ?
-    `).all(req.tenantId, like, like, like, like, `%${q.replace(/\D/g, '') || q}%`, limit, offset);
-  } else {
-    rows = db.prepare(`
-      SELECT id, full_name, social_name, phone, email, cpf, birth_date, health_insurance, created_at
-      FROM patients WHERE tenant_id = ? ORDER BY full_name ASC LIMIT ? OFFSET ?
-    `).all(req.tenantId, limit, offset);
+    const digits = `%${q.replace(/\D/g, '') || q}%`;
+    where.push(`(
+      p.full_name LIKE ? OR p.social_name LIKE ? OR p.cpf LIKE ? OR p.phone LIKE ? OR p.email LIKE ?
+      OR REPLACE(REPLACE(REPLACE(COALESCE(p.cpf,''), '.', ''), '-', ''), ' ', '') LIKE ?
+    )`);
+    args.push(like, like, like, like, like, digits);
   }
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM patients WHERE tenant_id = ?`).get(req.tenantId) as any).c;
-  res.json({ patients: rows, total });
+  if (insurance === '__none__') {
+    where.push(`(p.health_insurance IS NULL OR TRIM(p.health_insurance) = '')`);
+  } else if (insurance) {
+    where.push(`p.health_insurance = ?`);
+    args.push(insurance);
+  }
+  if (gender) {
+    where.push(`p.gender = ?`);
+    args.push(gender);
+  }
+  if (createdFrom) {
+    where.push(`date(p.created_at) >= date(?)`);
+    args.push(createdFrom);
+  }
+  if (createdTo) {
+    where.push(`date(p.created_at) <= date(?)`);
+    args.push(createdTo);
+  }
+
+  if (view === 'recent') {
+    where.push(`date(p.created_at) >= date('now', '-30 days')`);
+  } else if (view === 'insurance') {
+    where.push(`p.health_insurance IS NOT NULL AND TRIM(p.health_insurance) != ''`);
+  } else if (view === 'upcoming') {
+    where.push(`EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+        AND a.scheduled_at >= datetime('now')
+        AND a.status NOT IN ('cancelled','no_show','completed')
+    )`);
+  } else if (view === 'inactive') {
+    where.push(`NOT EXISTS (
+      SELECT 1 FROM appointments a
+      WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+        AND date(a.scheduled_at) >= date('now', '-90 days')
+    )`);
+    where.push(`NOT EXISTS (
+      SELECT 1 FROM encounters e
+      WHERE e.patient_id = p.id AND e.tenant_id = p.tenant_id
+        AND date(e.started_at) >= date('now', '-90 days')
+    )`);
+  }
+
+  const whereSql = where.join(' AND ');
+  let orderSql = 'p.full_name ASC';
+  if (sort === 'created_desc') orderSql = 'p.created_at DESC';
+  else if (sort === 'created_asc') orderSql = 'p.created_at ASC';
+  else if (sort === 'updated_desc') orderSql = 'p.updated_at DESC';
+  else if (sort === 'last_activity') orderSql = '(last_activity IS NULL), last_activity DESC';
+
+  const total = (db.prepare(`
+    SELECT COUNT(*) AS c FROM patients p WHERE ${whereSql}
+  `).get(...args) as any).c;
+
+  const rows = db.prepare(`
+    SELECT
+      p.id, p.full_name, p.social_name, p.phone, p.email, p.cpf, p.birth_date,
+      p.gender, p.health_insurance, p.blood_type, p.created_at, p.updated_at,
+      (
+        SELECT MAX(x.dt) FROM (
+          SELECT a.scheduled_at AS dt FROM appointments a
+          WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+          UNION ALL
+          SELECT e.started_at AS dt FROM encounters e
+          WHERE e.patient_id = p.id AND e.tenant_id = p.tenant_id
+          UNION ALL
+          SELECT p.created_at AS dt
+        ) x
+      ) AS last_activity,
+      (
+        SELECT u.full_name FROM appointments a
+        JOIN users u ON u.id = a.practitioner_id
+        WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+        ORDER BY a.scheduled_at DESC LIMIT 1
+      ) AS owner_name,
+      (
+        SELECT COUNT(*) FROM appointments a
+        WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+          AND a.scheduled_at >= datetime('now')
+          AND a.status NOT IN ('cancelled','no_show','completed')
+      ) AS upcoming_count
+    FROM patients p
+    WHERE ${whereSql}
+    ORDER BY ${orderSql}
+    LIMIT ? OFFSET ?
+  `).all(...args, limit, offset);
+
+  const insurers = db.prepare(`
+    SELECT DISTINCT health_insurance AS name FROM patients
+    WHERE tenant_id = ? AND health_insurance IS NOT NULL AND TRIM(health_insurance) != ''
+    ORDER BY health_insurance COLLATE NOCASE
+  `).all(req.tenantId).map((r: any) => r.name);
+
+  const viewCounts = {
+    all: (db.prepare(`SELECT COUNT(*) AS c FROM patients WHERE tenant_id = ?`).get(req.tenantId) as any).c,
+    recent: (db.prepare(`SELECT COUNT(*) AS c FROM patients WHERE tenant_id = ? AND date(created_at) >= date('now', '-30 days')`).get(req.tenantId) as any).c,
+    insurance: (db.prepare(`SELECT COUNT(*) AS c FROM patients WHERE tenant_id = ? AND health_insurance IS NOT NULL AND TRIM(health_insurance) != ''`).get(req.tenantId) as any).c,
+    upcoming: (db.prepare(`
+      SELECT COUNT(DISTINCT p.id) AS c FROM patients p
+      JOIN appointments a ON a.patient_id = p.id AND a.tenant_id = p.tenant_id
+      WHERE p.tenant_id = ? AND a.scheduled_at >= datetime('now')
+        AND a.status NOT IN ('cancelled','no_show','completed')
+    `).get(req.tenantId) as any).c,
+    inactive: (db.prepare(`
+      SELECT COUNT(*) AS c FROM patients p
+      WHERE p.tenant_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM appointments a WHERE a.patient_id = p.id AND a.tenant_id = p.tenant_id
+            AND date(a.scheduled_at) >= date('now', '-90 days')
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM encounters e WHERE e.patient_id = p.id AND e.tenant_id = p.tenant_id
+            AND date(e.started_at) >= date('now', '-90 days')
+        )
+    `).get(req.tenantId) as any).c,
+  };
+
+  res.json({ patients: rows, total, limit, offset, insurers, view_counts: viewCounts });
 });
 
 // Get single patient — audit logged (PHI access)
@@ -242,6 +359,178 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     legalBasis: 'legal_obligation_art7_II',
   });
   res.json({ ok: true, deleted_id: req.params.id });
+});
+
+/** HubSpot-style patient record: properties + timeline + association counts. */
+router.get('/:id/record', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const parseArr = (v: any): string[] => { try { return v ? JSON.parse(v) : []; } catch { return []; } };
+
+  const appointments = db.prepare(`
+    SELECT a.id, a.scheduled_at, a.type, a.status, a.notes, a.duration_minutes, a.source,
+           u.full_name AS practitioner_name, u.id AS practitioner_id
+    FROM appointments a JOIN users u ON u.id = a.practitioner_id
+    WHERE a.patient_id = ? AND a.tenant_id = ?
+    ORDER BY a.scheduled_at DESC LIMIT 50
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const encounters = db.prepare(`
+    SELECT e.id, e.started_at, e.ended_at, e.subjective, e.objective, e.assessment, e.plan,
+           e.icd10_codes, u.full_name AS practitioner_name
+    FROM encounters e JOIN users u ON u.id = e.practitioner_id
+    WHERE e.patient_id = ? AND e.tenant_id = ?
+    ORDER BY e.started_at DESC LIMIT 50
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const prescriptions = db.prepare(`
+    SELECT pr.id, pr.created_at, pr.items, pr.sent_via_whatsapp, u.full_name AS practitioner_name
+    FROM prescriptions pr
+    LEFT JOIN users u ON u.id = pr.practitioner_id
+    WHERE pr.patient_id = ? AND pr.tenant_id = ?
+    ORDER BY pr.created_at DESC LIMIT 30
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const invoices = db.prepare(`
+    SELECT id, invoice_number, issue_date, due_date, total, status, payment_method, paid_at
+    FROM invoices WHERE patient_id = ? AND tenant_id = ?
+    ORDER BY issue_date DESC LIMIT 30
+  `).all(req.params.id, req.tenantId) as any[];
+
+  const consents = db.prepare(`
+    SELECT id, consent_type, granted, granted_at, revoked_at, policy_version
+    FROM lgpd_consents WHERE subject_type = 'patient' AND subject_id = ?
+    ORDER BY granted_at DESC LIMIT 20
+  `).all(req.params.id) as any[];
+
+  let waMessages: any[] = [];
+  if (p.phone) {
+    waMessages = db.prepare(`
+      SELECT id, direction, body, created_at, status
+      FROM whatsapp_messages
+      WHERE phone = ? AND tenant_id = ?
+      ORDER BY created_at DESC LIMIT 40
+    `).all(p.phone, req.tenantId) as any[];
+  }
+
+  const upcoming = appointments.filter((a) =>
+    a.scheduled_at >= new Date().toISOString().slice(0, 16)
+    && !['cancelled', 'no_show', 'completed'].includes(a.status),
+  );
+
+  type TimelineItem = {
+    id: string; kind: string; at: string; title: string; subtitle?: string;
+    status?: string; meta?: Record<string, unknown>;
+  };
+  const timeline: TimelineItem[] = [];
+
+  for (const a of appointments) {
+    timeline.push({
+      id: `appt-${a.id}`, kind: 'appointment', at: a.scheduled_at,
+      title: a.type || 'appointment',
+      subtitle: a.practitioner_name,
+      status: a.status,
+      meta: { id: a.id, duration_minutes: a.duration_minutes, source: a.source },
+    });
+  }
+  for (const e of encounters) {
+    timeline.push({
+      id: `enc-${e.id}`, kind: 'encounter', at: e.started_at,
+      title: 'encounter',
+      subtitle: e.practitioner_name,
+      meta: {
+        id: e.id,
+        assessment: e.assessment ? String(e.assessment).slice(0, 160) : null,
+        icd10_codes: parseArr(e.icd10_codes),
+      },
+    });
+  }
+  for (const pr of prescriptions) {
+    timeline.push({
+      id: `rx-${pr.id}`, kind: 'prescription', at: pr.created_at,
+      title: 'prescription',
+      subtitle: pr.practitioner_name,
+      meta: { id: pr.id, sent_via_whatsapp: pr.sent_via_whatsapp },
+    });
+  }
+  for (const inv of invoices) {
+    timeline.push({
+      id: `inv-${inv.id}`, kind: 'invoice', at: inv.issue_date,
+      title: inv.invoice_number,
+      subtitle: `R$ ${Number(inv.total).toFixed(2)}`,
+      status: inv.status,
+      meta: { id: inv.id },
+    });
+  }
+  for (const m of waMessages) {
+    timeline.push({
+      id: `wa-${m.id}`, kind: 'whatsapp', at: m.created_at,
+      title: m.direction === 'in' ? 'whatsapp_in' : 'whatsapp_out',
+      subtitle: String(m.body || '').slice(0, 120),
+      status: m.status,
+      meta: { id: m.id, direction: m.direction },
+    });
+  }
+  if (p.notes) {
+    timeline.push({
+      id: `note-${p.id}`, kind: 'note', at: p.updated_at || p.created_at,
+      title: 'admin_note',
+      subtitle: String(p.notes).slice(0, 200),
+    });
+  }
+  if (p.created_at) {
+    timeline.push({
+      id: `created-${p.id}`, kind: 'created', at: p.created_at,
+      title: 'patient_created',
+    });
+  }
+  timeline.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+
+  const owner = appointments[0]?.practitioner_name || null;
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'view_patient_record_phi', resourceType: 'patient', resourceId: p.id,
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: 'health_protection_art7_VIII',
+  });
+
+  res.json({
+    patient: {
+      ...p,
+      allergies: parseArr(p.allergies),
+      chronic_conditions: parseArr(p.chronic_conditions),
+      medications_in_use: parseArr(p.medications_in_use),
+    },
+    owner_name: owner,
+    upcoming_appointments: upcoming.slice(0, 8),
+    timeline: timeline.slice(0, 80),
+    associations: {
+      appointments: { count: appointments.length, items: appointments.slice(0, 8) },
+      encounters: {
+        count: encounters.length,
+        items: encounters.slice(0, 8).map((e) => ({
+          ...e,
+          icd10_codes: parseArr(e.icd10_codes),
+          subjective: undefined,
+          objective: undefined,
+          plan: undefined,
+        })),
+      },
+      prescriptions: {
+        count: prescriptions.length,
+        items: prescriptions.slice(0, 8).map((pr) => ({
+          id: pr.id, created_at: pr.created_at,
+          practitioner_name: pr.practitioner_name,
+          sent_via_whatsapp: pr.sent_via_whatsapp,
+        })),
+      },
+      invoices: { count: invoices.length, items: invoices.slice(0, 8) },
+      consents: { count: consents.length, items: consents.slice(0, 8) },
+      whatsapp: { count: waMessages.length, items: waMessages.slice(0, 5) },
+    },
+  });
 });
 
 // Clinical snapshot for the scheduler drawer — everything the medical team

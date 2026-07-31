@@ -168,7 +168,72 @@
     "address_complement": "Complement",
     "health_insurance_number": "Insurance card no.",
     "emergency_contact_name": "Emergency contact",
-    "emergency_contact_phone": "Emergency phone"
+    "emergency_contact_phone": "Emergency phone",
+    "create": "Create patient",
+    "actions": "Actions",
+    "export": "Export",
+    "import": "Import",
+    "open": "Open",
+    "unassigned": "Unassigned",
+    "search_placeholder": "Search name, phone, email, CPF…",
+    "record_one": "1 record",
+    "record_many": "{{n}} records",
+    "page_of": "{{from}}–{{to}} of {{total}}",
+    "per_page": "{{n}} per page",
+    "col_name": "Name",
+    "col_owner": "Practitioner",
+    "col_last_activity": "Last activity",
+    "created_at": "Created at",
+    "back_to_list": "Back to patients",
+    "about": "About this patient",
+    "upcoming": "Upcoming",
+    "quick_schedule": "Schedule appointment",
+    "views": {
+      "all": "All patients",
+      "recent": "Recently added",
+      "insurance": "With insurance",
+      "upcoming": "Upcoming appointments",
+      "inactive": "Inactive"
+    },
+    "filters": {
+      "insurance": "Insurance",
+      "no_insurance": "Private / no insurance",
+      "gender": "Gender",
+      "created_from": "Created from",
+      "created_to": "to",
+      "clear": "Clear filters"
+    },
+    "sort": {
+      "name": "Sort: name",
+      "created_desc": "Newest",
+      "updated_desc": "Recently updated",
+      "last_activity": "Last activity"
+    },
+    "feed": {
+      "activity": "Activity",
+      "appointments": "Appointments",
+      "encounters": "Encounters",
+      "notes": "Notes",
+      "whatsapp": "WhatsApp"
+    },
+    "assoc": {
+      "appointments": "Appointments",
+      "encounters": "Encounters",
+      "prescriptions": "Prescriptions",
+      "invoices": "Invoices",
+      "consents": "LGPD consents",
+      "whatsapp": "WhatsApp messages"
+    },
+    "timeline": {
+      "appointment": "Appointment — {{type}}",
+      "encounter": "Clinical encounter",
+      "prescription": "Prescription issued",
+      "invoice": "Invoice {{number}}",
+      "whatsapp_in": "WhatsApp received",
+      "whatsapp_out": "WhatsApp sent",
+      "admin_note": "Admin note",
+      "patient_created": "Patient created"
+    }
   },
   "appointments": {
     "title": "Appointments",
@@ -589,7 +654,7 @@
     "mod_dashboard_how": "Open after login. Use the cards to prioritise follow-ups.",
     "mod_patients_name": "Patients",
     "mod_patients_purpose": "Full patient record (clinical ID, contact, LGPD consent).",
-    "mod_patients_how": "New Patient → fill identity + consent → Save. Search by name/CPF.",
+    "mod_patients_how": "CRM-style list: views, filters and search. Click a name for the record (properties, timeline, associations). Create patient from the top-right.",
     "mod_appointments_name": "Appointments",
     "mod_appointments_purpose": "Clinic schedule: book, confirm, cancel, no-show.",
     "mod_appointments_how": "New appointment → patient + practitioner + time → Save. Update status through the day.",

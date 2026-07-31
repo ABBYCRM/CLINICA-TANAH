@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
+import PatientRecord from './pages/PatientRecord';
 import Appointments from './pages/Appointments';
 import Encounters from './pages/Encounters';
 import Prescriptions from './pages/Prescriptions';
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/" element={<Protected><Layout /></Protected>}>
         <Route index element={<Dashboard />} />
         <Route path="patients" element={<Patients />} />
+        <Route path="patients/:id" element={<PatientRecord />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="encounters" element={<Encounters />} />
         <Route path="prescriptions" element={<Prescriptions />} />

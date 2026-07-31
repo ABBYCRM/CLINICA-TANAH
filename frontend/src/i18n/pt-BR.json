@@ -168,7 +168,72 @@
     "address_complement": "Complemento",
     "health_insurance_number": "Nº da carteirinha",
     "emergency_contact_name": "Contato de emergência",
-    "emergency_contact_phone": "Telefone de emergência"
+    "emergency_contact_phone": "Telefone de emergência",
+    "create": "Criar paciente",
+    "actions": "Ações",
+    "export": "Exportar",
+    "import": "Importar",
+    "open": "Abrir",
+    "unassigned": "Não atribuído",
+    "search_placeholder": "Buscar nome, telefone, e-mail, CPF…",
+    "record_one": "1 registro",
+    "record_many": "{{n}} registros",
+    "page_of": "{{from}}–{{to}} de {{total}}",
+    "per_page": "{{n}} por página",
+    "col_name": "Nome",
+    "col_owner": "Profissional",
+    "col_last_activity": "Última atividade",
+    "created_at": "Cadastrado em",
+    "back_to_list": "Voltar para pacientes",
+    "about": "Sobre este paciente",
+    "upcoming": "Próximos",
+    "quick_schedule": "Agendar consulta",
+    "views": {
+      "all": "Todos os pacientes",
+      "recent": "Recentes",
+      "insurance": "Com convênio",
+      "upcoming": "Consultas próximas",
+      "inactive": "Sem atividade"
+    },
+    "filters": {
+      "insurance": "Convênio",
+      "no_insurance": "Particular / sem convênio",
+      "gender": "Sexo",
+      "created_from": "Cadastro de",
+      "created_to": "até",
+      "clear": "Limpar filtros"
+    },
+    "sort": {
+      "name": "Ordenar: nome",
+      "created_desc": "Mais recentes",
+      "updated_desc": "Atualizados",
+      "last_activity": "Última atividade"
+    },
+    "feed": {
+      "activity": "Atividade",
+      "appointments": "Consultas",
+      "encounters": "Atendimentos",
+      "notes": "Notas",
+      "whatsapp": "WhatsApp"
+    },
+    "assoc": {
+      "appointments": "Consultas",
+      "encounters": "Atendimentos",
+      "prescriptions": "Receitas",
+      "invoices": "Faturas",
+      "consents": "Consentimentos LGPD",
+      "whatsapp": "Mensagens WhatsApp"
+    },
+    "timeline": {
+      "appointment": "Consulta — {{type}}",
+      "encounter": "Atendimento clínico",
+      "prescription": "Receita emitida",
+      "invoice": "Fatura {{number}}",
+      "whatsapp_in": "WhatsApp recebido",
+      "whatsapp_out": "WhatsApp enviado",
+      "admin_note": "Nota administrativa",
+      "patient_created": "Paciente cadastrado"
+    }
   },
   "appointments": {
     "title": "Consultas",
@@ -589,7 +654,7 @@
     "mod_dashboard_how": "Abra após o login. Use os cartões para priorizar o que precisa de atenção.",
     "mod_patients_name": "Pacientes",
     "mod_patients_purpose": "Cadastro completo (dados clínicos, contato, consentimento LGPD).",
-    "mod_patients_how": "Novo Paciente → preencha identificação e consentimento → Salvar. Busque pelo nome/CPF.",
+    "mod_patients_how": "Lista estilo CRM: views, filtros e busca. Clique no nome para o registro (propriedades, timeline e associações). Criar paciente no canto superior.",
     "mod_appointments_name": "Consultas",
     "mod_appointments_purpose": "Agenda da clínica: marcar, confirmar, cancelar, no-show.",
     "mod_appointments_how": "Nova consulta → paciente + profissional + data/hora → Salvar. Atualize o status conforme o fluxo.",

@@ -1,28 +1,131 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
-import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
+import { ConfirmDialog, FormError } from '../components/crud';
+import { PatientForm } from '../components/PatientForm';
+
+type ViewId = 'all' | 'recent' | 'insurance' | 'upcoming' | 'inactive';
+
+const VIEWS: ViewId[] = ['all', 'recent', 'insurance', 'upcoming', 'inactive'];
+const PAGE_SIZES = [25, 50, 100];
+
+function initials(name: string) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase();
+}
+
+function fmtDateTime(v?: string | null, locale = 'pt-BR') {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleString(locale, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 export default function Patients() {
   const { t, locale } = useI18n();
+  const navigate = useNavigate();
   const [patients, setPatients] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
+  const [insurers, setInsurers] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState<any | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [view, setView] = useState<ViewId>('all');
+  const [insurance, setInsurance] = useState('');
+  const [gender, setGender] = useState('');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
+  const [sort, setSort] = useState('name');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
   const [deleting, setDeleting] = useState<any | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    const tmr = setTimeout(() => { setSearch(searchInput); setPage(0); }, 280);
+    return () => clearTimeout(tmr);
+  }, [searchInput]);
+
+  const query = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set('limit', String(pageSize));
+    p.set('offset', String(page * pageSize));
+    p.set('view', view);
+    p.set('sort', sort);
+    if (search) p.set('q', search);
+    if (insurance) p.set('insurance', insurance);
+    if (gender) p.set('gender', gender);
+    if (createdFrom) p.set('created_from', createdFrom);
+    if (createdTo) p.set('created_to', createdTo);
+    return p.toString();
+  }, [page, pageSize, view, sort, search, insurance, gender, createdFrom, createdTo]);
+
   const load = () => {
     setLoading(true);
-    api.get(`/api/patients?q=${encodeURIComponent(search)}&limit=100`)
-      .then((d) => setPatients(d.patients))
+    api.get(`/api/patients?${query}`)
+      .then((d) => {
+        setPatients(d.patients || []);
+        setTotal(d.total || 0);
+        setInsurers(d.insurers || []);
+        setViewCounts(d.view_counts || {});
+        setSelected(new Set());
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [search, locale]);
+  useEffect(load, [query, locale]);
+
+  const activeFilters = [insurance, gender, createdFrom, createdTo].filter(Boolean).length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const allOnPageSelected = patients.length > 0 && patients.every((p) => selected.has(p.id));
+
+  const toggleAll = () => {
+    if (allOnPageSelected) setSelected(new Set());
+    else setSelected(new Set(patients.map((p) => p.id)));
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setInsurance('');
+    setGender('');
+    setCreatedFrom('');
+    setCreatedTo('');
+    setPage(0);
+  };
+
+  const exportCsv = () => {
+    const rows = (selected.size ? patients.filter((p) => selected.has(p.id)) : patients);
+    const header = ['full_name', 'email', 'phone', 'cpf', 'health_insurance', 'birth_date', 'created_at', 'owner_name'];
+    const lines = [
+      header.join(','),
+      ...rows.map((p) => header.map((h) => `"${String(p[h] ?? '').replace(/"/g, '""')}"`).join(',')),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pacientes-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setActionsOpen(false);
+  };
 
   const remove = async () => {
     if (!deleting) return;
@@ -42,67 +145,262 @@ export default function Patients() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('patients.title')}</h1>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-patient">
-          + {t('patients.new')}
-        </button>
+    <div className="crm-page space-y-0" data-testid="patients-crm">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{t('patients.title')}</h1>
+          <p className="text-sm text-slate-500 mt-0.5" data-testid="patients-count">
+            {total === 1 ? t('patients.record_one') : t('patients.record_many', { n: total })}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <button type="button" className="btn-secondary" onClick={() => setActionsOpen((v) => !v)} data-testid="patients-actions">
+              {t('patients.actions')}
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2}><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {actionsOpen && (
+              <div className="absolute right-0 mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1 animate-scale-in">
+                <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50" onClick={exportCsv}>
+                  {t('patients.export')}
+                </button>
+                <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 text-slate-400 cursor-not-allowed" disabled>
+                  {t('patients.import')}
+                </button>
+              </div>
+            )}
+          </div>
+          <button type="button" className="btn-secondary" onClick={exportCsv} data-testid="patients-export">
+            {t('patients.export')}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setEditing(null); setShowForm(true); }}
+            className="btn-primary"
+            data-testid="new-patient"
+          >
+            {t('patients.create')}
+          </button>
+        </div>
       </div>
 
-      {error && <FormError message={error} />}
+      {error && <div className="mb-3"><FormError message={error} /></div>}
 
-      <div className="card p-4">
-        <input
-          type="text"
-          placeholder={t('common.search') + '...'}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input max-w-md"
-        />
+      {/* Saved views */}
+      <div className="crm-views flex flex-wrap items-center gap-1 border-b border-slate-200">
+        {VIEWS.map((v) => {
+          const count = viewCounts[v];
+          const active = view === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              onClick={() => { setView(v); setPage(0); }}
+              className={`crm-view-tab ${active ? 'is-active' : ''}`}
+              data-testid={`patients-view-${v}`}
+            >
+              {t(`patients.views.${v}`)}
+              {typeof count === 'number' && (
+                <span className="ml-1.5 text-[11px] tabular-nums opacity-70">{count}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="card">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2 py-3 border-b border-slate-200 bg-white/60">
+        <select
+          className="crm-filter"
+          value={insurance}
+          onChange={(e) => { setInsurance(e.target.value); setPage(0); }}
+          data-testid="filter-insurance"
+        >
+          <option value="">{t('patients.filters.insurance')}</option>
+          <option value="__none__">{t('patients.filters.no_insurance')}</option>
+          {insurers.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <select
+          className="crm-filter"
+          value={gender}
+          onChange={(e) => { setGender(e.target.value); setPage(0); }}
+          data-testid="filter-gender"
+        >
+          <option value="">{t('patients.filters.gender')}</option>
+          <option value="female">{t('patients.gender_options.female')}</option>
+          <option value="male">{t('patients.gender_options.male')}</option>
+          <option value="other">{t('patients.gender_options.other')}</option>
+        </select>
+        <label className="crm-filter inline-flex items-center gap-1.5 !py-1.5">
+          <span className="text-slate-500 text-xs whitespace-nowrap">{t('patients.filters.created_from')}</span>
+          <input type="date" className="border-0 bg-transparent text-sm focus:outline-none" value={createdFrom}
+            onChange={(e) => { setCreatedFrom(e.target.value); setPage(0); }} />
+        </label>
+        <label className="crm-filter inline-flex items-center gap-1.5 !py-1.5">
+          <span className="text-slate-500 text-xs whitespace-nowrap">{t('patients.filters.created_to')}</span>
+          <input type="date" className="border-0 bg-transparent text-sm focus:outline-none" value={createdTo}
+            onChange={(e) => { setCreatedTo(e.target.value); setPage(0); }} />
+        </label>
+        {activeFilters > 0 && (
+          <button type="button" className="text-sm text-clinic-700 hover:underline font-medium" onClick={clearFilters}>
+            {t('patients.filters.clear')} ({activeFilters})
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <select className="crm-filter" value={sort} onChange={(e) => setSort(e.target.value)} data-testid="patients-sort">
+            <option value="name">{t('patients.sort.name')}</option>
+            <option value="created_desc">{t('patients.sort.created_desc')}</option>
+            <option value="updated_desc">{t('patients.sort.updated_desc')}</option>
+            <option value="last_activity">{t('patients.sort.last_activity')}</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Search + table tools */}
+      <div className="flex flex-wrap items-center gap-3 py-3">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <svg viewBox="0 0 24 24" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="search"
+            className="input !pl-9"
+            placeholder={t('patients.search_placeholder')}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            data-testid="patients-search"
+          />
+        </div>
+        <button type="button" className="btn-secondary text-sm" onClick={exportCsv}>{t('patients.export')}</button>
+      </div>
+
+      {/* Table */}
+      <div className="card overflow-hidden !rounded-lg">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="table-th">{t('patients.full_name')}</th>
-                <th className="table-th">{t('patients.cpf')}</th>
-                <th className="table-th">{t('patients.birth_date')}</th>
+          <table className="w-full crm-table">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="table-th w-10">
+                  <input type="checkbox" checked={allOnPageSelected} onChange={toggleAll} aria-label="Select all" />
+                </th>
+                <th className="table-th">{t('patients.col_name')}</th>
+                <th className="table-th">{t('patients.email')}</th>
                 <th className="table-th">{t('patients.phone')}</th>
                 <th className="table-th">{t('patients.health_insurance')}</th>
-                <th className="table-th">{t('patients.blood_type')}</th>
+                <th className="table-th">{t('patients.col_owner')}</th>
+                <th className="table-th">{t('patients.col_last_activity')}</th>
                 <th className="table-th text-right">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading && (
-                <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">{t('common.loading')}</td></tr>
+                <tr><td colSpan={8} className="table-td text-center text-slate-400 py-10">{t('common.loading')}</td></tr>
               )}
               {!loading && patients.length === 0 && (
-                <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">{t('common.no_data')}</td></tr>
+                <tr><td colSpan={8} className="table-td text-center text-slate-400 py-10">{t('common.no_data')}</td></tr>
               )}
               {patients.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="table-td font-medium">{p.full_name}</td>
-                  <td className="table-td font-mono text-xs">{p.cpf || '—'}</td>
-                  <td className="table-td">{p.birth_date}</td>
-                  <td className="table-td">{p.phone}</td>
-                  <td className="table-td">{p.health_insurance || '—'}</td>
-                  <td className="table-td">{p.blood_type || '—'}</td>
+                <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="table-td">
-                    <RowActions
-                      editTestId={`edit-patient-${p.id}`}
-                      deleteTestId={`delete-patient-${p.id}`}
-                      onEdit={() => { setEditing(p); setShowForm(true); }}
-                      onDelete={() => setDeleting(p)}
-                    />
+                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} aria-label={p.full_name} />
+                  </td>
+                  <td className="table-td">
+                    <Link to={`/patients/${p.id}`} className="flex items-center gap-2.5 min-w-0 group/link" data-testid={`patient-row-${p.id}`}>
+                      <span className="crm-avatar shrink-0">{initials(p.full_name)}</span>
+                      <span className="min-w-0">
+                        <span className="block font-medium text-clinic-700 group-hover/link:underline truncate">{p.full_name}</span>
+                        <span className="block text-xs text-slate-400 font-mono truncate">{p.cpf || '—'}</span>
+                      </span>
+                    </Link>
+                  </td>
+                  <td className="table-td">
+                    {p.email
+                      ? <a href={`mailto:${p.email}`} className="text-clinic-700 hover:underline">{p.email}</a>
+                      : <span className="text-slate-400">—</span>}
+                  </td>
+                  <td className="table-td whitespace-nowrap">{p.phone || '—'}</td>
+                  <td className="table-td">{p.health_insurance || <span className="text-slate-400">{t('patients.unassigned')}</span>}</td>
+                  <td className="table-td">
+                    {p.owner_name ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="crm-avatar !w-6 !h-6 !text-[10px]">{initials(p.owner_name)}</span>
+                        <span className="truncate max-w-[120px]">{p.owner_name}</span>
+                      </span>
+                    ) : <span className="text-slate-400">{t('patients.unassigned')}</span>}
+                  </td>
+                  <td className="table-td text-slate-600 whitespace-nowrap text-xs">
+                    {fmtDateTime(p.last_activity, locale)}
+                    {p.upcoming_count > 0 && (
+                      <span className="ml-1.5 badge-green">{p.upcoming_count}</span>
+                    )}
+                  </td>
+                  <td className="table-td text-right">
+                    <div className="inline-flex items-center gap-1 opacity-80 group-hover:opacity-100">
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-clinic-700 hover:underline px-1"
+                        onClick={() => navigate(`/patients/${p.id}`)}
+                      >
+                        {t('patients.open')}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-slate-600 hover:underline px-1"
+                        data-testid={`edit-patient-${p.id}`}
+                        onClick={() => { setEditing(p); setShowForm(true); }}
+                      >
+                        {t('common.edit')}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-rose-600 hover:underline px-1"
+                        data-testid={`delete-patient-${p.id}`}
+                        onClick={() => setDeleting(p)}
+                      >
+                        {t('common.delete')}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/50">
+          <div className="text-xs text-slate-500">
+            {total === 0
+              ? t('common.no_data')
+              : t('patients.page_of', {
+                  from: page * pageSize + 1,
+                  to: Math.min((page + 1) * pageSize, total),
+                  total,
+                })}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn-secondary !px-3 !py-1.5 text-sm" disabled={page <= 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              {t('common.back')}
+            </button>
+            <span className="text-sm tabular-nums text-slate-600 px-2">
+              {page + 1} / {pageCount}
+            </span>
+            <button type="button" className="btn-secondary !px-3 !py-1.5 text-sm" disabled={page + 1 >= pageCount}
+              onClick={() => setPage((p) => p + 1)}>
+              {t('common.next')}
+            </button>
+            <select
+              className="crm-filter !py-1.5"
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>{t('patients.per_page', { n })}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -110,7 +408,12 @@ export default function Patients() {
         <PatientForm
           initial={editing}
           onClose={() => { setShowForm(false); setEditing(null); }}
-          onSaved={() => { setShowForm(false); setEditing(null); load(); }}
+          onSaved={(id) => {
+            setShowForm(false);
+            setEditing(null);
+            if (id && !editing) navigate(`/patients/${id}`);
+            else load();
+          }}
         />
       )}
       {deleting && (
@@ -121,187 +424,11 @@ export default function Patients() {
           onConfirm={remove}
         />
       )}
+      {actionsOpen && (
+        <button type="button" className="fixed inset-0 z-10 cursor-default" aria-label="close" onClick={() => setActionsOpen(false)} />
+      )}
     </div>
   );
 }
 
-const GENDERS = ['female', 'male', 'other'];
-const MARITAL = ['single', 'married', 'divorced', 'widowed', 'stable_union'];
-const RACES = ['branca', 'preta', 'parda', 'amarela', 'indigena', 'not_informed'];
-const REFERRALS = ['indicacao', 'google', 'instagram', 'convenio', 'whatsapp', 'other'];
-
-function PatientForm({ initial, onClose, onSaved }: { initial: any | null; onClose: () => void; onSaved: () => void }) {
-  const { t } = useI18n();
-  const parseArr = (v: any): string[] => {
-    if (Array.isArray(v)) return v;
-    try { return v ? JSON.parse(v) : []; } catch { return []; }
-  };
-  const blank = {
-    full_name: '', social_name: '', birth_date: '', cpf: '', rg: '', rg_issuer: '', gender: '',
-    marital_status: '', occupation: '', education_level: '', nationality: 'Brasileira', birthplace: '',
-    mother_name: '', father_name: '', race_color: '', cns: '', referral_source: '', notes: '',
-    phone: '', phone_secondary: '', email: '',
-    address_zip: '', address_street: '', address_number: '', address_complement: '',
-    address_neighborhood: '', address_city: 'São Paulo', address_state: 'SP',
-    health_insurance: '', health_insurance_number: '', blood_type: '',
-    emergency_contact_name: '', emergency_contact_phone: '',
-    allergies: [] as string[], chronic_conditions: [] as string[], medications_in_use: [] as string[],
-    lgpd_consent_granted: false, lgpd_policy_version: '1.0',
-  };
-  const [form, setForm] = useState<any>(() => {
-    if (!initial) return blank;
-    const fromApi: any = {};
-    for (const k of Object.keys(blank)) {
-      if (['allergies', 'chronic_conditions', 'medications_in_use'].includes(k)) fromApi[k] = parseArr(initial[k]);
-      else if (k === 'lgpd_consent_granted') fromApi[k] = true;
-      else if (k === 'lgpd_policy_version') fromApi[k] = initial.lgpd_consent_version ?? '1.0';
-      else fromApi[k] = initial[k] ?? blank[k as keyof typeof blank];
-    }
-    return fromApi;
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!form.lgpd_consent_granted) { setError(t('patients.lgpd_consent_required')); return; }
-    setSaving(true);
-    const payload = Object.fromEntries(
-      Object.entries(form).map(([k, v]) => [k, v === '' ? null : v])
-    );
-    try {
-      if (initial) await api.put(`/api/patients/${initial.id}`, payload);
-      else await api.post('/api/patients', payload);
-      onSaved();
-    } catch (err: any) {
-      setError(err.message || t('errors.generic'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <fieldset className="rounded-xl border border-slate-200 p-4">
-      <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-clinic-700">{title}</legend>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>
-    </fieldset>
-  );
-
-  const F = ({ k, label, required, span, type, placeholder, maxLength, testId }: any) => (
-    <div className={span ? 'sm:col-span-2' : ''}>
-      <label className="label">{label}{required ? ' *' : ''}</label>
-      <input type={type || 'text'} className="input" value={form[k]} required={required}
-        placeholder={placeholder} maxLength={maxLength} data-testid={testId}
-        onChange={(e) => set(k, e.target.value)} />
-    </div>
-  );
-
-  const Sel = ({ k, label, options, optionKey }: any) => (
-    <div>
-      <label className="label">{label}</label>
-      <select className="input" value={form[k]} onChange={(e) => set(k, e.target.value)}>
-        <option value="">—</option>
-        {options.map((o: string) => <option key={o} value={o}>{t(`${optionKey}.${o}`)}</option>)}
-      </select>
-    </div>
-  );
-
-  return (
-    <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('patients.new')} onClose={onClose} wide>
-      <form onSubmit={submit} className="space-y-4">
-        <FormError message={error} />
-
-        <Section title={t('patients.section_id')}>
-          <F k="full_name" label={t('patients.full_name')} required span testId="patient-name" />
-          <F k="social_name" label={t('patients.social_name')} />
-          <F k="birth_date" label={t('patients.birth_date')} required type="date" />
-          <F k="cpf" label={t('patients.cpf')} placeholder="12345678900" maxLength={11} />
-          <F k="rg" label={t('patients.rg')} />
-          <F k="rg_issuer" label={t('patients.rg_issuer')} placeholder="SSP-SP" />
-          <Sel k="gender" label={t('patients.gender')} options={GENDERS} optionKey="patients.gender_options" />
-          <F k="cns" label={t('patients.cns')} placeholder="123456789012345" maxLength={15} />
-          <F k="mother_name" label={t('patients.mother_name')} />
-          <F k="father_name" label={t('patients.father_name')} />
-        </Section>
-
-        <Section title={t('patients.section_contact')}>
-          <F k="phone" label={t('patients.phone')} required placeholder="+5511999999999" />
-          <F k="phone_secondary" label={t('patients.phone_secondary')} />
-          <F k="email" label={t('patients.email')} type="email" />
-          <Sel k="referral_source" label={t('patients.referral_source')} options={REFERRALS} optionKey="patients.referral_options" />
-        </Section>
-
-        <Section title={t('patients.section_address')}>
-          <F k="address_zip" label="CEP" />
-          <F k="address_street" label={t('patients.address_street')} />
-          <F k="address_number" label={t('patients.address_number')} />
-          <F k="address_complement" label={t('patients.address_complement') || 'Complemento'} />
-          <F k="address_neighborhood" label={t('patients.address_neighborhood')} />
-          <F k="address_city" label={t('patients.address_city')} />
-          <F k="address_state" label="UF" maxLength={2} />
-        </Section>
-
-        <Section title={t('patients.section_social')}>
-          <Sel k="marital_status" label={t('patients.marital_status')} options={MARITAL} optionKey="patients.marital_options" />
-          <Sel k="race_color" label={t('patients.race_color')} options={RACES} optionKey="patients.race_options" />
-          <F k="occupation" label={t('patients.occupation')} />
-          <F k="education_level" label={t('patients.education_level')} />
-          <F k="nationality" label={t('patients.nationality')} />
-          <F k="birthplace" label={t('patients.birthplace')} />
-        </Section>
-
-        <Section title={t('patients.section_health')}>
-          <F k="health_insurance" label={t('patients.health_insurance')} />
-          <F k="health_insurance_number" label={t('patients.health_insurance_number') || 'Nº carteirinha'} />
-          <div>
-            <label className="label">{t('patients.blood_type')}</label>
-            <select className="input" value={form.blood_type} onChange={(e) => set('blood_type', e.target.value)}>
-              <option value="">—</option>
-              <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
-              <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
-            </select>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">{t('patients.allergies')}</label>
-            <input className="input" placeholder="Penicilina, frutos do mar..." value={form.allergies.join(', ')}
-              onChange={(e) => set('allergies', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">{t('patients.chronic_conditions')}</label>
-            <input className="input" placeholder="Hipertensão, diabetes..." value={form.chronic_conditions.join(', ')}
-              onChange={(e) => set('chronic_conditions', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">{t('patients.medications_in_use') || 'Medicamentos em uso'}</label>
-            <input className="input" placeholder="Losartana 50mg, metformina..." value={form.medications_in_use.join(', ')}
-              onChange={(e) => set('medications_in_use', e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
-          </div>
-          <F k="emergency_contact_name" label={t('patients.emergency_name')} />
-          <F k="emergency_contact_phone" label={t('patients.emergency_phone')} />
-          <div className="sm:col-span-2">
-            <label className="label">{t('patients.notes')}</label>
-            <textarea className="input" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
-          </div>
-        </Section>
-
-        {!initial && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" className="mt-1" checked={form.lgpd_consent_granted}
-                onChange={(e) => set('lgpd_consent_granted', e.target.checked)} required />
-              <span className="text-sm text-slate-800">{t('patients.consent_checkbox')}</span>
-            </label>
-            <p className="text-xs text-slate-500 mt-1 pl-7">
-              LGPD Lei 13.709/2018 — Política v{form.lgpd_policy_version}
-            </p>
-          </div>
-        )}
-
-        <FormActions saving={saving} onCancel={onClose} />
-      </form>
-    </Modal>
-  );
-}
+// keep list page self-contained
