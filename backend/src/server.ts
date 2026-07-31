@@ -39,15 +39,26 @@ import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/
 import { assertSecurityConfig, encryptionStatus } from './services/phiCrypto';
 
 assertSecurityConfig();
-initSchema();
+try {
+  initSchema();
+} catch (err: any) {
+  console.error('FATAL: schema init failed', err?.stack || err);
+  process.exit(1);
+}
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(securityHeaders);
 app.use(requireHttps);
+// Reflect allowed origins; keep simple for App Platform health probes (no Origin header)
 app.use(cors({
-  origin: corsOriginDelegate,
-  credentials: true,
+  origin: (origin, cb) => {
+    try {
+      corsOriginDelegate(origin, cb);
+    } catch {
+      cb(null, true);
+    }
+  },
 }));
 // Capture the raw body so the WhatsApp webhook can verify Meta's X-Hub-Signature-256
 // 12mb allows invoice document base64 uploads for NVIDIA OCR

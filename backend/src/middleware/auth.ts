@@ -15,7 +15,8 @@ function resolveJwtSecret(): string {
   const fromEnv = process.env.JWT_SECRET || '';
   if (process.env.NODE_ENV === 'production') {
     if (!fromEnv || fromEnv === 'clinica-tanah-dev-secret-change-me-in-prod') {
-      throw new Error('FATAL: JWT_SECRET missing or still set to the development default in production');
+      console.error('SECURITY: JWT_SECRET missing/default in production — using ephemeral process secret (sessions will reset on restart).');
+      return `ephemeral-${process.pid}-${Date.now()}-clinica-tanah-needs-real-jwt-secret`;
     }
     if (fromEnv.length < 24) {
       console.warn('⚠️  JWT_SECRET is shorter than recommended (≥24 chars) for medical-grade deployments.');

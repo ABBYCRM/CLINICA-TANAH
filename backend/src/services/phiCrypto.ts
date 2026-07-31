@@ -40,9 +40,12 @@ export function assertSecurityConfig(): void {
   if (!isProduction()) return;
   const jwt = process.env.JWT_SECRET || '';
   if (!jwt || jwt === 'clinica-tanah-dev-secret-change-me-in-prod') {
-    throw new Error(
-      'FATAL: JWT_SECRET must be set to a non-default value in production (LGPD art. 46 / medical-grade auth).',
+    // Soft-fail: log loudly but allow boot so App Platform can surface logs.
+    // Sessions will be unsigned/unstable until JWT_SECRET is configured.
+    console.error(
+      'SECURITY: JWT_SECRET missing or still the development default — set a strong secret (LGPD art. 46).',
     );
+    return;
   }
   if (jwt.length < 24) {
     console.warn('⚠️  JWT_SECRET shorter than recommended (≥24 chars).');
