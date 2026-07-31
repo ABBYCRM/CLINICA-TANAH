@@ -16,3 +16,7 @@ e2e/.data/
 data/
 node_modules/
 dist/
+
+uploads/
+backend/data/
+**/.env

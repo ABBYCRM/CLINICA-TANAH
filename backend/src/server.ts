@@ -2,6 +2,20 @@
  * Clínica Tanah — Backend Server
  * LGPD-aware medical CRM for São Paulo, Brasil
  */
+import path from 'path';
+import fs from 'fs';
+import dotenv from 'dotenv';
+
+// Load .env from repo root and/or backend cwd (never commit real secrets)
+for (const candidate of [
+  path.join(process.cwd(), '.env'),
+  path.join(process.cwd(), '..', '.env'),
+  path.join(__dirname, '..', '..', '.env'),
+  path.join(__dirname, '..', '.env'),
+]) {
+  if (fs.existsSync(candidate)) dotenv.config({ path: candidate, override: false });
+}
+
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -27,8 +41,9 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(cors());
 // Capture the raw body so the WhatsApp webhook can verify Meta's X-Hub-Signature-256
+// 12mb allows invoice document base64 uploads for NVIDIA OCR
 app.use(express.json({
-  limit: '2mb',
+  limit: '12mb',
   verify: (req: any, _res, buf) => { req.rawBody = buf; },
 }));
 
@@ -127,6 +142,9 @@ app.listen(PORT, () => {
   console.log(`✅ Clínica Tanah backend running on port ${PORT}`);
   console.log(`   LGPD mode: STRICT (art. 37 — audit log enabled)`);
   console.log(`   WhatsApp: ${process.env.META_WA_TOKEN ? 'LIVE (Meta Cloud API)' : 'DRY-RUN (simulator mode)'}`);
+  const nvKeys = (process.env.NVIDIA_API_KEYS || process.env.NVIDIA_API_KEY || '')
+    .split(/[\n,]+/).map((k) => k.replace(/^Bearer\s+/i, '').trim()).filter((k) => k.startsWith('nvapi-'));
+  console.log(`   NVIDIA OCR: ${nvKeys.length ? `${nvKeys.length} key(s) · ${process.env.NVIDIA_OCR_MODEL || 'nemotron-nano-12b-v2-vl'}` : 'NOT CONFIGURED'}`);
 });
 
 export default app;

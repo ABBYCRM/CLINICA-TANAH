@@ -638,6 +638,31 @@ function migrate(): void {
     );
   `);
 
+  // Invoice document attachments + NVIDIA OCR metadata
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS invoice_documents (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      invoice_id TEXT REFERENCES invoices(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      storage_path TEXT NOT NULL,
+      ocr_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(ocr_status IN ('pending','processing','done','failed','skipped')),
+      ocr_model TEXT,
+      ocr_raw_text TEXT,
+      ocr_json TEXT,
+      ocr_error TEXT,
+      uploaded_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_inv_docs_invoice ON invoice_documents(invoice_id);
+    CREATE INDEX IF NOT EXISTS idx_inv_docs_tenant ON invoice_documents(tenant_id);
+  `);
+  try { openDb().exec(`ALTER TABLE invoices ADD COLUMN ocr_last_at TEXT`); } catch { /* exists */ }
+  try { openDb().exec(`ALTER TABLE invoices ADD COLUMN document_count INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+
   seedMarketingDefaults(DEFAULT_TENANT_ID);
 }
 

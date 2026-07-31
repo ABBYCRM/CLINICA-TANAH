@@ -61,6 +61,9 @@ export function apiErrorKey(err: unknown): string {
   if (code === 'forbidden' || code === 'superadmin_required') return 'errors.forbidden';
   if (code === 'not_found') return 'errors.not_found';
   if (code === 'server_error') return 'errors.server_error';
+  if (code === 'nvidia_api_key_missing') return 'invoices.ocr_not_configured';
+  if (code === 'nvidia_ocr_failed' || code === 'nvidia_rate_limited' || code === 'ocr_unsupported_type') return 'invoices.ocr_failed';
+  if (code === 'file_too_large') return 'invoices.file_too_large';
   return 'errors.generic';
 }
 

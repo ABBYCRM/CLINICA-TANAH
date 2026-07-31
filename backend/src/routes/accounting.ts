@@ -1,8 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
+import fs from 'fs';
+import path from 'path';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
+import {
+  extractInvoiceFromImage,
+  invoiceUploadDir,
+  isOcrableMime,
+  mimeFromName,
+  nvidiaKeysConfigured,
+  uploadsRoot,
+} from '../services/nvidiaOcr';
 
 const router = Router();
 router.use(authenticate);
@@ -60,6 +70,8 @@ const invoiceSchema = z.object({
   })).min(1).optional(),
   status: z.enum(['draft','issued','paid','overdue','cancelled']).default('issued'),
   payment_method: z.string().optional().nullable(),
+  /** Optional number from OCR / NF — falls back to INV-{timestamp} */
+  invoice_number_override: z.string().min(1).max(80).optional(),
 });
 
 const journalEntrySchema = z.object({
@@ -219,11 +231,98 @@ router.get('/income-statement', (req: Request, res: Response) => {
 // INVOICES
 router.get('/invoices', (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
-  let sql = `SELECT i.*, p.full_name AS patient_name FROM invoices i LEFT JOIN patients p ON p.id = i.patient_id WHERE i.tenant_id = ?`;
+  const q = (req.query.q as string || '').trim();
+  let sql = `
+    SELECT i.*, p.full_name AS patient_name,
+           (SELECT COUNT(*) FROM invoice_documents d WHERE d.invoice_id = i.id) AS document_count
+    FROM invoices i
+    LEFT JOIN patients p ON p.id = i.patient_id
+    WHERE i.tenant_id = ?`;
   const args: any[] = [req.tenantId];
   if (status) { sql += ` AND i.status = ?`; args.push(status); }
-  sql += ` ORDER BY i.issue_date DESC LIMIT 200`;
-  res.json({ invoices: db.prepare(sql).all(...args) });
+  if (q) {
+    sql += ` AND (i.invoice_number LIKE ? OR p.full_name LIKE ? OR CAST(i.total AS TEXT) LIKE ?)`;
+    const like = `%${q}%`;
+    args.push(like, like, like);
+  }
+  sql += ` ORDER BY i.issue_date DESC, i.created_at DESC LIMIT 200`;
+  res.json({ invoices: db.prepare(sql).all(...args), ocr_ready: nvidiaKeysConfigured() });
+});
+
+router.get('/invoices/ocr/status', (_req: Request, res: Response) => {
+  res.json({
+    ready: nvidiaKeysConfigured(),
+    model: process.env.NVIDIA_OCR_MODEL || 'nvidia/nemotron-nano-12b-v2-vl',
+    accepts: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'],
+  });
+});
+
+const uploadSchema = z.object({
+  filename: z.string().min(1).max(260),
+  mime: z.string().min(3).max(120).optional(),
+  data_base64: z.string().min(32),
+  run_ocr: z.boolean().optional().default(true),
+});
+
+/** NVIDIA vision OCR — extract invoice fields from an uploaded image (does not persist). */
+router.post('/invoices/ocr', requireRole('admin', 'accountant', 'receptionist'), async (req: Request, res: Response) => {
+  const parsed = uploadSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+  if (!nvidiaKeysConfigured()) {
+    res.status(503).json({ error: 'nvidia_api_key_missing', message: 'Configure NVIDIA_API_KEYS for OCR.' });
+    return;
+  }
+  const mime = parsed.data.mime || mimeFromName(parsed.data.filename);
+  if (!isOcrableMime(mime)) {
+    res.status(400).json({
+      error: 'ocr_unsupported_type',
+      message: 'OCR supports JPEG/PNG/WebP/GIF. PDF can be attached after creating the invoice.',
+    });
+    return;
+  }
+  let buffer: Buffer;
+  try {
+    const raw = parsed.data.data_base64.replace(/^data:[^;]+;base64,/, '');
+    buffer = Buffer.from(raw, 'base64');
+  } catch {
+    res.status(400).json({ error: 'invalid_base64' });
+    return;
+  }
+  try {
+    const extraction = await extractInvoiceFromImage({
+      buffer, mime, filename: parsed.data.filename,
+    });
+    // Best-effort patient match for the UI
+    let matched_patient: any = null;
+    if (extraction.patient_name) {
+      matched_patient = db.prepare(`
+        SELECT id, full_name, phone, cpf FROM patients
+        WHERE tenant_id = ? AND full_name LIKE ?
+        ORDER BY full_name ASC LIMIT 1
+      `).get(req.tenantId, `%${extraction.patient_name.split(' ')[0]}%`);
+    }
+    res.json({ extraction, matched_patient, ocr_ready: true });
+  } catch (e: any) {
+    res.status(e.status && e.status < 500 ? e.status : 502).json({
+      error: e.code || 'nvidia_ocr_failed',
+      message: e.message,
+    });
+  }
+});
+
+router.get('/invoices/:id', (req: Request, res: Response) => {
+  const inv = db.prepare(`
+    SELECT i.*, p.full_name AS patient_name
+    FROM invoices i LEFT JOIN patients p ON p.id = i.patient_id
+    WHERE i.id = ? AND i.tenant_id = ?
+  `).get(req.params.id, req.tenantId) as any;
+  if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
+  const lines = db.prepare(`SELECT * FROM invoice_lines WHERE invoice_id = ?`).all(req.params.id);
+  const documents = db.prepare(`
+    SELECT id, original_name, mime_type, size_bytes, ocr_status, ocr_model, ocr_error, created_at
+    FROM invoice_documents WHERE invoice_id = ? AND tenant_id = ? ORDER BY created_at DESC
+  `).all(req.params.id, req.tenantId);
+  res.json({ invoice: inv, lines, documents, ocr_ready: nvidiaKeysConfigured() });
 });
 
 router.post('/invoices', requireRole('admin','accountant','receptionist'), (req: Request, res: Response) => {
@@ -231,7 +330,7 @@ router.post('/invoices', requireRole('admin','accountant','receptionist'), (req:
   if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
   const id = uuid();
-  const invoiceNumber = `INV-${Date.now()}`;
+  const invoiceNumber = d.invoice_number_override || `INV-${Date.now()}`;
   const tx = db.transaction(() => {
     db.prepare(`
       INSERT INTO invoices (id, tenant_id, invoice_number, patient_id, vendor_id, encounter_id, issue_date, due_date, total, status, payment_method)
@@ -247,8 +346,155 @@ router.post('/invoices', requireRole('admin','accountant','receptionist'), (req:
       }
     }
   });
-  tx();
+  try { tx(); } catch (e: any) {
+    res.status(409).json({ error: 'duplicate_invoice', message: e.message });
+    return;
+  }
   res.status(201).json({ id, invoice_number: invoiceNumber });
+});
+
+/** Attach a document to an invoice; optionally run NVIDIA OCR and merge fields. */
+router.post('/invoices/:id/documents', requireRole('admin', 'accountant', 'receptionist'), async (req: Request, res: Response) => {
+  const inv = db.prepare(`SELECT * FROM invoices WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
+  const parsed = uploadSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+
+  const mime = parsed.data.mime || mimeFromName(parsed.data.filename);
+  let buffer: Buffer;
+  try {
+    const raw = parsed.data.data_base64.replace(/^data:[^;]+;base64,/, '');
+    buffer = Buffer.from(raw, 'base64');
+  } catch {
+    res.status(400).json({ error: 'invalid_base64' });
+    return;
+  }
+  if (buffer.length > 8 * 1024 * 1024) {
+    res.status(400).json({ error: 'file_too_large', message: 'Max 8MB' });
+    return;
+  }
+
+  const docId = uuid();
+  const safeName = parsed.data.filename.replace(/[^\w.\-()\sÀ-ÿ]+/g, '_').slice(0, 180);
+  const dir = invoiceUploadDir(req.tenantId!, inv.id);
+  const storageName = `${docId}_${safeName}`;
+  const storagePath = path.join(dir, storageName);
+  fs.writeFileSync(storagePath, buffer);
+
+  let ocrStatus: string = parsed.data.run_ocr && isOcrableMime(mime) ? 'processing' : 'skipped';
+  let ocrModel: string | null = null;
+  let ocrRaw: string | null = null;
+  let ocrJson: string | null = null;
+  let ocrError: string | null = null;
+  let extraction: any = null;
+
+  if (parsed.data.run_ocr && isOcrableMime(mime)) {
+    if (!nvidiaKeysConfigured()) {
+      ocrStatus = 'failed';
+      ocrError = 'nvidia_api_key_missing';
+    } else {
+      try {
+        extraction = await extractInvoiceFromImage({ buffer, mime, filename: safeName });
+        ocrStatus = 'done';
+        ocrModel = extraction.model;
+        ocrRaw = extraction.raw_text;
+        ocrJson = JSON.stringify(extraction);
+      } catch (e: any) {
+        ocrStatus = 'failed';
+        ocrError = e.message || 'nvidia_ocr_failed';
+      }
+    }
+  } else if (mime === 'application/pdf') {
+    ocrStatus = 'skipped';
+    ocrError = 'pdf_ocr_convert_to_image';
+  }
+
+  db.prepare(`
+    INSERT INTO invoice_documents
+      (id, tenant_id, invoice_id, original_name, mime_type, size_bytes, storage_path,
+       ocr_status, ocr_model, ocr_raw_text, ocr_json, ocr_error, uploaded_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    docId, req.tenantId, inv.id, safeName, mime, buffer.length, storagePath,
+    ocrStatus, ocrModel, ocrRaw, ocrJson, ocrError, req.user!.id,
+  );
+
+  const applyOcr = req.body?.apply_ocr_fields === true && extraction && inv.status !== 'paid';
+  if (applyOcr) {
+    const sets: string[] = [];
+    const args: any[] = [];
+    if (extraction.issue_date) { sets.push('issue_date = ?'); args.push(extraction.issue_date); }
+    if (extraction.due_date) { sets.push('due_date = ?'); args.push(extraction.due_date); }
+    if (extraction.total != null) { sets.push('total = ?'); args.push(extraction.total); }
+    if (extraction.payment_method) { sets.push('payment_method = ?'); args.push(extraction.payment_method); }
+    sets.push(`ocr_last_at = datetime('now')`);
+    sets.push(`document_count = (SELECT COUNT(*) FROM invoice_documents WHERE invoice_id = ?)`);
+    args.push(inv.id);
+    args.push(inv.id, req.tenantId);
+    db.prepare(`UPDATE invoices SET ${sets.join(', ')} WHERE id = ? AND tenant_id = ?`).run(...args);
+    if (Array.isArray(extraction.lines) && extraction.lines.length) {
+      db.prepare(`DELETE FROM invoice_lines WHERE invoice_id = ?`).run(inv.id);
+      for (const ln of extraction.lines) {
+        db.prepare(`
+          INSERT INTO invoice_lines (id, invoice_id, description, quantity, unit_price, tax_rate)
+          VALUES (?,?,?,?,?,?)
+        `).run(uuid(), inv.id, ln.description, ln.quantity, ln.unit_price, ln.tax_rate || 0);
+      }
+    }
+  } else {
+    db.prepare(`
+      UPDATE invoices SET document_count = (SELECT COUNT(*) FROM invoice_documents WHERE invoice_id = ?),
+        ocr_last_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE ocr_last_at END
+      WHERE id = ? AND tenant_id = ?
+    `).run(inv.id, ocrStatus, inv.id, req.tenantId);
+  }
+
+  res.status(201).json({
+    id: docId,
+    original_name: safeName,
+    mime_type: mime,
+    size_bytes: buffer.length,
+    ocr_status: ocrStatus,
+    ocr_error: ocrError,
+    extraction,
+  });
+});
+
+router.get('/invoices/documents/:docId/file', (req: Request, res: Response) => {
+  const doc = db.prepare(`
+    SELECT * FROM invoice_documents WHERE id = ? AND tenant_id = ?
+  `).get(req.params.docId, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  if (!fs.existsSync(doc.storage_path)) { res.status(404).json({ error: 'file_missing' }); return; }
+  res.setHeader('Content-Type', doc.mime_type);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.original_name)}"`);
+  fs.createReadStream(doc.storage_path).pipe(res);
+});
+
+router.get('/invoices/documents/:docId', (req: Request, res: Response) => {
+  const doc = db.prepare(`
+    SELECT id, invoice_id, original_name, mime_type, size_bytes, ocr_status, ocr_model,
+           ocr_raw_text, ocr_json, ocr_error, created_at
+    FROM invoice_documents WHERE id = ? AND tenant_id = ?
+  `).get(req.params.docId, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  let extraction = null;
+  try { extraction = doc.ocr_json ? JSON.parse(doc.ocr_json) : null; } catch { /* ignore */ }
+  res.json({ document: { ...doc, ocr_json: undefined }, extraction });
+});
+
+router.delete('/invoices/documents/:docId', requireRole('admin', 'accountant'), (req: Request, res: Response) => {
+  const doc = db.prepare(`SELECT * FROM invoice_documents WHERE id = ? AND tenant_id = ?`).get(req.params.docId, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  try { if (doc.storage_path && fs.existsSync(doc.storage_path)) fs.unlinkSync(doc.storage_path); } catch { /* ignore */ }
+  db.prepare(`DELETE FROM invoice_documents WHERE id = ?`).run(doc.id);
+  if (doc.invoice_id) {
+    db.prepare(`
+      UPDATE invoices SET document_count = (SELECT COUNT(*) FROM invoice_documents WHERE invoice_id = ?)
+      WHERE id = ? AND tenant_id = ?
+    `).run(doc.invoice_id, doc.invoice_id, req.tenantId);
+  }
+  res.json({ ok: true });
 });
 
 router.put('/invoices/:id/mark-paid', requireRole('admin','accountant'), (req: Request, res: Response) => {
@@ -295,6 +541,11 @@ router.delete('/invoices/:id', requireRole('admin','accountant'), (req: Request,
   const inv = db.prepare(`SELECT id, invoice_number, status FROM invoices WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
   if (inv.status === 'paid') { res.status(409).json({ error: 'already_paid', message: 'Paid invoices are fiscal records and cannot be deleted.' }); return; }
+  const docs = db.prepare(`SELECT storage_path FROM invoice_documents WHERE invoice_id = ?`).all(req.params.id) as any[];
+  for (const d of docs) {
+    try { if (d.storage_path && fs.existsSync(d.storage_path)) fs.unlinkSync(d.storage_path); } catch { /* ignore */ }
+  }
+  db.prepare(`DELETE FROM invoice_documents WHERE invoice_id = ?`).run(req.params.id);
   db.prepare(`DELETE FROM invoices WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId); // lines cascade
   res.json({ ok: true, deleted_id: req.params.id });
 });
@@ -306,5 +557,8 @@ function ensureChart(tenantId: string): void {
     for (const a of chartOfAccounts) insert.run(uuid(), tenantId, a.code, a.name, a.type);
   }
 }
+
+// silence unused until we expose upload roots in admin
+void uploadsRoot;
 
 export default router;
