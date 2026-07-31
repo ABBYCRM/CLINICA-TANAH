@@ -208,7 +208,7 @@ export default function Layout() {
             data-testid="mobile-menu-button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
-            className="lg:hidden rounded-xl p-2 text-[#3f5c42] transition-all hover:brightness-105"
+            className="lg:hidden inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2.5 text-[#3f5c42] transition-all hover:brightness-105"
             style={{ background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(40,55,35,0.12)', border: '1px solid rgba(63,92,66,0.22)' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">

@@ -234,7 +234,47 @@ export default function Payroll() {
 
       <div className="card">
         <div className="px-5 py-3 border-b border-slate-200 font-semibold">{t('payroll.employees')} ({employees.length})</div>
-        <div className="overflow-x-auto">
+        {/* Mobile cards */}
+        <div className="md:hidden divide-y divide-[rgba(63,92,66,0.1)]" data-testid="payroll-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && employees.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {employees.map((e) => (
+            <div key={e.id} className="p-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[#243328] break-words">{e.full_name}</div>
+                  <div className="text-xs font-mono text-[#5c6558]">{e.cpf}</div>
+                </div>
+                <span className="badge-blue shrink-0">{e.role}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.base_salary')}</div>
+                  <div className="font-mono font-semibold text-[#243328]">{money(e.base_salary, locale)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.admission_date')}</div>
+                  <div>{e.admission_date}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.dependents')}</div>
+                  <div>{e.dependents}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.vt')}</div>
+                  <div>{e.vale_transporte ? t('common.yes') : t('common.no')}</div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <RowActions
+                  onEdit={() => { setEditing(e); setShowForm(true); }}
+                  onDelete={() => setDeleting({ kind: 'employee', row: e })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

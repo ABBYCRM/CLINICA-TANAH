@@ -108,7 +108,43 @@ export default function Team() {
       {error && <FormError message={error} />}
 
       <div className="card">
-        <div className="overflow-x-auto">
+        {/* Mobile card list */}
+        <div className="md:hidden divide-y divide-[rgba(63,92,66,0.1)]" data-testid="team-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && users.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {users.map((u) => (
+            <div key={u.id} className={`p-4 space-y-2 ${u.active ? '' : 'opacity-60'}`} data-testid={`user-card-${u.id}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold text-[#243328] break-words">
+                    {u.full_name}
+                    {!u.active && <span className="ml-2 badge-slate">{t('team.inactive')}</span>}
+                  </div>
+                  <div className="text-sm text-[#5c6558] break-all">{u.email}</div>
+                </div>
+                <span className={roleBadge(u.role)}>{roleLabel(u.role)}</span>
+              </div>
+              <div className="text-xs text-[#7a8476] space-y-0.5">
+                <div>CPF <span className="font-mono text-[#334a36]">{u.cpf || '—'}</span></div>
+                <div>{u.council_number ? `${u.council_number}${u.council_state ? `/${u.council_state}` : ''}` : '—'}</div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                {!u.active && (
+                  <button type="button" className="btn-secondary text-xs" onClick={() => reactivate(u)} data-testid={`reactivate-${u.id}`}>
+                    {t('team.reactivate')}
+                  </button>
+                )}
+                <RowActions
+                  onEdit={() => { setEditing(u); setShowForm(true); }}
+                  onDelete={() => setDeleting(u)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
@@ -142,7 +178,6 @@ export default function Team() {
                           type="button"
                           className="text-xs font-medium text-[#3f5c42] hover:underline px-1.5"
                           onClick={() => reactivate(u)}
-                          data-testid={`reactivate-${u.id}`}
                         >
                           {t('team.reactivate')}
                         </button>

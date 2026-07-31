@@ -239,7 +239,7 @@ export default function Login() {
                     data-testid="toggle-password"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-[#7a8476] transition-colors hover:bg-[#e2ebe0] hover:text-[#3f5c42]"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2 text-[#7a8476] transition-colors hover:bg-[#e2ebe0] hover:text-[#3f5c42]"
                   >
                     {showPassword ? (
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">

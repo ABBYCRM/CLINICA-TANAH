@@ -106,6 +106,7 @@ test.describe('Mobile visual — updated surfaces', () => {
     await expect(page.getByTestId('team-page')).toBeVisible();
     await expect(page.getByTestId('new-user')).toBeVisible();
     await expect(page.getByTestId('show-inactive')).toBeVisible();
+    await expect(page.getByTestId('team-mobile-list')).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectButtonsNotSquished(page);
     await shot(page, '03-team');
@@ -127,6 +128,7 @@ test.describe('Mobile visual — updated surfaces', () => {
     await expect(page.getByTestId('new-employee')).toBeVisible();
     await expect(page.getByTestId('run-payroll')).toBeVisible();
     await expect(page.getByTestId('run-type')).toBeVisible();
+    await expect(page.getByTestId('payroll-mobile-list')).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectButtonsNotSquished(page);
     const runBox = await page.getByTestId('run-payroll').boundingBox();
