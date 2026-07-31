@@ -353,12 +353,12 @@ export default function PatientRecord() {
       {error && <FormError message={error} />}
 
       {/* Sticky patient header */}
-      <header className="aluminum-header rounded-panel px-4 py-3 sm:px-5 space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <Link to="/patients" className="text-sm text-[#4a453c] hover:underline shrink-0 mt-1">← {t('patients.back_to_list')}</Link>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <header className="aluminum-header rounded-panel px-4 py-4 sm:px-5 space-y-4">
+        <div className="crm-record-toolbar">
+          <Link to="/patients" className="text-sm font-medium text-[#4a453c] hover:underline shrink-0 leading-none">
+            ← {t('patients.back_to_list')}
+          </Link>
+          <div className="crm-record-actions">
             <Link to="/appointments" className="btn-secondary text-xs">{t('patients.workspace.action_schedule')}</Link>
             <Link to="/whatsapp" className="btn-secondary text-xs">{t('patients.workspace.action_whatsapp')}</Link>
             <button type="button" className="btn-secondary text-xs" onClick={() => setShowForm(true)}>{t('common.edit')}</button>
@@ -370,9 +370,9 @@ export default function PatientRecord() {
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="crm-avatar-lg shrink-0">{initials(displayName)}</div>
-          <div className="min-w-0 flex-1 space-y-1">
+          <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-2xl font-semibold text-[#3a342c] truncate">{displayName}</h1>
+              <h1 className="font-display text-2xl font-semibold text-[#3a342c] truncate leading-tight">{displayName}</h1>
               {patient.social_name && (
                 <span className="text-sm text-[#6b645a]">({patient.full_name})</span>
               )}
@@ -385,7 +385,7 @@ export default function PatientRecord() {
               <span>WhatsApp: <a className="font-mono hover:underline" href={`https://wa.me/${String(patient.phone || '').replace(/\D/g, '')}`}>{patient.phone || '—'}</a></span>
               <span>{t('patients.col_owner')}: {workspace.assigned_professional?.full_name || data.owner_name || t('patients.unassigned')}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
               <label className="text-xs font-semibold uppercase tracking-wide text-[#6b645a]">{t('patients.workspace.lifecycle')}</label>
               <select
                 className="crm-filter"
@@ -415,7 +415,7 @@ export default function PatientRecord() {
           </div>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto border-t border-[#9CA3AF]/50 pt-2" data-testid="workspace-tabs">
+        <div className="flex gap-1 overflow-x-auto border-t border-[#9CA3AF]/50 pt-3 -mb-px" data-testid="workspace-tabs">
           {tabs.filter((x) => !x.hide).map((x) => (
             <button
               key={x.id}
@@ -432,9 +432,9 @@ export default function PatientRecord() {
 
       <div className="crm-record-grid">
         {/* LEFT — summary */}
-        <aside className="space-y-3">
-          <div className="card p-4 space-y-3">
-            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.summary')}</h2>
+        <aside className="crm-record-col">
+          <div className="crm-record-panel space-y-3">
+            <h2 className="crm-record-panel-title">{t('patients.workspace.summary')}</h2>
             <dl className="space-y-3">
               {prop(t('patients.email'), patient.email)}
               {prop(t('patients.phone'), patient.phone)}
@@ -457,8 +457,8 @@ export default function PatientRecord() {
           </div>
 
           {(tab === 'overview' || tab === 'privacy') && (
-            <div className="card p-4 space-y-3" data-testid="consent-ledger">
-              <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.consents')}</h2>
+            <div className="crm-record-panel space-y-3" data-testid="consent-ledger">
+              <h2 className="crm-record-panel-title">{t('patients.workspace.consents')}</h2>
               <p className="text-xs text-[#6b645a]">{t('patients.workspace.consents_hint')}</p>
               <ul className="space-y-2">
                 {CONSENT_PURPOSES.map((purpose) => {
@@ -490,7 +490,13 @@ export default function PatientRecord() {
         </aside>
 
         {/* CENTER — timeline / tab bodies */}
-        <section className="card overflow-hidden min-w-0">
+        <section className="crm-record-col min-w-0">
+          <div className="card overflow-hidden min-w-0 flex flex-col">
+            <div className="px-4 pt-4 pb-3 border-b border-[rgba(176,183,192,0.45)]">
+              <h2 className="crm-record-panel-title !mb-0">
+                {tabs.find((x) => x.id === tab)?.label || t('patients.workspace.tab_overview')}
+              </h2>
+            </div>
           {tab === 'overview' && upcoming.length > 0 && (
             <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)]" style={{ background: 'linear-gradient(180deg,#E5E7EB,#D1D5DB)' }}>
               <div className="text-xs font-semibold uppercase tracking-wide text-[#4a453c] mb-2">{t('patients.workspace.upcoming')}</div>
@@ -507,7 +513,7 @@ export default function PatientRecord() {
           )}
 
           {tab === 'clinical' && !clinicalOk && (
-            <div className="p-6 text-sm text-[#6b645a]">{t('patients.workspace.clinical_restricted')}</div>
+            <div className="p-4 text-sm text-[#6b645a]">{t('patients.workspace.clinical_restricted')}</div>
           )}
 
           {tab === 'surveys' && (
@@ -632,12 +638,13 @@ export default function PatientRecord() {
             ))}
           </div>
           )}
+          </div>
         </section>
 
         {/* RIGHT — quick actions */}
-        <aside className="space-y-3">
-          <div className="card p-4 space-y-2">
-            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.quick_actions')}</h2>
+        <aside className="crm-record-col">
+          <div className="crm-record-panel space-y-2">
+            <h2 className="crm-record-panel-title">{t('patients.workspace.quick_actions')}</h2>
             <Link to="/whatsapp" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_whatsapp')}</Link>
             <Link to="/appointments" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_schedule')}</Link>
             <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('tasks')}>
@@ -657,16 +664,16 @@ export default function PatientRecord() {
             <Link to="/invoices" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_billing')}</Link>
           </div>
 
-          <div className="card p-4 space-y-2">
-            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.create_task')}</h2>
+          <div className="crm-record-panel space-y-2">
+            <h2 className="crm-record-panel-title">{t('patients.workspace.create_task')}</h2>
             <input className="input" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder={t('patients.workspace.task_placeholder')} />
             <button type="button" className="btn-primary w-full text-sm" disabled={taskBusy || !taskTitle.trim()} onClick={createTask}>
               {taskBusy ? '…' : t('patients.workspace.action_task')}
             </button>
           </div>
 
-          <div className="card p-4 space-y-2">
-            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.create_document')}</h2>
+          <div className="crm-record-panel space-y-2">
+            <h2 className="crm-record-panel-title">{t('patients.workspace.create_document')}</h2>
             <input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder={t('patients.workspace.document_placeholder')} />
             <button type="button" className="btn-secondary w-full text-sm" disabled={docBusy || !docTitle.trim()} onClick={createDocument}>
               {docBusy ? '…' : t('patients.workspace.action_document')}
@@ -674,8 +681,8 @@ export default function PatientRecord() {
           </div>
 
           {clinicalOk && (
-            <div className="card p-4 space-y-2">
-              <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.set_recall')}</h2>
+            <div className="crm-record-panel space-y-2">
+              <h2 className="crm-record-panel-title">{t('patients.workspace.set_recall')}</h2>
               <div className="flex gap-2">
                 <input className="input" type="number" min={1} max={3650} value={recallDays} onChange={(e) => setRecallDays(e.target.value)} />
                 <button type="button" className="btn-secondary text-sm shrink-0" disabled={recallBusy} onClick={setRecall}>
@@ -686,15 +693,15 @@ export default function PatientRecord() {
             </div>
           )}
 
-          <div className="card p-4 space-y-2">
-            <h2 className="font-display text-base font-semibold text-[#3a342c]">{t('patients.workspace.internal_note')}</h2>
+          <div className="crm-record-panel space-y-2">
+            <h2 className="crm-record-panel-title">{t('patients.workspace.internal_note')}</h2>
             <textarea className="input" rows={4} value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} />
             <button type="button" className="btn-primary w-full text-sm" disabled={noteBusy} onClick={saveNote}>
               {noteBusy ? '…' : t('common.save')}
             </button>
           </div>
 
-          <div className="card p-3 space-y-1">
+          <div className="crm-record-panel !py-3 space-y-1">
             {[
               ['appointments', t('patients.assoc.appointments'), associations.appointments],
               ['whatsapp', t('patients.assoc.whatsapp'), associations.whatsapp],
@@ -705,7 +712,7 @@ export default function PatientRecord() {
               ['invoices', t('patients.assoc.invoices'), associations.invoices],
               ['consents', t('patients.assoc.consents'), associations.consents],
             ].map(([key, label, assoc]: any) => (
-              <div key={key} className="flex items-center justify-between text-sm px-2 py-1.5 rounded-lg hover:bg-[#efe6d8]">
+              <div key={key} className="flex items-center justify-between text-sm px-1 py-1.5 rounded-lg hover:bg-[#efe6d8]">
                 <span className="flex items-center gap-2">
                   <span className="w-1 h-4 rounded-full bg-[#9CA3AF]" />
                   {label}

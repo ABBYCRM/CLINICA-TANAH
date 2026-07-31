@@ -79,23 +79,23 @@ export default function Layout() {
   ];
 
   const brand = (compact: boolean) => (
-    <div className="aluminum-header p-4 flex items-center gap-3">
-      <div className="brand-medallion w-10 h-10 shrink-0">
-        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true">
+    <div className="aluminum-header shell-brand flex items-center gap-3 px-4">
+      <div className="brand-medallion w-9 h-9 shrink-0">
+        <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </div>
       {!compact && (
         <div className="overflow-hidden min-w-0">
-          <div className="font-display font-semibold text-[#2a1f16] truncate tracking-tight text-[15px]">{tenantLabel}</div>
-          <div className="text-[11px] text-[#5c6570] truncate">{t('app.tagline')}</div>
+          <div className="font-display font-semibold text-[#2a1f16] truncate tracking-tight text-[15px] leading-tight">{tenantLabel}</div>
+          <div className="text-[11px] text-[#5c6570] truncate leading-tight mt-0.5">{t('app.tagline')}</div>
         </div>
       )}
     </div>
   );
 
   const navList = (onNavigate?: () => void, compact = false) => (
-    <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+    <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${compact ? 'px-2' : 'px-3'}`}>
       {navItems.map(({ to, label, Icon }) => (
         <NavLink
           key={to}
@@ -104,7 +104,7 @@ export default function Layout() {
           onClick={onNavigate}
           title={compact ? label : undefined}
           className={({ isActive }) =>
-            `group nav-chip ${isActive ? 'menu-item-active nav-chip-active font-semibold' : 'nav-chip-idle'}`
+            `group nav-chip ${compact ? 'justify-center px-0' : ''} ${isActive ? 'menu-item-active nav-chip-active font-semibold' : 'nav-chip-idle'}`
           }
         >
           <Icon className="w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-105" />
@@ -221,7 +221,7 @@ export default function Layout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-30 aluminum-header px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <header className="sticky top-0 z-30 aluminum-header shell-topbar px-4 sm:px-5 flex items-center gap-3">
           <button
             data-testid="mobile-menu-button"
             onClick={() => setMobileOpen(true)}
@@ -236,7 +236,7 @@ export default function Layout() {
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Toggle sidebar"
-            className={`hidden lg:block ${chromeBtn}`}
+            className={`hidden lg:inline-flex ${chromeBtn}`}
             style={chromeBtnStyle}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
@@ -244,11 +244,11 @@ export default function Layout() {
             </svg>
           </button>
           <div className="min-w-0 flex-1">
-            <div className="font-display text-[15px] font-semibold text-[#3a342c] truncate" data-testid="active-clinic">{tenantLabel}</div>
-            <div className="text-xs text-[#4a453c]/90 truncate hidden sm:block">{t('app.address')}</div>
+            <div className="font-display text-[15px] font-semibold text-[#3a342c] truncate leading-tight" data-testid="active-clinic">{tenantLabel}</div>
+            <div className="text-xs text-[#4a453c]/90 truncate hidden sm:block leading-tight mt-0.5">{t('app.address')}</div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-fade-in">
+        <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5 animate-fade-in">
           <Outlet />
         </main>
       </div>

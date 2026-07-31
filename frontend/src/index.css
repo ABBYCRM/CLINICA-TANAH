@@ -285,6 +285,14 @@ h1, h2, .font-display {
     color: var(--ink);
   }
 
+  /* Keep sidebar brand and main topbar on one shared aluminum baseline */
+  .shell-brand,
+  .shell-topbar {
+    height: 3.75rem;
+    min-height: 3.75rem;
+    box-sizing: border-box;
+  }
+
   .menu-item-active,
   .nav-chip-active {
     background: linear-gradient(180deg, #1e140e 0%, #322218 50%, #241810 100%);
@@ -392,8 +400,38 @@ h1, h2, .font-display {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 1px 2px var(--shade);
   }
   .crm-record-grid {
-    @apply grid gap-4;
+    display: grid;
+    gap: 1rem;
+    align-items: start;
     grid-template-columns: 1fr;
+  }
+  .crm-record-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .crm-record-panel {
+    @apply card;
+    padding: 1rem;
+  }
+  .crm-record-panel-title {
+    @apply font-display text-base font-semibold text-[#3a342c] leading-tight;
+    margin: 0 0 0.75rem;
+  }
+  .crm-record-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .crm-record-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
   }
 
   .stat-tile {
@@ -517,7 +555,9 @@ h1, h2, .font-display {
 
 @media (min-width: 1024px) {
   .crm-record-grid {
-    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(220px, 260px);
+    /* Equal side rails + even gutters so the three columns share one baseline */
+    grid-template-columns: 17rem minmax(0, 1fr) 17rem;
+    gap: 1rem;
     align-items: start;
   }
 }
