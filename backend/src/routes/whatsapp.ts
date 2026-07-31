@@ -12,6 +12,7 @@ import {
   sendTextMessage, persistIncoming, getOrCreateConversation, updateConversation,
   verifyWebhookSignature, markAsRead, applyStatusUpdate, pingMeta, isLive,
 } from '../services/whatsapp';
+import { getAvailableSlots, getPractitionerLoads } from '../services/availability';
 
 const router = Router();
 
@@ -183,25 +184,15 @@ async function handleMessage(phone: string, body: string, locale: Locale): Promi
         }
       }
       if (!date) { await reply(phone, locale, 'ask_date'); return; }
-      // Find a practitioner matching the specialty (use first available doctor)
-      const practitioner = db.prepare(`
-        SELECT id, full_name FROM users WHERE role = 'doctor' AND active = 1 LIMIT 1
-      `).get() as any;
+      // Pick the doctor with the most room that day — same availability
+      // service the calendar/scheduler uses, so channels never conflict.
+      const loads = getPractitionerLoads(date);
+      const practitioner = loads.find((l) => l.free > 0);
       if (!practitioner) {
-        await reply(phone, locale, 'not_found');
+        await reply(phone, locale, 'no_slots');
         return;
       }
-      // Check available slots
-      const slots = db.prepare(`
-        SELECT scheduled_at FROM appointments
-        WHERE practitioner_id = ? AND date(scheduled_at) = ? AND status NOT IN ('cancelled','no_show')
-      `).all(practitioner.id, date) as any[];
-      const taken = new Set(slots.map(s => s.scheduled_at));
-      const candidates: string[] = [];
-      for (let h = 8; h < 18; h++) for (const m of [0, 30]) {
-        const s = `${date} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
-        if (!taken.has(s)) candidates.push(s);
-      }
+      const candidates = getAvailableSlots(practitioner.id, date);
       if (!candidates.length) { await reply(phone, locale, 'no_slots'); return; }
       const slot = candidates[0];
       // Create appointment

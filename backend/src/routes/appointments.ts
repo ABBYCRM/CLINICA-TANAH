@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
+import { getDaySlots, getAvailableSlots, getPractitionerLoads } from '../services/availability';
 
 const router = Router();
 router.use(authenticate);
@@ -40,6 +41,9 @@ router.get('/', (req: Request, res: Response) => {
   res.json({ appointments: rows });
 });
 
+// Availability for the scheduler UI and any API consumer.
+// Every slot comes flagged available/taken, plus the day's load per doctor
+// (same service the WhatsApp bot books from — no double-booking possible).
 router.get('/availability', (req: Request, res: Response) => {
   const practitionerId = req.query.practitioner_id as string;
   const date = req.query.date as string; // YYYY-MM-DD
@@ -47,26 +51,32 @@ router.get('/availability', (req: Request, res: Response) => {
     res.status(400).json({ error: 'practitioner_id and date required' });
     return;
   }
-  // Work hours 08:00-18:00, 30-min slots
-  const slots: string[] = [];
-  for (let h = 8; h < 18; h++) {
-    for (const m of [0, 30]) {
-      slots.push(`${date} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
-    }
-  }
-  const taken = db.prepare(`
-    SELECT scheduled_at FROM appointments
-    WHERE practitioner_id = ? AND date(scheduled_at) = ? AND status NOT IN ('cancelled','no_show')
-  `).all(practitionerId, date) as any[];
-  const takenSet = new Set(taken.map(t => t.scheduled_at));
-  const available = slots.filter(s => !takenSet.has(s));
-  res.json({ date, practitioner_id: practitionerId, available_slots: available });
+  res.json({
+    date,
+    practitioner_id: practitionerId,
+    available_slots: getAvailableSlots(practitionerId, date),
+    slots: getDaySlots(practitionerId, date),
+    practitioner_loads: getPractitionerLoads(date),
+  });
 });
+
+function slotTaken(practitionerId: string, scheduledAt: string, excludeId?: string): boolean {
+  const row = db.prepare(`
+    SELECT id FROM appointments
+    WHERE practitioner_id = ? AND scheduled_at = ?
+      AND status NOT IN ('cancelled','no_show') ${excludeId ? 'AND id != ?' : ''}
+  `).get(...([practitionerId, scheduledAt, ...(excludeId ? [excludeId] : [])] as any[]));
+  return !!row;
+}
 
 router.post('/', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req: Request, res: Response) => {
   const parsed = apptSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
+  if (slotTaken(d.practitioner_id, d.scheduled_at)) {
+    res.status(409).json({ error: 'slot_taken', message: 'This practitioner already has an appointment at that time.' });
+    return;
+  }
   const id = uuid();
   const now = new Date().toISOString();
   db.prepare(`
@@ -87,6 +97,12 @@ router.put('/:id', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req
   const parsed = apptSchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   const d = parsed.data;
+  const newPractitioner = d.practitioner_id ?? before.practitioner_id;
+  const newSlot = d.scheduled_at ?? before.scheduled_at;
+  if (slotTaken(newPractitioner, newSlot, req.params.id)) {
+    res.status(409).json({ error: 'slot_taken', message: 'This practitioner already has an appointment at that time.' });
+    return;
+  }
   const allowed = ['patient_id','practitioner_id','scheduled_at','duration_minutes','type','status','notes','source','reminder_24h_sent_at','reminder_2h_sent_at'];
   const sets: string[] = [];
   const args: any[] = [];

@@ -160,7 +160,12 @@
     "section_health": "Saúde e convênio",
     "emergency_contact": "Contato de emergência",
     "emergency_name": "Nome do contato",
-    "emergency_phone": "Telefone do contato"
+    "emergency_phone": "Telefone do contato",
+    "medications_in_use": "Medicamentos em uso",
+    "address_complement": "Complemento",
+    "health_insurance_number": "Nº da carteirinha",
+    "emergency_contact_name": "Contato de emergência",
+    "emergency_contact_phone": "Telefone de emergência"
   },
   "appointments": {
     "title": "Consultas",
@@ -184,7 +189,21 @@
       "exam": "Exame",
       "procedure": "Procedimento",
       "teleconsultation": "Teleconsulta"
-    }
+    },
+    "calendar": "Calendário",
+    "list_view": "Lista",
+    "today": "Hoje",
+    "slots_available": "horários livres",
+    "no_slots_that_day": "Sem horários livres neste dia",
+    "pick_slot": "Escolha um horário",
+    "patient_summary": "Resumo clínico do paciente",
+    "recent_encounters": "Últimos atendimentos",
+    "upcoming": "Próximas consultas",
+    "prescriptions_count": "Receitas emitidas",
+    "mark_arrived": "Chegou",
+    "mark_completed": "Concluir",
+    "mark_cancelled": "Cancelar",
+    "load_free": "{{free}} livres / {{booked}} ocupados"
   },
   "encounters": {
     "title": "Atendimentos",

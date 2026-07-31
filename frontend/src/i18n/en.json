@@ -160,7 +160,12 @@
     "section_health": "Health & insurance",
     "emergency_contact": "Emergency contact",
     "emergency_name": "Contact name",
-    "emergency_phone": "Contact phone"
+    "emergency_phone": "Contact phone",
+    "medications_in_use": "Medications in use",
+    "address_complement": "Complement",
+    "health_insurance_number": "Insurance card no.",
+    "emergency_contact_name": "Emergency contact",
+    "emergency_contact_phone": "Emergency phone"
   },
   "appointments": {
     "title": "Appointments",
@@ -184,7 +189,21 @@
       "exam": "Exam",
       "procedure": "Procedure",
       "teleconsultation": "Teleconsultation"
-    }
+    },
+    "calendar": "Calendar",
+    "list_view": "List",
+    "today": "Today",
+    "slots_available": "free slots",
+    "no_slots_that_day": "No free slots that day",
+    "pick_slot": "Pick a time",
+    "patient_summary": "Patient clinical summary",
+    "recent_encounters": "Recent encounters",
+    "upcoming": "Upcoming appointments",
+    "prescriptions_count": "Prescriptions issued",
+    "mark_arrived": "Arrived",
+    "mark_completed": "Complete",
+    "mark_cancelled": "Cancel",
+    "load_free": "{{free}} free / {{booked}} booked"
   },
   "encounters": {
     "title": "Encounters",

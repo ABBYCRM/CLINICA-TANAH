@@ -100,13 +100,17 @@ test('NPS survey: dispatch → patient answers → KPI updates', async ({ page, 
   const seeded = (await patients.json()).patients[0];
   expect(seeded).toBeTruthy();
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const doctor = (await (await request.get(`${baseURL}/api/users/directory`, { headers })).json()).users
+    .find((u: any) => u.role === 'doctor');
+  // a genuinely free slot — the sister project already booked 10:00
+  const avail = await request.get(`${baseURL}/api/appointments/availability?practitioner_id=${doctor.id}&date=${yesterday}`, { headers });
+  const freeSlot = (await avail.json()).available_slots[0];
   const appt = await request.post(`${baseURL}/api/appointments`, {
     headers,
     data: {
       patient_id: seeded.id,
-      practitioner_id: (await (await request.get(`${baseURL}/api/users/directory`, { headers })).json()).users
-        .find((u: any) => u.role === 'doctor').id,
-      scheduled_at: `${yesterday} 10:00:00`,
+      practitioner_id: doctor.id,
+      scheduled_at: freeSlot,
       type: 'consultation',
       status: 'completed',
     },

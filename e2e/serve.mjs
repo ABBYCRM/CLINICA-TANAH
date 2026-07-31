@@ -38,16 +38,20 @@ rmSync(dataDir, { recursive: true, force: true });
 run('npx', ['tsx', 'src/db/seed.ts'], { cwd: backendDir });
 
 console.log(`▸ Starting Clínica Tanah on http://127.0.0.1:${port} …`);
-const server = spawn('npx', ['tsx', 'src/server.ts'], { cwd: backendDir, env, stdio: 'inherit' });
+// detached: own process group so we can kill npx → tsx → node ALL of it;
+// otherwise the real server (a grandchild) survives and holds the port
+// with stale code + stale DB while Playwright happily reuses it.
+const server = spawn('npx', ['tsx', 'src/server.ts'], { cwd: backendDir, env, stdio: 'inherit', detached: true });
 
-// Playwright terminates THIS process — make sure the tsx child dies with us,
-// otherwise a stale server (old code, old DB) keeps holding the port.
+function killTree(sig = 'SIGTERM') {
+  try { process.kill(-server.pid!, sig); } catch { /* already dead */ }
+}
 function shutdown(code = 0) {
-  if (!server.killed) server.kill('SIGTERM');
-  setTimeout(() => { if (!server.killed) server.kill('SIGKILL'); }, 1500).unref();
+  killTree('SIGTERM');
+  setTimeout(() => killTree('SIGKILL'), 1500).unref();
   process.exit(code);
 }
-server.on('exit', (code) => process.exit(code ?? 0));
+server.on('exit', (code) => { killTree('SIGKILL'); process.exit(code ?? 0); });
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
-process.on('exit', () => { if (!server.killed) server.kill('SIGKILL'); });
+process.on('exit', () => killTree('SIGKILL'));

@@ -235,6 +235,50 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   res.json({ ok: true, deleted_id: req.params.id });
 });
 
+// Clinical snapshot for the scheduler drawer — everything the medical team
+// needs next to an appointment to make an educated decision.
+router.get('/:id/summary', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const parseArr = (v: any): string[] => { try { return v ? JSON.parse(v) : []; } catch { return []; } };
+  const recentEncounters = db.prepare(`
+    SELECT e.id, e.started_at, e.assessment, e.icd10_codes, u.full_name AS practitioner_name
+    FROM encounters e JOIN users u ON u.id = e.practitioner_id
+    WHERE e.patient_id = ? ORDER BY e.started_at DESC LIMIT 3
+  `).all(req.params.id) as any[];
+  const upcoming = db.prepare(`
+    SELECT a.id, a.scheduled_at, a.type, a.status, u.full_name AS practitioner_name
+    FROM appointments a JOIN users u ON u.id = a.practitioner_id
+    WHERE a.patient_id = ? AND a.scheduled_at >= datetime('now')
+      AND a.status NOT IN ('cancelled','no_show','completed')
+    ORDER BY a.scheduled_at ASC LIMIT 5
+  `).all(req.params.id);
+  const activePrescriptions = (db.prepare(`
+    SELECT COUNT(*) AS c FROM prescriptions WHERE patient_id = ?
+  `).get(req.params.id) as any).c;
+  logAudit({
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'view_patient_summary_phi', resourceType: 'patient', resourceId: p.id,
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({
+    patient: {
+      id: p.id, full_name: p.full_name, birth_date: p.birth_date, gender: p.gender,
+      phone: p.phone, email: p.email, cpf: p.cpf,
+      blood_type: p.blood_type, health_insurance: p.health_insurance,
+      health_insurance_number: p.health_insurance_number,
+      allergies: parseArr(p.allergies),
+      chronic_conditions: parseArr(p.chronic_conditions),
+      medications_in_use: parseArr(p.medications_in_use),
+      emergency_contact_name: p.emergency_contact_name,
+      emergency_contact_phone: p.emergency_contact_phone,
+    },
+    recent_encounters: recentEncounters.map((e) => ({ ...e, icd10_codes: parseArr(e.icd10_codes) })),
+    upcoming_appointments: upcoming,
+    prescriptions_count: activePrescriptions,
+  });
+});
+
 // Patient LGPD data export (portability)
 router.get('/:id/data-export', requireRole('admin', 'patient', 'doctor'), (req: Request, res: Response) => {
   const p = db.prepare(`SELECT * FROM patients WHERE id = ?`).get(req.params.id);
