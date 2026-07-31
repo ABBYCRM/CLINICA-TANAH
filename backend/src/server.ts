@@ -33,6 +33,7 @@ import whatsappRouter from './routes/whatsapp';
 import lgpdRouter from './routes/lgpd';
 import tenantsRouter from './routes/tenants';
 import formsRouter, { publicFormsRouter } from './routes/forms';
+import appsRouter from './routes/apps';
 import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
 import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/security';
@@ -112,8 +113,12 @@ app.use('/api/payroll', payrollRouter);
 app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/tenants', tenantsRouter);
+<<<<<<< HEAD
 app.use('/api/forms', formsRouter);
 app.use('/api/public/forms', publicFormsRouter);
+=======
+app.use('/api/apps', appsRouter);
+>>>>>>> 17378c4 (Add Apps menu tab to store and delete user URL shortcuts)
 
 // Dashboard
 import { db } from './db/schema';
