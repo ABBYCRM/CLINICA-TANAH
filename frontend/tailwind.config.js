@@ -1,18 +1,18 @@
 /** @type {import('tailwindcss').Config} */
 
-/** Wood / leather / paper / metal skeuomorphic materials. */
+/** Harmonized warm desk palette — wood / leather / paper / warm metal. */
 const earthSlate = {
-  50: '#f3e6c8',
-  100: '#e8d5a8',
-  200: '#d4af6a',
-  300: '#a8843d',
-  400: '#8a929c',
-  500: '#6b5646',
-  600: '#5a3822',
-  700: '#3b2416',
-  800: '#2a1f16',
-  900: '#1c120a',
-  950: '#120a06',
+  50: '#f2e6cc',
+  100: '#ead9b8',
+  200: '#dfcba0',
+  300: '#c9a25a',
+  400: '#9a9084',
+  500: '#6a5848',
+  600: '#4a3424',
+  700: '#3a2a1c',
+  800: '#2c2118',
+  900: '#2a1c12',
+  950: '#1a120c',
 };
 
 export default {
@@ -25,36 +25,36 @@ export default {
         zinc: earthSlate,
         neutral: earthSlate,
         primary: {
-          50: '#f0d48a', 100: '#d4af6a', 200: '#c9a055', 300: '#a8843d',
-          400: '#8a929c', 500: '#9aa3ae', 600: '#5c6570', 700: '#3b2416',
-          800: '#2a1f16', 900: '#1c120a',
+          50: '#e2c47a', 100: '#c9a25a', 200: '#b89248', 300: '#9a7a3a',
+          400: '#9a9084', 500: '#a89f92', 600: '#6e665c', 700: '#3a2a1c',
+          800: '#2c2118', 900: '#2a1c12',
         },
         clinic: {
-          50: '#f3e6c8',
-          100: '#e8d5a8',
-          200: '#d4af6a',
-          300: '#a8843d',
-          400: '#8a929c',
-          500: '#9aa3ae',
-          600: '#5c6570',
-          700: '#3b2416',
-          800: '#2a1f16',
-          900: '#1c120a',
-          950: '#120a06',
+          50: '#f2e6cc',
+          100: '#ead9b8',
+          200: '#c9a25a',
+          300: '#9a7a3a',
+          400: '#9a9084',
+          500: '#a89f92',
+          600: '#6e665c',
+          700: '#3a2a1c',
+          800: '#2c2118',
+          900: '#2a1c12',
+          950: '#1a120c',
         },
         earth: {
-          linen: '#f3e6c8',
-          mist: '#e8d5a8',
-          stone: '#6b5646',
-          clay: '#9a5a42',
-          bark: '#2a1f16',
-          moss: '#3d5c3a',
-          parchment: '#f3e6c8',
-          groove: '#3a2618',
-          aluminum: '#9aa3ae',
-          leather: '#4a2f22',
-          wood: '#3b2416',
-          gold: '#d4af6a',
+          linen: '#f2e6cc',
+          mist: '#ead9b8',
+          stone: '#6a5848',
+          clay: '#9a6548',
+          bark: '#2c2118',
+          moss: '#4a5c42',
+          parchment: '#f2e6cc',
+          groove: '#2a1c14',
+          aluminum: '#9a9084',
+          leather: '#3d2a1e',
+          wood: '#3a2a1c',
+          gold: '#c9a25a',
         },
       },
       fontFamily: {
@@ -63,13 +63,13 @@ export default {
       },
       boxShadow: {
         raised:
-          'inset 0 1px 0 rgba(255,255,255,0.65), 0 8px 18px rgba(20,10,4,0.35), 0 22px 40px rgba(10,5,2,0.28)',
+          'inset 0 1px 0 rgba(255,245,220,0.55), 0 2px 4px rgba(30,18,10,0.22), 0 10px 22px rgba(20,10,4,0.2)',
         pressed:
-          'inset 3px 3px 8px rgba(0,0,0,0.65), inset -1px -1px 2px rgba(212,175,106,0.18)',
+          'inset 2px 2px 6px rgba(0,0,0,0.55), inset -1px -1px 2px rgba(201,162,90,0.12)',
         knob:
-          'inset 0 1px 0 rgba(255,245,200,0.65), 0 2px 0 #5a4018, 0 6px 16px rgba(20,10,4,0.45)',
+          'inset 0 1px 0 rgba(255,245,200,0.55), 0 1px 0 #6e5528, 0 4px 10px rgba(20,10,4,0.12)',
         wood:
-          '6px 0 28px rgba(0,0,0,0.45)',
+          '4px 0 20px rgba(0,0,0,0.28)',
       },
       borderRadius: {
         panel: '1rem',
@@ -78,14 +78,10 @@ export default {
         fluid: 'cubic-bezier(0.22, 1, 0.36, 1)',
       },
       backgroundImage: {
-        linen:
-          'linear-gradient(180deg, #f7ecd0 0%, #f0e0b8 55%, #e6d2a4 100%)',
-        wood:
-          'linear-gradient(115deg, #1a1008 0%, #3d2616 36%, #2e1c10 52%, #6a442c 68%, #160e08 100%)',
-        aluminum:
-          'linear-gradient(135deg, #f2f4f7 0%, #c8ced6 42%, #9aa3ae 72%, #b8bfc8 100%)',
-        leather:
-          'linear-gradient(165deg, #5c3a28 0%, #3e271c 40%, #2a1a12 70%, #4a3022 100%)',
+        linen: 'linear-gradient(180deg, #f4ead2 0%, #e6d4b0 100%)',
+        wood: 'linear-gradient(160deg, #4a3424 0%, #3a2a1c 35%, #2a1c12 70%, #352418 100%)',
+        aluminum: 'linear-gradient(135deg, #f2efe9 0%, #d2cbc0 48%, #a89f92 78%, #c4bcb0 100%)',
+        leather: 'linear-gradient(165deg, #463022 0%, #342218 45%, #261810 100%)',
       },
     },
   },
