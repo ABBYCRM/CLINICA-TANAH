@@ -8,7 +8,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
-const TEST_DB_DIR = path.join(__dirname, '..', 'data-test');
+const TEST_DB_DIR = path.join(__dirname, '..', 'data-test-crud');
 const BASE = 'http://127.0.0.1:3997';
 
 import { db } from '../src/db/schema';
@@ -55,6 +55,7 @@ async function waitForServer(attempts = 50): Promise<void> {
 
 beforeAll(async () => {
   process.env.PORT = '3997';
+  process.env.DB_DIR = TEST_DB_DIR;
   process.env.META_WA_APP_SECRET = 'test-app-secret';
   await import('../src/server'); // starts listening on PORT
   await waitForServer();

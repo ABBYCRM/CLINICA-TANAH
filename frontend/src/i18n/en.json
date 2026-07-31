@@ -23,7 +23,8 @@
     "lgpd": "LGPD",
     "audit": "Audit",
     "logout": "Logout",
-    "team": "Team"
+    "team": "Team",
+    "settings": "Settings"
   },
   "common": {
     "save": "Save",
@@ -434,6 +435,35 @@
     "council_state": "Registry state (UF)",
     "cpf": "CPF",
     "full_name": "Full name",
-    "cannot_delete_self": "You cannot remove your own user"
+    "cannot_delete_self": "You cannot remove your own user",
+    "show_inactive": "Show inactive",
+    "inactive": "Inactive"
+  },
+  "settings": {
+    "title": "Settings",
+    "api_tokens": "API Tokens",
+    "api_tokens_desc": "Programmatic access tokens for the CRM API. A read+write token controls the entire system — store it like a password.",
+    "token_name": "Token name",
+    "token_name_hint": "E.g.: BI integration, Backup script, Power BI",
+    "scope": "Scope",
+    "scope_read": "Read only",
+    "scope_read_write": "Read + write (full CRM)",
+    "expires_days": "Expires in (days)",
+    "expires_never": "No expiration",
+    "mint": "Mint token",
+    "minted_title": "Token minted — copy it now",
+    "minted_warning": "This is the only time the full token is shown. It cannot be recovered later.",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "usage_hint": "Use in the header: Authorization: Bearer <token>",
+    "last_used": "Last used",
+    "expires": "Expires",
+    "never": "Never",
+    "never_used": "Never used",
+    "revoke": "Revoke",
+    "revoked": "Revoked",
+    "active": "Active",
+    "no_tokens": "No tokens minted yet.",
+    "confirm_revoke": "Revoke token {{name}}? Integrations using it lose access immediately."
   }
 }

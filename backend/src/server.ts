@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { initSchema } from './db/schema';
 import authRouter from './routes/auth';
 import usersRouter from './routes/users';
+import tokensRouter from './routes/tokens';
 import patientsRouter from './routes/patients';
 import appointmentsRouter from './routes/appointments';
 import clinicalRouter from './routes/clinical';
@@ -29,8 +30,10 @@ app.use(express.json({
   verify: (req: any, _res, buf) => { req.rawBody = buf; },
 }));
 
-// Rate limit WhatsApp webhook & auth
-const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 30, message: { error: 'rate_limited' } });
+// Rate limit WhatsApp webhook & auth (disabled under NODE_ENV=test so
+// the e2e suite — dozens of logins against a disposable DB — stays deterministic)
+const isTest = process.env.NODE_ENV === 'test';
+const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 30, message: { error: 'rate_limited' }, skip: () => isTest });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/whatsapp/webhook', rateLimit({ windowMs: 1*60*1000, max: 120 }));
 
@@ -48,6 +51,7 @@ app.get('/api/health', (_req, res) => {
 // Routes
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/tokens', tokensRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/clinical', clinicalRouter);

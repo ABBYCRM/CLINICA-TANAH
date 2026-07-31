@@ -23,7 +23,8 @@
     "lgpd": "LGPD",
     "audit": "Auditoria",
     "logout": "Sair",
-    "team": "Equipe"
+    "team": "Equipe",
+    "settings": "Configurações"
   },
   "common": {
     "save": "Salvar",
@@ -434,6 +435,35 @@
     "council_state": "UF do registro",
     "cpf": "CPF",
     "full_name": "Nome completo",
-    "cannot_delete_self": "Você não pode remover seu próprio usuário"
+    "cannot_delete_self": "Você não pode remover seu próprio usuário",
+    "show_inactive": "Mostrar inativos",
+    "inactive": "Inativo"
+  },
+  "settings": {
+    "title": "Configurações",
+    "api_tokens": "Tokens de API",
+    "api_tokens_desc": "Tokens de acesso programático à API do CRM. O token de leitura e escrita controla todo o sistema — guarde-o como uma senha.",
+    "token_name": "Nome do token",
+    "token_name_hint": "Ex.: Integração BI, Script de backup, Power BI",
+    "scope": "Escopo",
+    "scope_read": "Somente leitura",
+    "scope_read_write": "Leitura e escrita (CRM completo)",
+    "expires_days": "Expira em (dias)",
+    "expires_never": "Sem expiração",
+    "mint": "Gerar token",
+    "minted_title": "Token gerado — copie agora",
+    "minted_warning": "Este é o único momento em que o token completo é exibido. Ele não pode ser recuperado depois.",
+    "copy": "Copiar",
+    "copied": "Copiado!",
+    "usage_hint": "Use no cabeçalho: Authorization: Bearer <token>",
+    "last_used": "Último uso",
+    "expires": "Expira",
+    "never": "Nunca",
+    "never_used": "Nunca usado",
+    "revoke": "Revogar",
+    "revoked": "Revogado",
+    "active": "Ativo",
+    "no_tokens": "Nenhum token emitido ainda.",
+    "confirm_revoke": "Revogar o token {{name}}? Integrações que o usam perderão acesso imediatamente."
   }
 }

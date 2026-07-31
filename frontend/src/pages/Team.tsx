@@ -14,16 +14,17 @@ export default function Team() {
   const [deleting, setDeleting] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
 
   const load = () => {
     setLoading(true);
-    api.get('/api/users')
+    api.get(`/api/users${showInactive ? '?include_inactive=true' : ''}`)
       .then((d) => setUsers(d.users))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [locale]);
+  useEffect(load, [locale, showInactive]);
 
   const remove = async () => {
     if (!deleting) return;
@@ -47,11 +48,17 @@ export default function Team() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-slate-900">{t('team.title')}</h1>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-user">
-          + {t('team.new_user')}
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+            {t('team.show_inactive')}
+          </label>
+          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-user">
+            + {t('team.new_user')}
+          </button>
+        </div>
       </div>
 
       {error && <FormError message={error} />}
@@ -73,7 +80,10 @@ export default function Team() {
               {!loading && users.length === 0 && <tr><td colSpan={5} className="table-td text-center py-6 text-slate-400">{t('common.no_data')}</td></tr>}
               {users.map((u) => (
                 <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.active ? '' : 'opacity-50'}`}>
-                  <td className="table-td font-medium">{u.full_name}</td>
+                  <td className="table-td font-medium">
+                    {u.full_name}
+                    {!u.active && <span className="ml-2 badge-slate">{t('team.inactive')}</span>}
+                  </td>
                   <td className="table-td">{u.email}</td>
                   <td className="table-td"><span className={roleBadge(u.role)}>{u.role}</span></td>
                   <td className="table-td text-xs text-slate-500">{u.council_number ? `${u.council_number}${u.council_state ? `/${u.council_state}` : ''}` : '—'}</td>

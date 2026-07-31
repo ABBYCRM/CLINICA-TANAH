@@ -468,6 +468,22 @@ export function initSchema(): void {
     );
 
     -- ============================================================
+    -- API TOKENS — programmatic access to the whole CRM
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      prefix TEXT NOT NULL,              -- display hint: ct_a1b2c3…
+      token_hash TEXT UNIQUE NOT NULL,   -- sha256 hex; plaintext is shown once
+      scope TEXT NOT NULL DEFAULT 'read_write' CHECK(scope IN ('read','read_write')),
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_used_at TEXT,
+      expires_at TEXT,
+      revoked_at TEXT
+    );
+
+    -- ============================================================
     -- SYSTEM SETTINGS (clinic-level config)
     -- ============================================================
     CREATE TABLE IF NOT EXISTS settings (

@@ -1,10 +1,11 @@
 /**
- * Auth middleware — JWT-based, role-aware.
+ * Auth middleware — JWT-based, role-aware; also accepts API tokens (ct_…).
  * Brazilian medical staff: admin, doctor, nurse, receptionist, accountant, pharmacist, dpo
  */
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../db/schema';
+import { verifyApiToken, TOKEN_PREFIX } from '../services/tokens';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'clinica-tanah-dev-secret-change-me-in-prod';
 const TOKEN_TTL = '8h';
@@ -20,6 +21,8 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
+      /** Present when the request was authenticated with an API token */
+      apiTokenScope?: 'read' | 'read_write';
     }
   }
 }
@@ -47,6 +50,29 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     return;
   }
   const token = header.slice(7);
+
+  // API tokens (ct_…) — full-CRM access, gated by scope
+  if (token.startsWith(TOKEN_PREFIX)) {
+    const apiToken = verifyApiToken(token);
+    if (!apiToken) {
+      res.status(401).json({ error: 'invalid_token' });
+      return;
+    }
+    if (apiToken.scope === 'read' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      res.status(403).json({ error: 'scope_read_only', message: 'This API token is read-only.' });
+      return;
+    }
+    req.user = {
+      id: `api-token:${apiToken.id}`,
+      email: `api-token:${apiToken.name}`,
+      full_name: `[API] ${apiToken.name}`,
+      role: 'admin', // API tokens control the entire CRM
+    };
+    req.apiTokenScope = apiToken.scope;
+    next();
+    return;
+  }
+
   const user = verifyToken(token);
   if (!user) {
     res.status(401).json({ error: 'invalid_token' });

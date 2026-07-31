@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
-const TEST_DB_DIR = path.join(__dirname, '..', 'data-test');
+const TEST_DB_DIR = path.join(__dirname, '..', 'data-test-engagement');
 const BASE = 'http://127.0.0.1:3999';
 
 import { db } from '../src/db/schema';
@@ -50,6 +50,7 @@ async function waitForServer(attempts = 50): Promise<void> {
 
 beforeAll(async () => {
   process.env.PORT = '3999';
+  process.env.DB_DIR = TEST_DB_DIR;
   delete process.env.META_WA_APP_SECRET;
   await import('../src/server');
   await waitForServer();
