@@ -10,8 +10,8 @@ import path from 'node:path';
 
 test.skip(({ isMobile }) => !isMobile, 'Mobile-only visual checks');
 
-const ADMIN_EMAIL = 'admin@clinica-tanah.com.br';
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana';
+const PASSWORD = '1234';
 const SHOT_DIR = '/opt/cursor/artifacts/screenshots/mobile-visual';
 
 mkdirSync(SHOT_DIR, { recursive: true });

@@ -63,10 +63,10 @@
   "auth": {
     "login": "Entrar",
     "logout": "Sair",
-    "email": "E-mail",
+    "email": "Usuário",
     "password": "Senha",
     "sign_in": "Entrar no sistema",
-    "invalid_credentials": "E-mail ou senha inválidos",
+    "invalid_credentials": "Usuário ou senha inválidos",
     "welcome": "Bem-vindo de volta",
     "subtitle": "Acesse o painel da clínica com suas credenciais",
     "show_password": "Mostrar senha",

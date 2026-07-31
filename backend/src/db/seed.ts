@@ -4,7 +4,7 @@
  */
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
-import { db, initSchema, DEFAULT_TENANT_ID } from './schema';
+import { db, initSchema, DEFAULT_TENANT_ID, PRIMARY_USER_ID, PRIMARY_USER_EMAIL, PRIMARY_USER_NAME, PRIMARY_USER_PASSWORD } from './schema';
 import { recordConsent } from '../services/audit';
 
 initSchema();
@@ -56,32 +56,14 @@ db.prepare(`
 `).run(DEFAULT_TENANT_ID);
 const T = DEFAULT_TENANT_ID;
 
-// USERS / STAFF
-const staffData = [
-  { email: 'admin@clinica-tanah.com.br', full_name: 'Dra. Helena Tanaka', role: 'admin', cpf: '11122233396', council_number: 'CRM-SP 123456', council_state: 'SP' },
-  { email: 'dpo@clinica-tanah.com.br', full_name: 'Dr. Marcos Vieira (DPO)', role: 'dpo', cpf: '22233344405', council_number: 'OAB-SP 234567', council_state: 'SP' },
-  { email: 'silva@clinica-tanah.com.br', full_name: 'Dr. Roberto Silva', role: 'doctor', cpf: '33344455508', council_number: 'CRM-SP 145678', council_state: 'SP' },
-  { email: 'santos@clinica-tanah.com.br', full_name: 'Dra. Beatriz Santos', role: 'doctor', cpf: '44455566619', council_number: 'CRM-SP 156789', council_state: 'SP' },
-  { email: 'oliveira@clinica-tanah.com.br', full_name: 'Dr. Carlos Oliveira', role: 'doctor', cpf: '55566677720', council_number: 'CRM-SP 167890', council_state: 'SP' },
-  { email: 'ana.enf@clinica-tanah.com.br', full_name: 'Ana Paula Ferreira', role: 'nurse', cpf: '66677788830', council_number: 'COREN-SP 234567', council_state: 'SP' },
-  { email: 'mariana@clinica-tanah.com.br', full_name: 'Mariana Costa', role: 'receptionist', cpf: '77788899941', council_number: null, council_state: null },
-  { email: 'contabil@clinica-tanah.com.br', full_name: 'João Mendes', role: 'accountant', cpf: '88899900078', council_number: 'CRC-SP 1SP234567', council_state: 'SP' },
-  { email: 'farmacia@clinica-tanah.com.br', full_name: 'Patrícia Almeida', role: 'pharmacist', cpf: '99900011112', council_number: 'CRF-SP 45678', council_state: 'SP' },
-];
-
-const userIds: Record<string, string> = {};
-const passwordHash = bcrypt.hashSync('clinica2026', 10);
-const insertUser = db.prepare(`
+// Single staff login: Juliana / 1234
+const passwordHash = bcrypt.hashSync(PRIMARY_USER_PASSWORD, 10);
+db.prepare(`
   INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, cpf, council_number, council_state, active, is_superadmin)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-`);
-for (const u of staffData) {
-  const id = uuid();
-  userIds[u.email] = id;
-  const isSuper = u.email === 'admin@clinica-tanah.com.br' ? 1 : 0;
-  insertUser.run(id, T, u.email, passwordHash, u.full_name, u.role, u.cpf, u.council_number, u.council_state, isSuper);
-}
-console.log(`  ✓ ${staffData.length} users`);
+  VALUES (?, ?, ?, ?, ?, 'admin', '11122233396', 'CRM-SP 123456', 'SP', 1, 1)
+`).run(PRIMARY_USER_ID, T, PRIMARY_USER_EMAIL, passwordHash, PRIMARY_USER_NAME);
+const julianaId = PRIMARY_USER_ID;
+console.log(`  ✓ 1 user (${PRIMARY_USER_NAME})`);
 
 // PATIENTS — realistic São Paulo patients
 const patientData = [
@@ -200,17 +182,14 @@ itemIds.forEach((itemId, idx) => {
     const expiry = new Date(Date.now() + (60 + Math.floor(Math.random() * 800)) * 86400000).toISOString().slice(0, 10);
     const batchId = uuid();
     insertBatch.run(batchId, T, itemId, `L${item.sku}-${b+1}-2026`, expiry, qty, vendorIds[idx % vendorIds.length], item.unit_cost, monthAgo);
-    insertMovement.run(uuid(), T, itemId, batchId, 'in', qty, 'purchase', userIds['farmacia@clinica-tanah.com.br'], monthAgo);
+    insertMovement.run(uuid(), T, itemId, batchId, 'in', qty, 'purchase', julianaId, monthAgo);
   }
 });
 console.log(`  ✓ Inventory batches created`);
 
-// EMPLOYEES + PAYROLL
+// EMPLOYEES + PAYROLL (HR records — not login accounts)
 const employeeData = [
-  { full_name: 'Dra. Helena Tanaka', cpf: '11122233396', pis: '123.45678.90-1', role: 'admin', base_salary: 22000.00, dependents: 2 },
-  { full_name: 'Dr. Roberto Silva', cpf: '33344455508', pis: '234.56789.01-2', role: 'doctor', base_salary: 18500.00, dependents: 1 },
-  { full_name: 'Dra. Beatriz Santos', cpf: '44455566619', pis: '345.67890.12-3', role: 'doctor', base_salary: 19200.00, dependents: 0 },
-  { full_name: 'Dr. Carlos Oliveira', cpf: '55566677720', pis: '456.78901.23-4', role: 'doctor', base_salary: 17800.00, dependents: 3 },
+  { full_name: 'Juliana', cpf: '11122233396', pis: '123.45678.90-1', role: 'admin', base_salary: 22000.00, dependents: 2 },
   { full_name: 'Ana Paula Ferreira', cpf: '66677788830', pis: '567.89012.34-5', role: 'nurse', base_salary: 4800.00, dependents: 1 },
   { full_name: 'Mariana Costa', cpf: '77788899941', pis: '678.90123.45-6', role: 'receptionist', base_salary: 3200.00, dependents: 0 },
   { full_name: 'João Mendes', cpf: '88899900078', pis: '789.01234.56-7', role: 'accountant', base_salary: 6500.00, dependents: 2 },
@@ -232,7 +211,6 @@ console.log(`  ✓ ${employeeData.length} employees`);
 // APPOINTMENTS — past, today, upcoming
 const apptTypes = ['consultation','return','exam','procedure'];
 const apptStatuses = ['completed','completed','completed','scheduled','confirmed'];
-const doctorEmails = ['silva@clinica-tanah.com.br','santos@clinica-tanah.com.br','oliveira@clinica-tanah.com.br'];
 const insertAppt = db.prepare(`
   INSERT INTO appointments (id, tenant_id, patient_id, practitioner_id, scheduled_at, duration_minutes, type, status, source, notes)
   VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -246,9 +224,8 @@ for (let day = -7; day <= 7; day++) {
     const m = Math.random() < 0.5 ? 0 : 30;
     const scheduled = `${dateStr} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
     const status = day < 0 ? 'completed' : apptStatuses[Math.floor(Math.random() * apptStatuses.length)];
-    const doctorEmail = doctorEmails[Math.floor(Math.random() * doctorEmails.length)];
     insertAppt.run(uuid(), T, patientIds[Math.floor(Math.random() * patientIds.length)],
-                   userIds[doctorEmail], scheduled, 30,
+                   julianaId, scheduled, 30,
                    apptTypes[Math.floor(Math.random() * apptTypes.length)],
                    status, ['reception','whatsapp_bot','phone','website'][Math.floor(Math.random() * 4)],
                    null);
@@ -335,8 +312,8 @@ const settings = [
   ['clinic_address', 'Rua Augusta, 1234 — Consolação, São Paulo / SP — CEP 01304-001'],
   ['lgpd_policy_version', '1.0'],
   ['lgpd_policy_effective', '2026-07-30'],
-  ['dpo_email', 'dpo@clinica-tanah.com.br'],
-  ['dpo_name', 'Dr. Marcos Vieira'],
+  ['dpo_email', PRIMARY_USER_EMAIL],
+  ['dpo_name', PRIMARY_USER_NAME],
   ['default_locale', 'pt-BR'],
   ['default_currency', 'BRL'],
 ];
@@ -346,9 +323,5 @@ console.log(`  ✓ ${settings.length} settings`);
 
 console.log('\n✅ Seed complete!\n');
 console.log(`  Tenant: Clínica Tanah (${T})`);
-console.log('  Test users (password = clinica2026):');
-for (const u of staffData) {
-  const tag = u.email === 'admin@clinica-tanah.com.br' ? '  [superadmin]' : '';
-  console.log(`    ${u.email}  —  ${u.role}${tag}`);
-}
+console.log(`  Login: ${PRIMARY_USER_NAME} / ${PRIMARY_USER_PASSWORD}  (also ${PRIMARY_USER_EMAIL})`);
 console.log('');

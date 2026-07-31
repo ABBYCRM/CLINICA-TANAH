@@ -4,8 +4,8 @@
  */
 import { test, expect } from '@playwright/test';
 
-const ADMIN_EMAIL = 'admin@clinica-tanah.com.br';
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana';
+const PASSWORD = '1234';
 
 async function fillCredentials(page: import('@playwright/test').Page, email = ADMIN_EMAIL, password = PASSWORD) {
   await page.getByTestId('login-email').fill(email);
@@ -36,7 +36,7 @@ test.describe('Sign in', () => {
     await page.goto('/login');
     await page.getByRole('button', { name: 'English' }).click();
     await expect(page.getByTestId('login-submit')).toContainText(/sign in/i);
-    await expect(page.getByText('Email', { exact: true })).toBeVisible();
+    await expect(page.getByText('Username', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Português' }).click();
     await expect(page.getByTestId('login-submit')).toContainText(/entrar/i);
     await expect(page.getByText('Senha', { exact: true })).toBeVisible();

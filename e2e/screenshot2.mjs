@@ -10,8 +10,8 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 const p = await ctx.newPage();
 
 await p.goto(`${BASE}/login`);
-await p.getByTestId('login-email').fill('admin@clinica-tanah.com.br');
-await p.getByTestId('login-password').fill('clinica2026');
+await p.getByTestId('login-email').fill('Juliana');
+await p.getByTestId('login-password').fill('1234');
 await p.getByTestId('login-submit').click();
 await p.waitForURL(/\/$/, { timeout: 15_000 });
 

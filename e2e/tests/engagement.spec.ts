@@ -4,8 +4,8 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
-const ADMIN_EMAIL = 'admin@clinica-tanah.com.br';
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana';
+const PASSWORD = '1234';
 
 async function signIn(page: Page) {
   await page.goto('/login');

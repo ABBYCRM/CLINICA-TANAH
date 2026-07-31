@@ -6,8 +6,8 @@ import { test, expect } from '@playwright/test';
 
 test.skip(({ isMobile }) => !isMobile, 'Mobile-only checks');
 
-const ADMIN_EMAIL = 'admin@clinica-tanah.com.br';
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana';
+const PASSWORD = '1234';
 
 async function signIn(page: import('@playwright/test').Page) {
   await page.goto('/login');

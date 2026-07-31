@@ -2,13 +2,13 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { db, DEFAULT_TENANT_ID } from '../db/schema';
-import { signToken, authenticate, loadUserByEmail } from '../middleware/auth';
+import { signToken, authenticate, loadUserByLogin } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 
 const router = Router();
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1), // username or email
   password: z.string().min(1),
 });
 
@@ -19,7 +19,7 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
   const { email, password } = parsed.data;
-  const user = loadUserByEmail(email);
+  const user = loadUserByLogin(email);
   if (!user) {
     res.status(401).json({ error: 'invalid_credentials' });
     return;

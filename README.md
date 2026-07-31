@@ -29,16 +29,11 @@ npm start
 
 ### Test login
 
-| Email | Role | Password |
+| Username | Role | Password |
 |---|---|---|
-| `admin@clinica-tanah.com.br` | Admin / Dra. Helena Tanaka (**superadmin**) | `clinica2026` |
-| `dpo@clinica-tanah.com.br` | DPO / Dr. Marcos Vieira | `clinica2026` |
-| `silva@clinica-tanah.com.br` | Doctor / Dr. Roberto Silva | `clinica2026` |
-| `santos@clinica-tanah.com.br` | Doctor / Dra. Beatriz Santos | `clinica2026` |
-| `oliveira@clinica-tanah.com.br` | Doctor / Dr. Carlos Oliveira | `clinica2026` |
-| `contabil@clinica-tanah.com.br` | Accountant / João Mendes | `clinica2026` |
-| `farmacia@clinica-tanah.com.br` | Pharmacist / Patrícia Almeida | `clinica2026` |
-| `mariana@clinica-tanah.com.br` | Receptionist | `clinica2026` |
+| `Juliana` | Admin (**superadmin**) | `1234` |
+
+(Also accepts email `juliana@clinica-tanah.com.br`.)
 
 ---
 

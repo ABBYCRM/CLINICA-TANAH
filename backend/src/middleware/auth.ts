@@ -151,5 +151,21 @@ export function requireSuperadmin(req: Request, res: Response, next: NextFunctio
 }
 
 export function loadUserByEmail(email: string) {
-  return db.prepare(`SELECT * FROM users WHERE email = ? AND active = 1`).get(email) as any;
+  return loadUserByLogin(email);
+}
+
+/** Resolve staff by email, username (full_name), or email local-part — case-insensitive. */
+export function loadUserByLogin(login: string) {
+  const raw = (login || '').trim();
+  if (!raw) return null;
+  const key = raw.toLowerCase();
+  return db.prepare(`
+    SELECT * FROM users
+    WHERE active = 1 AND (
+      lower(email) = ?
+      OR lower(full_name) = ?
+      OR lower(email) = ? || '@clinica-tanah.com.br'
+    )
+    LIMIT 1
+  `).get(key, key, key) as any;
 }

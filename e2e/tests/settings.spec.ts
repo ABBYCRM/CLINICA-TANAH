@@ -4,8 +4,8 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
-const ADMIN_EMAIL = 'admin@clinica-tanah.com.br';
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana';
+const PASSWORD = '1234';
 
 async function signIn(page: Page) {
   await page.goto('/login');
@@ -72,7 +72,7 @@ test('staff management: add doctor → edit → deactivate', async ({ page }) =>
   await page.getByTestId('user-name').fill(name);
   await page.locator('input[type="email"]').fill(`e2e${stamp}@clinica-tanah.com.br`);
   await page.locator('select').first().selectOption('doctor');
-  await page.locator('input[type="password"]').fill('clinica2026x');
+  await page.locator('input[type="password"]').fill('1234x');
   await page.getByTestId('form-submit').click();
   await expect(page.getByRole('cell', { name })).toBeVisible({ timeout: 10_000 });
 

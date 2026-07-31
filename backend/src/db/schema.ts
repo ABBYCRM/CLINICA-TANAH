@@ -9,6 +9,7 @@
  */
 
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 
@@ -557,6 +558,93 @@ export function initSchema(): void {
 /** Fixed id of the tenant that owns all pre-multitenancy data. */
 export const DEFAULT_TENANT_ID = 't_clinica_tanah';
 
+/** Sole production login — username "Juliana", password "1234". */
+export const PRIMARY_USER_ID = 'u_juliana';
+export const PRIMARY_USER_EMAIL = 'juliana@clinica-tanah.com.br';
+export const PRIMARY_USER_NAME = 'Juliana';
+export const PRIMARY_USER_PASSWORD = '1234';
+
+/**
+ * Ensure the single primary account exists, reset its credentials, and
+ * remove all other staff logins on the default tenant (demo/test accounts).
+ * Safe to run on every boot against a persistent production DB.
+ */
+export function ensurePrimaryAccount(): void {
+  const db = openDb();
+  const hash = bcrypt.hashSync(PRIMARY_USER_PASSWORD, 10);
+
+  let keep = db.prepare(`
+    SELECT id FROM users
+    WHERE id = ? OR lower(email) = lower(?) OR lower(full_name) = lower(?)
+    ORDER BY CASE WHEN id = ? THEN 0 WHEN lower(email) = lower(?) THEN 1 ELSE 2 END
+    LIMIT 1
+  `).get(
+    PRIMARY_USER_ID, PRIMARY_USER_EMAIL, PRIMARY_USER_NAME,
+    PRIMARY_USER_ID, PRIMARY_USER_EMAIL,
+  ) as { id: string } | undefined;
+
+  if (!keep) {
+    keep = db.prepare(`
+      SELECT id FROM users
+      WHERE tenant_id = ? AND (is_superadmin = 1 OR role = 'admin')
+      ORDER BY is_superadmin DESC
+      LIMIT 1
+    `).get(DEFAULT_TENANT_ID) as { id: string } | undefined;
+  }
+
+  if (keep) {
+    db.prepare(`
+      UPDATE users SET
+        email = ?, password_hash = ?, full_name = ?,
+        role = 'admin', is_superadmin = 1, active = 1,
+        tenant_id = COALESCE(tenant_id, ?)
+      WHERE id = ?
+    `).run(PRIMARY_USER_EMAIL, hash, PRIMARY_USER_NAME, DEFAULT_TENANT_ID, keep.id);
+  } else {
+    db.prepare(`
+      INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, active, is_superadmin)
+      VALUES (?, ?, ?, ?, ?, 'admin', 1, 1)
+    `).run(PRIMARY_USER_ID, DEFAULT_TENANT_ID, PRIMARY_USER_EMAIL, hash, PRIMARY_USER_NAME);
+    keep = { id: PRIMARY_USER_ID };
+  }
+
+  const keepId = keep.id;
+  const others = db.prepare(`
+    SELECT id FROM users
+    WHERE id != ?
+      AND (tenant_id = ? OR tenant_id IS NULL OR lower(email) LIKE '%@clinica-tanah.com.br')
+  `).all(keepId, DEFAULT_TENANT_ID) as Array<{ id: string }>;
+
+  if (others.length === 0) return;
+
+  const reassign = (sql: string) => {
+    const stmt = db.prepare(sql);
+    for (const o of others) stmt.run(keepId, o.id);
+  };
+
+  reassign(`UPDATE appointments SET practitioner_id = ? WHERE practitioner_id = ?`);
+  reassign(`UPDATE encounters SET practitioner_id = ? WHERE practitioner_id = ?`);
+  reassign(`UPDATE prescriptions SET practitioner_id = ? WHERE practitioner_id = ?`);
+  reassign(`UPDATE stock_movements SET user_id = ? WHERE user_id = ?`);
+  try { reassign(`UPDATE purchase_orders SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE journal_entries SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE payroll_runs SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE lgpd_data_requests SET handled_by = ? WHERE handled_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE api_tokens SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE invoice_documents SET uploaded_by = ? WHERE uploaded_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE patients SET assigned_professional_id = ? WHERE assigned_professional_id = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE patient_tasks SET assigned_to = ? WHERE assigned_to = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE patient_tasks SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE service_tickets SET assigned_to = ? WHERE assigned_to = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE service_tickets SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE patient_documents SET created_by = ? WHERE created_by = ?`); } catch { /* optional */ }
+  try { reassign(`UPDATE audit_log SET actor_id = ? WHERE actor_id = ?`); } catch { /* optional */ }
+
+  for (const o of others) {
+    db.prepare(`DELETE FROM users WHERE id = ?`).run(o.id);
+  }
+}
+
 /**
  * Idempotent column migrations for existing databases.
  * CREATE TABLE IF NOT EXISTS never alters live tables — add new
@@ -776,6 +864,7 @@ function migrate(): void {
 
   seedMarketingDefaults(DEFAULT_TENANT_ID);
   ensureRecallAutomation(DEFAULT_TENANT_ID);
+  ensurePrimaryAccount();
 }
 
 function ensureRecallAutomation(tenantId: string): void {

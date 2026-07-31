@@ -4,8 +4,8 @@
  */
 import { test, expect, Page } from '@playwright/test';
 
-const ADMIN_EMAIL = 'silva@clinica-tanah.com.br'; // doctor can create encounters
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana'; // doctor can create encounters
+const PASSWORD = '1234';
 
 async function signIn(page: Page, email = ADMIN_EMAIL) {
   await page.goto('/login');
@@ -36,7 +36,7 @@ test('Novo Atendimento uses searchable patient picker', async ({ page }) => {
 });
 
 test('appointment form patient picker searches by name', async ({ page }) => {
-  await signIn(page, 'admin@clinica-tanah.com.br');
+  await signIn(page, 'Juliana');
   await page.goto('/appointments');
   await page.getByTestId('new-appointment').click();
   const input = page.getByTestId('appointment-patient-input');

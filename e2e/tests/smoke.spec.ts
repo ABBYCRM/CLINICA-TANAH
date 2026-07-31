@@ -3,8 +3,8 @@
  */
 import { test, expect } from '@playwright/test';
 
-const ADMIN_EMAIL = 'admin@clinica-tanah.com.br';
-const PASSWORD = 'clinica2026';
+const ADMIN_EMAIL = 'Juliana';
+const PASSWORD = '1234';
 
 async function login(request: import('@playwright/test').APIRequestContext, baseURL: string) {
   const res = await request.post(`${baseURL}/api/auth/login`, {
@@ -28,7 +28,9 @@ test('login API issues a token and /me resolves the user', async ({ request, bas
     headers: { Authorization: `Bearer ${token}` },
   });
   expect(me.status()).toBe(200);
-  expect((await me.json()).user.email).toBe(ADMIN_EMAIL);
+  const meBody = await me.json();
+  expect(meBody.user.full_name).toBe('Juliana');
+  expect(meBody.user.email).toBe('juliana@clinica-tanah.com.br');
 });
 
 test('patients API enforces auth and lists seeded patients', async ({ request, baseURL }) => {

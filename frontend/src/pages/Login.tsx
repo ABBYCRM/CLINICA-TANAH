@@ -202,10 +202,12 @@ export default function Login() {
                 <input
                   id="login-email"
                   data-testid="login-email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="nome@clinica-tanah.com.br"
+                  type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="Juliana"
                   className="input"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -266,33 +268,6 @@ export default function Login() {
                 )}
               </button>
             </form>
-
-            <details className="group mt-6 rounded-xl text-xs text-[#6b645a] open:shadow-sm"
-              style={{
-                background: 'linear-gradient(180deg, #f0e8dc, #e8dfd1)',
-                border: '1px solid #b8ac99',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
-              }}
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 font-semibold text-[#3a342c] transition-colors hover:text-[#4a453c] [&::-webkit-details-marker]:hidden">
-                <span className="flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#6B7280]" aria-hidden="true">
-                    <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
-                  </svg>
-                  {t('auth.demo_accounts')}
-                </span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 transition-transform duration-200 group-open:rotate-180" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </summary>
-              <div className="space-y-1 border-t border-[#b8ac99] px-3.5 py-3">
-                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-[#8a8174]">{t('auth.demo_password_hint')}</div>
-                <div className="font-mono">admin@clinica-tanah.com.br</div>
-                <div className="font-mono">silva@clinica-tanah.com.br</div>
-                <div className="font-mono">santos@clinica-tanah.com.br</div>
-                <div className="font-mono">dpo@clinica-tanah.com.br</div>
-              </div>
-            </details>
           </div>
 
           <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[#8a8174] animate-fade-in delay-200">

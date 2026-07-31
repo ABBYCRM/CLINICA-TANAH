@@ -63,10 +63,10 @@
   "auth": {
     "login": "Sign in",
     "logout": "Sign out",
-    "email": "Email",
+    "email": "Username",
     "password": "Password",
     "sign_in": "Sign in to the system",
-    "invalid_credentials": "Invalid email or password",
+    "invalid_credentials": "Invalid username or password",
     "welcome": "Welcome back",
     "subtitle": "Access the clinic dashboard with your credentials",
     "show_password": "Show password",
