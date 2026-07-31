@@ -41,7 +41,7 @@ export default function LGPD() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('lgpd.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('lgpd.title')}</h1>
         <button onClick={() => setShowRequestForm(true)} className="btn-primary" data-testid="new-lgpd-request">
           + {t('lgpd.new_request')}
         </button>

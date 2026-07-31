@@ -133,8 +133,8 @@ export default function Payroll() {
     <div className="space-y-4" data-testid="payroll-page">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('payroll.title')}</h1>
-          <p className="text-sm text-[#5c6558] mt-0.5">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('payroll.title')}</h1>
+          <p className="text-sm text-[#6b645a] mt-0.5">
             {t('payroll.legal_banner', { year: meta?.year || 2026, wage: money(meta?.minimum_wage || 1621, locale) })}
           </p>
         </div>
@@ -242,15 +242,15 @@ export default function Payroll() {
             <div key={e.id} className="p-4 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-[#243328] break-words">{e.full_name}</div>
-                  <div className="text-xs font-mono text-[#5c6558]">{e.cpf}</div>
+                  <div className="font-semibold text-[#3a342c] break-words">{e.full_name}</div>
+                  <div className="text-xs font-mono text-[#6b645a]">{e.cpf}</div>
                 </div>
                 <span className="badge-blue shrink-0">{e.role}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.base_salary')}</div>
-                  <div className="font-mono font-semibold text-[#243328]">{money(e.base_salary, locale)}</div>
+                  <div className="font-mono font-semibold text-[#3a342c]">{money(e.base_salary, locale)}</div>
                 </div>
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-[#7a8476]">{t('payroll.admission_date')}</div>
@@ -335,7 +335,7 @@ export default function Payroll() {
                 {runs.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="table-td font-mono">
-                      <button type="button" className="text-[#3f5c42] font-semibold hover:underline" onClick={() => openRun(r.id)}>
+                      <button type="button" className="text-[#6B7280] font-semibold hover:underline" onClick={() => openRun(r.id)}>
                         {r.period}
                       </button>
                     </td>
@@ -350,7 +350,7 @@ export default function Payroll() {
                     </td>
                     <td className="table-td">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openRun(r.id)} className="text-xs font-medium text-[#3f5c42] hover:underline px-1.5">
+                        <button onClick={() => openRun(r.id)} className="text-xs font-medium text-[#6B7280] hover:underline px-1.5">
                           {t('payroll.view_payslips')}
                         </button>
                         {r.status === 'draft' && (
@@ -406,7 +406,7 @@ export default function Payroll() {
                 <tbody>
                   {runDetail.payslips.map((ps) => (
                     <tr key={ps.id} className="hover:bg-[rgba(63,92,66,0.04)] cursor-pointer" onClick={() => setSelectedSlip(ps)}>
-                      <td className="table-td font-medium text-[#3f5c42]">{ps.employee_name}</td>
+                      <td className="table-td font-medium text-[#6B7280]">{ps.employee_name}</td>
                       <td className="table-td font-mono text-xs">{ps.cpf}</td>
                       <td className="table-td text-right font-mono">{money(ps.gross_earnings, locale)}</td>
                       <td className="table-td text-right font-mono">{money(ps.inss_deduction, locale)}</td>
@@ -452,8 +452,8 @@ function PayslipView({ slip, locale, t, onClose }: { slip: any; locale: string; 
     <div className="rounded-xl border border-[rgba(63,92,66,0.2)] p-4 space-y-3" data-testid="payslip-detail" style={{ background: 'linear-gradient(180deg,#f8fbf5,#eef3ea)' }}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-display text-lg font-semibold text-[#243328]">{t('payroll.holerite')} — {slip.employee_name}</h3>
-          <p className="text-xs text-[#5c6558] font-mono mt-0.5">CPF {slip.cpf} · {slip.role}</p>
+          <h3 className="font-display text-lg font-semibold text-[#3a342c]">{t('payroll.holerite')} — {slip.employee_name}</h3>
+          <p className="text-xs text-[#6b645a] font-mono mt-0.5">CPF {slip.cpf} · {slip.role}</p>
         </div>
         <button type="button" className="btn-secondary text-xs" onClick={onClose}>{t('common.back')}</button>
       </div>
@@ -474,7 +474,7 @@ function PayslipView({ slip, locale, t, onClose }: { slip: any; locale: string; 
                   {l.description}
                   {l.reference ? <span className="text-xs text-[#7a8476] ml-1">({l.reference})</span> : null}
                 </td>
-                <td className={`table-td text-right font-mono ${l.type === 'deduction' ? 'text-rose-700' : l.type === 'info' ? 'text-[#5c6558]' : 'text-emerald-800'}`}>
+                <td className={`table-td text-right font-mono ${l.type === 'deduction' ? 'text-rose-700' : l.type === 'info' ? 'text-[#6b645a]' : 'text-emerald-800'}`}>
                   {money(l.amount, locale)}
                 </td>
               </tr>
@@ -587,7 +587,7 @@ function EmployeeForm({ initial, minimumWage, onClose, onSaved }: {
     <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('payroll.new_employee')} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <FormError message={error} />
-        <p className="text-xs text-[#5c6558]">{t('payroll.employee_legal_hint')}</p>
+        <p className="text-xs text-[#6b645a]">{t('payroll.employee_legal_hint')}</p>
         <div>
           <label className="label">{t('payroll.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required />

@@ -1,18 +1,18 @@
 /** @type {import('tailwindcss').Config} */
 
-/** Warm moss / stone neutrals — replace cool default slate/gray so skeuomorphism stays earthly. */
+/** Warm parchment / aluminum neutrals — skeuomorphic desk language. */
 const earthSlate = {
-  50: '#f3f7f2',
-  100: '#e4ebe0',
-  200: '#cdd8cb',
-  300: '#b0bfae',
-  400: '#8a9686',
-  500: '#6d796a',
-  600: '#5c6558',
-  700: '#3a463c',
-  800: '#2c382e',
-  900: '#243328',
-  950: '#141c16',
+  50: '#f4efe6',
+  100: '#e8dfd1',
+  200: '#d9cebd',
+  300: '#cfc3b0',
+  400: '#b0b7c0',
+  500: '#6b645a',
+  600: '#5c564c',
+  700: '#4a453c',
+  800: '#3a342c',
+  900: '#2c2822',
+  950: '#1a1814',
 };
 
 export default {
@@ -20,37 +20,38 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Override cool defaults → earthly stone (all existing slate-* / gray-* classes)
         slate: earthSlate,
         gray: earthSlate,
         zinc: earthSlate,
         neutral: earthSlate,
-        // Earthly moss / stone / clay — remapped clinic tokens for skeuomorphism
         primary: {
-          50: '#f3f7f2', 100: '#e2ebe0', 200: '#c5d6c3', 300: '#9bb89a',
-          400: '#6f9470', 500: '#527554', 600: '#3f5c42', 700: '#334a36',
-          800: '#2b3d2e', 900: '#243328',
+          50: '#f4efe6', 100: '#e8dfd1', 200: '#d9cebd', 300: '#cfc3b0',
+          400: '#b0b7c0', 500: '#9CA3AF', 600: '#6B7280', 700: '#4b5563',
+          800: '#3a342c', 900: '#2c2822',
         },
         clinic: {
-          50: '#f3f7f2',
-          100: '#e2ebe0',
-          200: '#c5d6c3',
-          300: '#9bb89a',
-          400: '#6f9470',
-          500: '#527554',
-          600: '#3f5c42',
-          700: '#334a36',
-          800: '#2b3d2e',
-          900: '#1f2c22',
-          950: '#141c16',
+          50: '#f4efe6',
+          100: '#e8dfd1',
+          200: '#d9cebd',
+          300: '#cfc3b0',
+          400: '#b0b7c0',
+          500: '#9CA3AF',
+          600: '#6B7280',
+          700: '#4b5563',
+          800: '#3a342c',
+          900: '#2c2822',
+          950: '#1a1814',
         },
         earth: {
-          linen: '#e7eee4',
-          mist: '#d5dfd2',
-          stone: '#6d665c',
-          clay: '#8a6a45',
-          bark: '#3a2f26',
-          moss: '#3f5c42',
+          linen: '#f4efe6',
+          mist: '#e8dfd1',
+          stone: '#6b645a',
+          clay: '#a08060',
+          bark: '#3a342c',
+          moss: '#6B7280',
+          parchment: '#E8DFD1',
+          groove: '#D9CEBD',
+          aluminum: '#9CA3AF',
         },
       },
       fontFamily: {
@@ -59,13 +60,13 @@ export default {
       },
       boxShadow: {
         raised:
-          'inset 0 1px 0 rgba(255,255,255,0.72), inset 0 -1px 0 rgba(40,55,35,0.08), 0 1px 2px rgba(40,55,35,0.06), 0 6px 16px rgba(40,55,35,0.10)',
+          'inset 0 1px 0 rgba(255,255,255,0.72), inset 0 -1px 0 rgba(58,52,44,0.08), 0 1px 2px rgba(58,52,44,0.06), 0 6px 16px rgba(58,52,44,0.10)',
         pressed:
-          'inset 0 2px 5px rgba(40,55,35,0.18), inset 0 1px 0 rgba(0,0,0,0.04)',
+          'inset 2px 2px 5px rgba(0,0,0,0.25), inset -1px -1px 2px rgba(255,255,255,0.7)',
         knob:
-          'inset 0 1px 0 rgba(255,255,255,0.28), 0 2px 0 #2a4430, 0 6px 14px rgba(30,50,35,0.28)',
+          'inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 0 #4b5563, 0 6px 14px rgba(55,65,81,0.28)',
         wood:
-          'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.35), 4px 0 24px rgba(0,0,0,0.25)',
+          '4px 0 15px rgba(0,0,0,0.12)',
       },
       borderRadius: {
         panel: '1rem',
@@ -75,9 +76,11 @@ export default {
       },
       backgroundImage: {
         linen:
-          'radial-gradient(ellipse at 20% 10%, rgba(255,255,255,0.45), transparent 45%), radial-gradient(ellipse at 80% 0%, rgba(143,166,130,0.18), transparent 40%), linear-gradient(165deg, #e9f0e6 0%, #d7e1d3 48%, #cfdac9 100%)',
+          'radial-gradient(rgba(255,255,255,0.4) 1px, transparent 0), linear-gradient(165deg, #f0e8dc 0%, #e8dfd1 48%, #d9d0c2 100%)',
         wood:
-          'linear-gradient(180deg, #2d3f31 0%, #223328 42%, #1a261e 100%)',
+          'radial-gradient(rgba(255,255,255,0.4) 1px, transparent 0)',
+        aluminum:
+          'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 50%, #9CA3AF 100%)',
       },
     },
   },

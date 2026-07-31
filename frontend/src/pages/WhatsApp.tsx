@@ -152,13 +152,13 @@ export default function WhatsApp() {
 
       {tab === 'chat' && (
       <div className="grid md:grid-cols-3 gap-4 h-[min(70vh,600px)] min-h-[420px]">
-        <div className="card overflow-y-auto well !bg-none" style={{ background: 'linear-gradient(180deg, #f7faf4, #eef3ea)' }}>
-          <div className="p-3 border-b border-[rgba(63,92,66,0.16)] font-semibold text-sm"
-            style={{ background: 'linear-gradient(180deg, #eef3ea, #e2ebe0)' }}>
+        <div className="card overflow-y-auto well !bg-none" style={{ background: 'linear-gradient(180deg, #f7f2ea, #efe6d8)' }}>
+          <div className="p-3 border-b border-[rgba(176,183,192,0.45)] font-semibold text-sm"
+            style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}>
             {t('whatsapp.conversations')}
           </div>
           {conversations.map((c) => (
-            <div key={c.id} className={`group relative border-b border-[rgba(63,92,66,0.08)] transition-colors ${activePhone === c.phone ? 'bg-clinic-50' : 'hover:bg-[#e8efe4]'}`}>
+            <div key={c.id} className={`group relative border-b border-[rgba(176,183,192,0.35)] transition-colors ${activePhone === c.phone ? 'bg-clinic-50' : 'hover:bg-[#efe6d8]'}`}>
               <button onClick={() => setActivePhone(c.phone)} className="w-full text-left p-3">
                 <div className="font-medium text-sm pr-7">{c.patient_name || c.phone}</div>
                 <div className="text-xs text-slate-500 font-mono">{c.phone}</div>
@@ -185,8 +185,8 @@ export default function WhatsApp() {
         <div className="card md:col-span-2 flex flex-col overflow-hidden">
           {activePhone ? (
             <>
-              <div className="p-3 border-b border-[rgba(63,92,66,0.16)] flex items-center justify-between gap-2"
-                style={{ background: 'linear-gradient(180deg, #eef3ea, #e2ebe0)' }}>
+              <div className="p-3 border-b border-[rgba(176,183,192,0.45)] flex items-center justify-between gap-2"
+                style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}>
                 <span className="font-mono text-sm">{activePhone}</span>
                 <div className="seg-track !p-0.5">
                   <button onClick={() => setMode('send')}
@@ -202,28 +202,28 @@ export default function WhatsApp() {
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2"
-                style={{ background: 'linear-gradient(180deg, #dfe8db 0%, #eef3ea 40%, #f4f8f1 100%)' }}>
+                style={{ background: 'linear-gradient(180deg, #ddd4c6 0%, #efe6d8 40%, #f4efe6 100%)' }}>
                 {messages.map((m) => (
                   <div key={m.id} className={`flex ${m.direction === 'in' ? 'justify-start' : 'justify-end'}`}>
                     <div className={`max-w-[75%] rounded-xl px-3 py-2 text-sm ${
                       m.direction === 'in'
-                        ? 'text-[#243328]'
+                        ? 'text-[#3a342c]'
                         : 'text-white'
                     }`}
                       style={m.direction === 'in'
                         ? {
-                            background: 'linear-gradient(180deg, #f7faf4, #e7eee3)',
-                            border: '1px solid rgba(63,92,66,0.22)',
+                            background: 'linear-gradient(180deg, #f7f2ea, #e8dfd1)',
+                            border: '1px solid rgba(184,172,153,0.55)',
                             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.85), 0 2px 6px rgba(40,55,35,0.08)',
                           }
                         : {
-                            background: 'linear-gradient(180deg, #5f8768, #3f5c42)',
-                            border: '1px solid rgba(26,40,28,0.35)',
-                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 0 #2a4430, 0 4px 10px rgba(30,50,35,0.22)',
+                            background: 'linear-gradient(180deg, #9CA3AF, #6B7280)',
+                            border: '1px solid rgba(75,85,99,0.45)',
+                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), 0 2px 0 #4b5563, 0 4px 10px rgba(55,65,81,0.22)',
                           }}
                     >
                       <div className="whitespace-pre-wrap">{m.body}</div>
-                      <div className={`text-xs mt-1 flex items-center gap-1 ${m.direction === 'in' ? 'text-slate-400' : 'text-[#d7e4d3]'}`}>
+                      <div className={`text-xs mt-1 flex items-center gap-1 ${m.direction === 'in' ? 'text-slate-400' : 'text-[#E5E7EB]'}`}>
                         {new Date(m.created_at).toLocaleTimeString(locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US')}
                         {m.direction === 'out' && m.status && <span className="opacity-80">· {m.status}</span>}
                       </div>
@@ -231,8 +231,8 @@ export default function WhatsApp() {
                   </div>
                 ))}
               </div>
-              <div className="p-3 border-t border-[rgba(63,92,66,0.16)] flex gap-2"
-                style={{ background: 'linear-gradient(180deg, #eef3ea, #e2ebe0)' }}>
+              <div className="p-3 border-t border-[rgba(176,183,192,0.45)] flex gap-2"
+                style={{ background: 'linear-gradient(180deg, #efe6d8, #e8dfd1)' }}>
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -716,7 +716,7 @@ function AudienceView() {
               data-testid={`segment-${s}`}
             >
               <div className="text-xs text-slate-500 mb-1">{t(`whatsapp.segment_${s}`)}</div>
-              <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{data.segments?.[s] ?? '—'}</div>
+              <div className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{data.segments?.[s] ?? '—'}</div>
             </button>
           ))}
           <div className="card p-4">
@@ -725,7 +725,7 @@ function AudienceView() {
           </div>
           <div className="card p-4">
             <div className="text-xs text-slate-500 mb-1">{t('whatsapp.with_phone')}</div>
-            <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{data.with_phone ?? 0}</div>
+            <div className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{data.with_phone ?? 0}</div>
           </div>
         </div>
       )}
@@ -792,7 +792,7 @@ function AnalyticsView() {
         {kpis.map((k) => (
           <div key={k.label} className="card p-4 text-center">
             <div className="text-xs text-slate-500 mb-1 truncate">{k.label}</div>
-            <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{k.value}</div>
+            <div className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{k.value}</div>
           </div>
         ))}
       </div>

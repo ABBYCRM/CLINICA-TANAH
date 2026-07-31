@@ -52,7 +52,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-4">
-      <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('settings.title')}</h1>
+      <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('settings.title')}</h1>
 
       {error && <FormError message={error} />}
 

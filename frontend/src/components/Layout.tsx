@@ -79,7 +79,7 @@ export default function Layout() {
   ];
 
   const brand = (compact: boolean) => (
-    <div className="p-4 border-b border-black/25 flex items-center gap-3">
+    <div className="aluminum-header p-4 flex items-center gap-3">
       <div className="brand-medallion w-10 h-10 shrink-0">
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
@@ -87,8 +87,8 @@ export default function Layout() {
       </div>
       {!compact && (
         <div className="overflow-hidden min-w-0">
-          <div className="font-display font-semibold text-[#eef5ea] truncate tracking-tight text-[15px]">{tenantLabel}</div>
-          <div className="text-[11px] text-[#9bb89a] truncate">{t('app.tagline')}</div>
+          <div className="font-display font-semibold text-[#3a342c] truncate tracking-tight text-[15px]">{tenantLabel}</div>
+          <div className="text-[11px] text-[#5c564c] truncate">{t('app.tagline')}</div>
         </div>
       )}
     </div>
@@ -104,7 +104,7 @@ export default function Layout() {
           onClick={onNavigate}
           title={compact ? label : undefined}
           className={({ isActive }) =>
-            `group nav-chip ${isActive ? 'nav-chip-active font-semibold' : 'nav-chip-idle'}`
+            `group nav-chip ${isActive ? 'menu-item-active nav-chip-active font-semibold' : 'nav-chip-idle'}`
           }
         >
           <Icon className="w-5 h-5 shrink-0 transition-transform duration-200 group-hover:scale-105" />
@@ -115,13 +115,18 @@ export default function Layout() {
   );
 
   const sidebarFooter = (compact: boolean) => (
-    <div className="p-3 border-t border-black/25 text-xs space-y-2">
+    <div className="p-3 border-t border-[#B0B7C0] text-xs space-y-2">
       {!compact && (
         <>
           <div>
-            <div className="text-[#8aa58a] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
-            <div className="inline-flex rounded-xl p-0.5 border border-white/10"
-              style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.15))', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.35)' }}>
+            <div className="text-[#6b645a] mb-1.5 font-semibold tracking-wide uppercase text-[10px]">{t('common.language')}</div>
+            <div
+              className="inline-flex rounded-xl p-0.5 border border-[#B0B7C0]"
+              style={{
+                background: 'linear-gradient(180deg, #ddd4c6, #e8dfd1)',
+                boxShadow: 'inset 0 2px 4px rgba(58,52,44,0.16)',
+              }}
+            >
               {locales.map((l) => (
                 <button
                   key={l}
@@ -129,22 +134,27 @@ export default function Layout() {
                   aria-pressed={l === locale}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
                     l === locale
-                      ? 'text-white shadow-knob'
-                      : 'text-[#9bb89a] hover:text-[#eef5ea]'
+                      ? 'text-white'
+                      : 'text-[#6b645a] hover:text-[#3a342c]'
                   }`}
-                  style={l === locale ? { background: 'linear-gradient(180deg, #5f8768, #3f5c42)' } : undefined}
+                  style={l === locale
+                    ? {
+                        background: 'linear-gradient(180deg, #9CA3AF, #6B7280)',
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.4), 0 1px 2px rgba(0,0,0,0.2)',
+                      }
+                    : undefined}
                 >
                   {l === 'pt-BR' ? 'PT' : l === 'es' ? 'ES' : 'EN'}
                 </button>
               ))}
             </div>
           </div>
-          <div className="pt-2 border-t border-black/25">
-            <div className="text-[#e2ebe0] font-semibold truncate">{user?.full_name}</div>
-            <div className="text-[#7a947a] truncate capitalize">{user?.role}</div>
+          <div className="pt-2 border-t border-[#B0B7C0]">
+            <div className="text-[#3a342c] font-semibold truncate">{user?.full_name}</div>
+            <div className="text-[#6b645a] truncate capitalize">{user?.role}</div>
             <button
               onClick={handleLogout}
-              className="mt-2 inline-flex items-center gap-1.5 text-[#d4a89a] transition-colors hover:text-[#efd0c8]"
+              className="mt-2 inline-flex items-center gap-1.5 text-[#8f4a3d] transition-colors hover:text-[#6e372d]"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" />
@@ -157,12 +167,20 @@ export default function Layout() {
     </div>
   );
 
+  const chromeBtn =
+    'inline-flex items-center justify-center rounded-xl p-2.5 text-[#3a342c] transition-all hover:brightness-105 min-h-11 min-w-11';
+  const chromeBtnStyle = {
+    background: 'linear-gradient(135deg, #E5E7EB, #D1D5DB)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.12)',
+    border: '1px solid #9CA3AF',
+  } as const;
+
   return (
     <div className="min-h-screen flex">
-      {/* Desktop sidebar — wood/moss panel */}
+      {/* Desktop sidebar — parchment skeuo */}
       <aside
         data-testid="sidebar"
-        className={`${sidebarOpen ? 'w-64' : 'w-[4.5rem]'} hidden lg:flex transition-[width] duration-300 ease-fluid shell-wood text-[#c5d4c4] flex-col shrink-0`}
+        className={`${sidebarOpen ? 'w-64' : 'w-[4.5rem]'} hidden lg:flex transition-[width] duration-300 ease-fluid skeuo-sidebar flex-col shrink-0`}
       >
         {brand(!sidebarOpen)}
         {navList(undefined, !sidebarOpen)}
@@ -173,14 +191,14 @@ export default function Layout() {
       <div
         data-testid="drawer-backdrop"
         onClick={() => setMobileOpen(false)}
-        className={`lg:hidden fixed inset-0 z-40 bg-[#141c16]/55 backdrop-blur-[2px] transition-opacity duration-300 ${
+        className={`lg:hidden fixed inset-0 z-40 bg-[#3a342c]/45 backdrop-blur-[2px] transition-opacity duration-300 ${
           mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         aria-hidden="true"
       />
       <aside
         data-testid="mobile-drawer"
-        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] shell-wood text-[#c5d4c4] flex flex-col transition-transform duration-300 ease-fluid ${
+        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] skeuo-sidebar flex flex-col transition-transform duration-300 ease-fluid ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-hidden={!mobileOpen}
@@ -190,7 +208,7 @@ export default function Layout() {
           <button
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
-            className="absolute top-4 right-4 rounded-lg p-1.5 text-[#9bb89a] transition-colors hover:bg-white/10 hover:text-white"
+            className="absolute top-4 right-4 rounded-lg p-1.5 text-[#5c564c] transition-colors hover:bg-black/5 hover:text-[#3a342c]"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -203,13 +221,13 @@ export default function Layout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-30 shell-header px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <header className="sticky top-0 z-30 aluminum-header px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <button
             data-testid="mobile-menu-button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
-            className="lg:hidden inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2.5 text-[#3f5c42] transition-all hover:brightness-105"
-            style={{ background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(40,55,35,0.12)', border: '1px solid rgba(63,92,66,0.22)' }}
+            className={`lg:hidden ${chromeBtn}`}
+            style={chromeBtnStyle}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M4 6h16M4 12h16M4 18h16" />
@@ -218,16 +236,16 @@ export default function Layout() {
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Toggle sidebar"
-            className="hidden lg:block rounded-xl p-2 text-[#3f5c42] transition-all hover:brightness-105"
-            style={{ background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 4px rgba(40,55,35,0.12)', border: '1px solid rgba(63,92,66,0.22)' }}
+            className={`hidden lg:block ${chromeBtn}`}
+            style={chromeBtnStyle}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
               <path d="M4 6h16M4 12h16M4 18h10" />
             </svg>
           </button>
           <div className="min-w-0 flex-1">
-            <div className="font-display text-[15px] font-semibold text-[#243328] truncate" data-testid="active-clinic">{tenantLabel}</div>
-            <div className="text-xs text-[#5c6558] truncate hidden sm:block">{t('app.address')}</div>
+            <div className="font-display text-[15px] font-semibold text-[#3a342c] truncate" data-testid="active-clinic">{tenantLabel}</div>
+            <div className="text-xs text-[#4a453c]/90 truncate hidden sm:block">{t('app.address')}</div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 animate-fade-in">

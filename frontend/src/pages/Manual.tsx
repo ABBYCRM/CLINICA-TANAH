@@ -86,7 +86,7 @@ export default function Manual() {
   return (
     <div className="space-y-6" data-testid="user-manual">
       <div>
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('manual.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('manual.title')}</h1>
         <p className="text-slate-500 text-sm mt-1 max-w-3xl">{t('manual.subtitle')}</p>
       </div>
 

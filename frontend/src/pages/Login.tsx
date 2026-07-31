@@ -69,21 +69,13 @@ export default function Login() {
 
   return (
     <div className="login-desk min-h-screen flex">
-      {/* Brand panel — wood grain plane */}
-      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden shell-wood p-12 text-[#eef5ea]">
+      {/* Brand panel — parchment skeuo */}
+      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden skeuo-sidebar p-12 text-[#3a342c]">
         <div
-          className="pointer-events-none absolute inset-0 opacity-40 animate-drift"
+          className="pointer-events-none absolute inset-0 opacity-50 animate-drift"
           style={{
             background:
-              'radial-gradient(ellipse 70% 50% at 15% 20%, rgba(143,168,122,0.35), transparent 55%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(90,70,50,0.3), transparent 50%)',
-          }}
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-overlay"
-          style={{
-            backgroundImage:
-              'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.7\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")',
+              'radial-gradient(ellipse 70% 50% at 15% 20%, rgba(255,255,255,0.55), transparent 55%), radial-gradient(ellipse 50% 40% at 85% 85%, rgba(156,163,175,0.35), transparent 50%)',
           }}
           aria-hidden="true"
         />
@@ -91,7 +83,7 @@ export default function Login() {
         <div className="relative animate-fade-in-down">
           <div className="flex items-center gap-4">
             <LogoMark className="w-12 h-12" />
-            <div className="text-sm text-[#9bb89a]">{t('app.tagline')}</div>
+            <div className="text-sm text-[#6b645a]">{t('app.tagline')}</div>
           </div>
         </div>
 
@@ -99,16 +91,16 @@ export default function Login() {
           <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight animate-fade-in-up delay-100">
             {t('app.name')}
           </h1>
-          <p className="max-w-md text-[1.05rem] text-[#c5d4c4] leading-relaxed animate-fade-in-up delay-200">
+          <p className="max-w-md text-[1.05rem] text-[#5c564c] leading-relaxed animate-fade-in-up delay-200">
             {t('auth.brand_subtitle')}
           </p>
           <ul className="space-y-3.5 animate-fade-in-up delay-300">
             {features.map((f) => (
-              <li key={f.label} className="flex items-center gap-3 text-sm text-[#d7e4d3]">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#eef5ea] border border-white/10"
+              <li key={f.label} className="flex items-center gap-3 text-sm text-[#3a342c]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#3a342c] border border-[#B0B7C0]"
                   style={{
-                    background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 6px rgba(0,0,0,0.2)',
+                    background: 'linear-gradient(135deg, #E5E7EB, #D1D5DB)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.12)',
                   }}
                 >
                   {f.icon}
@@ -119,12 +111,12 @@ export default function Login() {
           </ul>
         </div>
 
-        <div className="relative flex items-center gap-2 text-xs text-[#8aa58a] animate-fade-in delay-300">
+        <div className="relative flex items-center gap-2 text-xs text-[#6b645a] animate-fade-in delay-300">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
           <span>{t('auth.secure_notice')}</span>
-          <span className="text-[#5a705a]">·</span>
+          <span className="text-[#9a9184]">·</span>
           <span className="truncate">{t('app.address')}</span>
         </div>
       </aside>
@@ -137,33 +129,33 @@ export default function Login() {
         </div>
 
         <div className="relative w-full max-w-md max-lg:self-start px-4 sm:px-8 pb-8 lg:px-0 lg:pb-0">
-          {/* Mobile brand header — full-bleed wood */}
-          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden shell-wood px-6 pt-12 pb-24 text-center text-[#eef5ea] lg:hidden">
+          {/* Mobile brand header — full-bleed parchment */}
+          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden skeuo-sidebar px-6 pt-12 pb-24 text-center text-[#3a342c] lg:hidden">
             <div
               className="pointer-events-none absolute inset-0 opacity-50 animate-leaf"
-              style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(143,168,122,0.4), transparent 55%)' }}
+              style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(255,255,255,0.55), transparent 55%)' }}
               aria-hidden="true"
             />
             <div className="relative flex flex-col items-center animate-fade-in-down">
               <LogoMark className="w-14 h-14" />
               <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight">{t('app.name')}</h1>
-              <p className="mt-1 text-sm text-[#9bb89a]">{t('app.tagline')}</p>
+              <p className="mt-1 text-sm text-[#6b645a]">{t('app.tagline')}</p>
             </div>
           </div>
 
           <div className="panel-inset relative animate-fade-in-up p-6 sm:p-8" data-testid="login-card">
             <div className="mb-6 hidden lg:block">
-              <h2 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('auth.welcome')}</h2>
-              <p className="mt-1 text-sm text-[#5c6558]">{t('auth.subtitle')}</p>
+              <h2 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('auth.welcome')}</h2>
+              <p className="mt-1 text-sm text-[#6b645a]">{t('auth.subtitle')}</p>
             </div>
 
             <div className="mb-6 flex justify-center" data-testid="locale-switcher">
               <div
                 className="inline-flex rounded-xl p-0.5"
                 style={{
-                  background: 'linear-gradient(180deg, #dde6d9, #eef3ea)',
-                  border: '1px solid rgba(63,92,66,0.22)',
-                  boxShadow: 'inset 0 2px 4px rgba(40,55,35,0.12)',
+                  background: 'linear-gradient(180deg, #ddd4c6, #f0e8dc)',
+                  border: '1px solid #b8ac99',
+                  boxShadow: 'inset 0 2px 4px rgba(58,52,44,0.12)',
                 }}
               >
                 {locales.map((l) => (
@@ -175,9 +167,9 @@ export default function Login() {
                     className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
                       l === locale
                         ? 'text-white shadow-knob'
-                        : 'text-[#5c6558] hover:text-[#243328]'
+                        : 'text-[#6b645a] hover:text-[#3a342c]'
                     }`}
-                    style={l === locale ? { background: 'linear-gradient(180deg, #5f8768, #3f5c42)' } : undefined}
+                    style={l === locale ? { background: 'linear-gradient(180deg, #9CA3AF, #6B7280)' } : undefined}
                   >
                     {localeLabels[l]}
                   </button>
@@ -239,7 +231,7 @@ export default function Login() {
                     data-testid="toggle-password"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? t('auth.hide_password') : t('auth.show_password')}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2 text-[#7a8476] transition-colors hover:bg-[#e2ebe0] hover:text-[#3f5c42]"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center min-h-11 min-w-11 rounded-xl p-2 text-[#8a8174] transition-colors hover:bg-[#e8dfd1] hover:text-[#3a342c]"
                   >
                     {showPassword ? (
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
@@ -274,16 +266,16 @@ export default function Login() {
               </button>
             </form>
 
-            <details className="group mt-6 rounded-xl text-xs text-[#5c6558] open:shadow-sm"
+            <details className="group mt-6 rounded-xl text-xs text-[#6b645a] open:shadow-sm"
               style={{
-                background: 'linear-gradient(180deg, #eef3ea, #e2ebe0)',
-                border: '1px solid rgba(63,92,66,0.2)',
+                background: 'linear-gradient(180deg, #f0e8dc, #e8dfd1)',
+                border: '1px solid #b8ac99',
                 boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
               }}
             >
-              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 font-semibold text-[#334a36] transition-colors hover:text-[#243328] [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 font-semibold text-[#3a342c] transition-colors hover:text-[#4a453c] [&::-webkit-details-marker]:hidden">
                 <span className="flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#3f5c42]" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#6B7280]" aria-hidden="true">
                     <circle cx="12" cy="8" r="4" /><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
                   </svg>
                   {t('auth.demo_accounts')}
@@ -292,8 +284,8 @@ export default function Login() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </summary>
-              <div className="space-y-1 border-t border-[rgba(63,92,66,0.15)] px-3.5 py-3">
-                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-[#7a8476]">{t('auth.demo_password_hint')}</div>
+              <div className="space-y-1 border-t border-[#b8ac99] px-3.5 py-3">
+                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-[#8a8174]">{t('auth.demo_password_hint')}</div>
                 <div className="font-mono">admin@clinica-tanah.com.br</div>
                 <div className="font-mono">silva@clinica-tanah.com.br</div>
                 <div className="font-mono">santos@clinica-tanah.com.br</div>
@@ -302,8 +294,8 @@ export default function Login() {
             </details>
           </div>
 
-          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[#7a8476] animate-fade-in delay-200">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#3f5c42]" aria-hidden="true">
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-[#8a8174] animate-fade-in delay-200">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-[#6B7280]" aria-hidden="true">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
             {t('auth.secure_notice')}

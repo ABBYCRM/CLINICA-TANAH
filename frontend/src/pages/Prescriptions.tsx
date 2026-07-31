@@ -47,7 +47,7 @@ export default function Prescriptions() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('prescriptions.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('prescriptions.title')}</h1>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-prescription">
           + {t('prescriptions.new')}
         </button>

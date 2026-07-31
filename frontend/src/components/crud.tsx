@@ -41,12 +41,12 @@ export function Modal({ title, onClose, children, wide }: {
           className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(63,92,66,0.18)] px-6 py-4"
           style={{ background: 'linear-gradient(180deg, #f4efe6 0%, #ebe4d8 100%)' }}
         >
-          <h2 className="font-display text-lg font-semibold tracking-tight text-[#243328]">{title}</h2>
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[#3a342c]">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-xl p-1.5 text-[#7a8476] transition-all hover:text-[#243328]"
+            className="rounded-xl p-1.5 text-[#7a8476] transition-all hover:text-[#3a342c]"
             style={{
               background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)',
               border: '1px solid rgba(63,92,66,0.2)',
@@ -85,8 +85,8 @@ export function ConfirmDialog({ name, onCancel, onConfirm, busy, notice }: {
           >
             <IconTrash className="w-5 h-5" />
           </div>
-          <div className="text-sm text-[#5c6558]">
-            {name && <div className="font-semibold text-[#243328] mb-1">{name}</div>}
+          <div className="text-sm text-[#6b645a]">
+            {name && <div className="font-semibold text-[#3a342c] mb-1">{name}</div>}
             {t('crud.confirm_delete_body')}
             {notice && (
               <div

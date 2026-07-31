@@ -37,7 +37,7 @@ export default function Dashboard() {
   if (loading && !data) {
     return (
       <div className="flex min-h-[30vh] items-center justify-center" data-testid="dashboard-loading">
-        <div className="panel-inset px-6 py-4 text-sm text-[#5c6558]">{t('common.loading')}</div>
+        <div className="panel-inset px-6 py-4 text-sm text-[#6b645a]">{t('common.loading')}</div>
       </div>
     );
   }
@@ -87,10 +87,10 @@ export default function Dashboard() {
   return (
     <div className="space-y-7" data-testid="dashboard">
       <header className="max-w-2xl animate-fade-in-down">
-        <h1 className="font-display text-[1.85rem] font-semibold tracking-tight text-[#243328] sm:text-[2.05rem]">
+        <h1 className="font-display text-[1.85rem] font-semibold tracking-tight text-[#3a342c] sm:text-[2.05rem]">
           {t('dashboard.welcome')}
         </h1>
-        <p className="mt-1.5 text-sm text-[#5c6558]">
+        <p className="mt-1.5 text-sm text-[#6b645a]">
           {t('app.name')} — {t('app.address')}
         </p>
       </header>
@@ -103,7 +103,7 @@ export default function Dashboard() {
             style={{ animationDelay: `${i * 0.05}s` }}
           >
             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[#7a8476]">{c.label}</p>
-            <p className="mt-3 font-display text-[1.7rem] font-semibold leading-none tracking-tight text-[#243328]">
+            <p className="mt-3 font-display text-[1.7rem] font-semibold leading-none tracking-tight text-[#3a342c]">
               {c.value}
             </p>
           </div>
@@ -112,7 +112,7 @@ export default function Dashboard() {
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[#7a8476]">
             {t('dashboard.monthly_revenue')}
           </p>
-          <p className="mt-3 font-display text-[1.45rem] font-semibold leading-none tracking-tight text-[#243328]">
+          <p className="mt-3 font-display text-[1.45rem] font-semibold leading-none tracking-tight text-[#3a342c]">
             {revenue}
           </p>
         </div>
@@ -120,10 +120,10 @@ export default function Dashboard() {
 
       <section className="card overflow-hidden animate-fade-in-up delay-200">
         <div
-          className="flex items-center justify-between gap-3 border-b border-[rgba(63,92,66,0.16)] px-5 py-3.5"
-          style={{ background: 'linear-gradient(180deg, #f4efe6 0%, #ebe4d8 100%)' }}
+          className="flex items-center justify-between gap-3 border-b border-[rgba(176,183,192,0.45)] px-5 py-3.5"
+          style={{ background: 'linear-gradient(180deg, #E5E7EB 0%, #D1D5DB 100%)' }}
         >
-          <h2 className="font-display text-lg font-semibold text-[#243328]">
+          <h2 className="font-display text-lg font-semibold text-[#3a342c]">
             {t('dashboard.upcoming_appointments')}
           </h2>
         </div>
@@ -145,8 +145,8 @@ export default function Dashboard() {
                 </tr>
               )}
               {data.upcoming_appointments.map((a: any, i: number) => (
-                <tr key={i} className="transition-colors hover:bg-[rgba(63,92,66,0.04)]">
-                  <td className="table-td font-medium text-[#243328]">{a.scheduled_at}</td>
+                <tr key={i} className="transition-colors hover:bg-[rgba(176,183,192,0.2)]">
+                  <td className="table-td font-medium text-[#3a342c]">{a.scheduled_at}</td>
                   <td className="table-td">{a.patient_name}</td>
                   <td className="table-td">{a.practitioner_name}</td>
                   <td className="table-td">{typeLabel(a.type)}</td>

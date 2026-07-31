@@ -91,11 +91,11 @@ export default function Team() {
     <div className="space-y-4" data-testid="team-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('team.title')}</h1>
-          <p className="text-sm text-[#5c6558] mt-0.5">{t('team.subtitle')}</p>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('team.title')}</h1>
+          <p className="text-sm text-[#6b645a] mt-0.5">{t('team.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-[#5c6558] cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-[#6b645a] cursor-pointer">
             <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} data-testid="show-inactive" />
             {t('team.show_inactive')}
           </label>
@@ -116,16 +116,16 @@ export default function Team() {
             <div key={u.id} className={`p-4 space-y-2 ${u.active ? '' : 'opacity-60'}`} data-testid={`user-card-${u.id}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-semibold text-[#243328] break-words">
+                  <div className="font-semibold text-[#3a342c] break-words">
                     {u.full_name}
                     {!u.active && <span className="ml-2 badge-slate">{t('team.inactive')}</span>}
                   </div>
-                  <div className="text-sm text-[#5c6558] break-all">{u.email}</div>
+                  <div className="text-sm text-[#6b645a] break-all">{u.email}</div>
                 </div>
                 <span className={roleBadge(u.role)}>{roleLabel(u.role)}</span>
               </div>
               <div className="text-xs text-[#7a8476] space-y-0.5">
-                <div>CPF <span className="font-mono text-[#334a36]">{u.cpf || '—'}</span></div>
+                <div>CPF <span className="font-mono text-[#4a453c]">{u.cpf || '—'}</span></div>
                 <div>{u.council_number ? `${u.council_number}${u.council_state ? `/${u.council_state}` : ''}` : '—'}</div>
               </div>
               <div className="flex items-center justify-end gap-2 pt-1">
@@ -176,7 +176,7 @@ export default function Team() {
                       {!u.active && (
                         <button
                           type="button"
-                          className="text-xs font-medium text-[#3f5c42] hover:underline px-1.5"
+                          className="text-xs font-medium text-[#6B7280] hover:underline px-1.5"
                           onClick={() => reactivate(u)}
                         >
                           {t('team.reactivate')}
@@ -264,7 +264,7 @@ function UserForm({ initial, onClose, onSaved }: { initial: any | null; onClose:
     <Modal title={initial ? `${t('crud.edit')} — ${initial.full_name}` : t('team.new_user')} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <FormError message={error} />
-        <p className="text-xs text-[#5c6558]">{t('team.legal_hint')}</p>
+        <p className="text-xs text-[#6b645a]">{t('team.legal_hint')}</p>
         <div>
           <label className="label">{t('team.full_name')} *</label>
           <input className="input" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required data-testid="user-name" />
