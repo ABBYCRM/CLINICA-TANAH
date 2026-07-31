@@ -97,7 +97,7 @@ export default function WhatsApp() {
     <div className="space-y-4" data-testid="whatsapp-marketing">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t('whatsapp.title')}</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('whatsapp.title')}</h1>
           <p className="text-sm text-slate-500 mt-0.5">{t('whatsapp.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -696,7 +696,7 @@ function AudienceView() {
               data-testid={`segment-${s}`}
             >
               <div className="text-xs text-slate-500 mb-1">{t(`whatsapp.segment_${s}`)}</div>
-              <div className="text-2xl font-bold text-slate-900">{data.segments?.[s] ?? '—'}</div>
+              <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{data.segments?.[s] ?? '—'}</div>
             </button>
           ))}
           <div className="card p-4">
@@ -705,7 +705,7 @@ function AudienceView() {
           </div>
           <div className="card p-4">
             <div className="text-xs text-slate-500 mb-1">{t('whatsapp.with_phone')}</div>
-            <div className="text-2xl font-bold text-slate-900">{data.with_phone ?? 0}</div>
+            <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{data.with_phone ?? 0}</div>
           </div>
         </div>
       )}
@@ -772,7 +772,7 @@ function AnalyticsView() {
         {kpis.map((k) => (
           <div key={k.label} className="card p-4 text-center">
             <div className="text-xs text-slate-500 mb-1 truncate">{k.label}</div>
-            <div className="text-2xl font-bold text-slate-900">{k.value}</div>
+            <div className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{k.value}</div>
           </div>
         ))}
       </div>

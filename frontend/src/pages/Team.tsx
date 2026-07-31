@@ -49,7 +49,7 @@ export default function Team() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('team.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('team.title')}</h1>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
             <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />

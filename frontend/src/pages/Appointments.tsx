@@ -64,7 +64,7 @@ export default function Appointments() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('appointments.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('appointments.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
             {(['calendar', 'list'] as const).map((k) => (

@@ -47,7 +47,7 @@ export default function Encounters() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">{t('encounters.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('encounters.title')}</h1>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-encounter">
           + {t('encounters.new')}
         </button>

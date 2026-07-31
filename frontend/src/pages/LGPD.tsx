@@ -41,7 +41,7 @@ export default function LGPD() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">🔒 {t('lgpd.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-[#243328]">{t('lgpd.title')}</h1>
         <button onClick={() => setShowRequestForm(true)} className="btn-primary" data-testid="new-lgpd-request">
           + {t('lgpd.new_request')}
         </button>
@@ -54,8 +54,8 @@ export default function LGPD() {
           <div className="card p-5">
             <h3 className="font-semibold mb-3 text-clinic-700">{t('lgpd.dpo_name')}</h3>
             <div className="text-2xl font-bold">{policy.dpo.name}</div>
-            <div className="text-sm text-slate-600 mt-1">📧 {policy.dpo.email}</div>
-            <div className="text-sm text-slate-600">📞 {policy.dpo.phone}</div>
+            <div className="text-sm text-slate-600 mt-1">{policy.dpo.email}</div>
+            <div className="text-sm text-slate-600">{policy.dpo.phone}</div>
             <div className="mt-3 text-xs text-slate-500">{t('lgpd.policy_version')}: <span className="font-mono">{policy.version}</span> · {policy.effective_date}</div>
           </div>
 
