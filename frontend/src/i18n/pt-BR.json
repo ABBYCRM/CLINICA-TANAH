@@ -108,6 +108,8 @@
     "address_city": "Cidade",
     "address_state": "UF",
     "health_insurance": "Convênio",
+    "filter_insurance_all": "Convênio: todos",
+    "filter_insurance_none": "Sem convênio",
     "blood_type": "Tipo sanguíneo",
     "allergies": "Alergias",
     "chronic_conditions": "Condições crônicas",

@@ -108,6 +108,8 @@
     "address_city": "Ciudad",
     "address_state": "Estado",
     "health_insurance": "Seguro",
+    "filter_insurance_all": "Convenio: todos",
+    "filter_insurance_none": "Sin convenio",
     "blood_type": "Tipo sangre",
     "allergies": "Alergias",
     "chronic_conditions": "Condiciones crónicas",
