@@ -107,6 +107,8 @@
     "address_city": "City",
     "address_state": "State",
     "health_insurance": "Insurance",
+    "filter_insurance_all": "Insurance: all",
+    "filter_insurance_none": "No insurance",
     "blood_type": "Blood type",
     "allergies": "Allergies",
     "chronic_conditions": "Chronic conditions",

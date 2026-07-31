@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
+import { CONVENIOS } from '../lib/convenios';
 
 export default function Patients() {
   const { t, locale } = useI18n();
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [insurance, setInsurance] = useState('');
   const [editing, setEditing] = useState<any | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [deleting, setDeleting] = useState<any | null>(null);
@@ -41,6 +43,12 @@ export default function Patients() {
     }
   };
 
+  const visible = patients.filter((p) => {
+    if (!insurance) return true;
+    if (insurance === '__none__') return !p.health_insurance;
+    return p.health_insurance === insurance;
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -52,14 +60,27 @@ export default function Patients() {
 
       {error && <FormError message={error} />}
 
-      <div className="card p-4">
+      <div className="card p-4 flex flex-wrap items-center gap-3">
         <input
           type="text"
           placeholder={t('common.search') + '...'}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="input max-w-md"
+          className="input max-w-md flex-1 min-w-[12rem]"
         />
+        <select
+          className="input w-auto min-w-[14rem]"
+          value={insurance}
+          onChange={(e) => setInsurance(e.target.value)}
+          aria-label={t('patients.health_insurance')}
+          data-testid="filter-insurance"
+        >
+          <option value="">{t('patients.filter_insurance_all')}</option>
+          <option value="__none__">{t('patients.filter_insurance_none')}</option>
+          {CONVENIOS.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
       </div>
 
       <div className="card">
@@ -80,10 +101,10 @@ export default function Patients() {
               {loading && (
                 <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">{t('common.loading')}</td></tr>
               )}
-              {!loading && patients.length === 0 && (
+              {!loading && visible.length === 0 && (
                 <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">{t('common.no_data')}</td></tr>
               )}
-              {patients.map((p) => (
+              {visible.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                   <td className="table-td font-medium">{p.full_name}</td>
                   <td className="table-td font-mono text-xs">{p.cpf || '—'}</td>
