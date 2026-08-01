@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { api, ApiError } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { FormError } from '../components/crud';
 
@@ -9,9 +9,11 @@ type FormRow = {
   slug: string;
   description?: string | null;
   active: boolean;
+  kind?: string;
   policy_version: string;
   consent_text: string;
   submission_count: number;
+  mailer_configured?: boolean;
   urls: { link: string; embed: string };
 };
 
@@ -33,6 +35,29 @@ type Submission = {
   created_at: string;
 };
 
+type Invite = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  channel: string;
+  status: string;
+  link?: string | null;
+  error?: string | null;
+  mailto_url?: string | null;
+  sent_at?: string | null;
+  created_at: string;
+};
+
+type SendInviteResult = {
+  id: string;
+  status: string;
+  link: string;
+  mailto_url?: string | null;
+  mailer_configured?: boolean;
+  error?: string | null;
+};
+
 async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text);
@@ -51,20 +76,34 @@ async function copyText(text: string) {
 export default function Forms() {
   const { t, locale } = useI18n();
   const [forms, setForms] = useState<FormRow[]>([]);
+  const [mailerConfigured, setMailerConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [okMsg, setOkMsg] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [subsLoading, setSubsLoading] = useState(false);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
+  const [inviteChannel, setInviteChannel] = useState<'email' | 'whatsapp' | 'both'>('email');
+  const [sending, setSending] = useState(false);
+  const [lastMailto, setLastMailto] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError('');
     api.get('/api/forms')
       .then((d) => {
-        setForms(d.forms || []);
-        if (!selectedId && d.forms?.length) setSelectedId(d.forms[0].id);
+        const list: FormRow[] = d.forms || [];
+        setForms(list);
+        setMailerConfigured(Boolean(list[0]?.mailer_configured));
+        if (!selectedId && list.length) {
+          const prefer = list.find((f) => f.kind === 'pre_triage' || f.slug === 'pre-triagem-paciente');
+          setSelectedId((prefer || list[0]).id);
+        }
       })
       .catch((e) => setError(e.message || t('errors.generic')))
       .finally(() => setLoading(false));
@@ -73,12 +112,15 @@ export default function Forms() {
   useEffect(() => { load(); }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!selectedId) { setSubs([]); return; }
+    if (!selectedId) { setSubs([]); setInvites([]); return; }
     setSubsLoading(true);
     api.get(`/api/forms/${selectedId}/submissions`)
       .then((d) => setSubs(d.submissions || []))
       .catch(console.error)
       .finally(() => setSubsLoading(false));
+    api.get(`/api/forms/${selectedId}/invites`)
+      .then((d) => setInvites(d.invites || []))
+      .catch(() => setInvites([]));
   }, [selectedId, locale]);
 
   const onCopy = async (key: string, text: string) => {
@@ -87,7 +129,49 @@ export default function Forms() {
     setTimeout(() => setCopied(null), 1800);
   };
 
+  const onSendInvite = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedId) return;
+    setSending(true);
+    setError('');
+    setOkMsg('');
+    setLastMailto(null);
+    try {
+      const res: SendInviteResult = await api.post(`/api/forms/${selectedId}/send-invite`, {
+        full_name: inviteName.trim() || null,
+        email: inviteEmail.trim() || null,
+        phone: invitePhone.trim() || null,
+        channel: inviteChannel,
+      });
+      if (res.mailto_url) {
+        setLastMailto(res.mailto_url);
+        setOkMsg(t('forms.invite_mailto_hint'));
+      } else {
+        setOkMsg(t('forms.invite_sent'));
+      }
+      setInviteName('');
+      setInviteEmail('');
+      setInvitePhone('');
+      const inv = await api.get(`/api/forms/${selectedId}/invites`);
+      setInvites(inv.invites || []);
+    } catch (err) {
+      if (err instanceof ApiError && err.body?.mailto_url) {
+        setLastMailto(err.body.mailto_url);
+        setOkMsg(t('forms.invite_mailto_hint'));
+        try {
+          const inv = await api.get(`/api/forms/${selectedId}/invites`);
+          setInvites(inv.invites || []);
+        } catch { /* */ }
+      } else {
+        setError(err instanceof Error ? err.message : t('errors.generic'));
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
   const selected = forms.find((f) => f.id === selectedId) || null;
+  const isTriage = selected?.kind === 'pre_triage' || selected?.slug === 'pre-triagem-paciente';
 
   return (
     <div className="space-y-4" data-testid="forms-page">
@@ -97,6 +181,17 @@ export default function Forms() {
       </div>
 
       {error && <FormError message={error} />}
+      {okMsg && (
+        <div className="rounded-lg border border-[var(--moss)]/30 bg-[var(--moss)]/10 px-3 py-2 text-sm text-[var(--moss)]" role="status">
+          {okMsg}
+          {lastMailto ? (
+            <>
+              {' '}
+              <a href={lastMailto} className="underline font-medium text-[var(--ink)]">{t('forms.open_mailto')}</a>
+            </>
+          ) : null}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-sm text-[var(--ink-muted)]">{t('common.loading')}</div>
@@ -117,7 +212,14 @@ export default function Forms() {
                 }`}
                 data-testid={`form-item-${f.slug}`}
               >
-                <div className="truncate">{f.name}</div>
+                <div className="flex items-center gap-2 truncate">
+                  <span className="truncate">{f.name}</span>
+                  {(f.kind === 'pre_triage' || f.slug === 'pre-triagem-paciente') && (
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#8b6914]/15 text-[#6b5210]">
+                      {t('forms.kind_pre_triage_short')}
+                    </span>
+                  )}
+                </div>
                 <div className="text-[11px] mt-0.5 opacity-80">
                   /{f.slug} · {f.submission_count} {t('forms.submissions_short')}
                 </div>
@@ -135,6 +237,11 @@ export default function Forms() {
                       <p className="text-sm text-[var(--ink-muted)] mt-1">{selected.description}</p>
                     )}
                     <div className="text-xs text-[var(--ink-muted)] mt-2">
+                      {t('forms.kind')}:{' '}
+                      <span className="font-medium text-[var(--ink)]">
+                        {isTriage ? t('forms.kind_pre_triage') : t('forms.kind_cadastro')}
+                      </span>
+                      {' · '}
                       {t('forms.policy')}: <span className="font-mono">{selected.policy_version}</span>
                       {' · '}
                       {selected.active ? t('forms.active') : t('forms.inactive')}
@@ -200,6 +307,109 @@ export default function Forms() {
                 </div>
               </div>
 
+              <div className="card p-5 space-y-4" data-testid="form-send-invite">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-[var(--ink)]">{t('forms.send_invite_title')}</h3>
+                    <p className="text-sm text-[var(--ink-muted)] mt-1">{t('forms.send_invite_help')}</p>
+                  </div>
+                  <span
+                    className={`text-[11px] px-2 py-1 rounded ${
+                      mailerConfigured
+                        ? 'bg-[var(--moss)]/15 text-[var(--moss)]'
+                        : 'bg-[#8b6914]/12 text-[#6b5210]'
+                    }`}
+                  >
+                    {mailerConfigured ? t('forms.mailer_ok') : t('forms.mailer_missing')}
+                  </span>
+                </div>
+
+                <form className="space-y-3" onSubmit={onSendInvite}>
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('common.name')}</span>
+                      <input
+                        className="input mt-1 w-full"
+                        value={inviteName}
+                        onChange={(e) => setInviteName(e.target.value)}
+                        placeholder={t('forms.invite_name_ph')}
+                        data-testid="invite-name"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('common.email')}</span>
+                      <input
+                        type="email"
+                        className="input mt-1 w-full"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        required={inviteChannel !== 'whatsapp'}
+                        data-testid="invite-email"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('common.phone')}</span>
+                      <input
+                        className="input mt-1 w-full"
+                        value={invitePhone}
+                        onChange={(e) => setInvitePhone(e.target.value)}
+                        required={inviteChannel !== 'email'}
+                        placeholder="+55…"
+                        data-testid="invite-phone"
+                      />
+                    </label>
+                  </div>
+                  <label className="block max-w-xs">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('forms.channel')}</span>
+                    <select
+                      className="input mt-1 w-full"
+                      value={inviteChannel}
+                      onChange={(e) => setInviteChannel(e.target.value as typeof inviteChannel)}
+                      data-testid="invite-channel"
+                    >
+                      <option value="email">{t('forms.channel_email')}</option>
+                      <option value="whatsapp">{t('forms.channel_whatsapp')}</option>
+                      <option value="both">{t('forms.channel_both')}</option>
+                    </select>
+                  </label>
+                  <button type="submit" className="btn-primary" disabled={sending} data-testid="invite-send">
+                    {sending ? t('common.loading') : t('forms.send')}
+                  </button>
+                </form>
+
+                {invites.length > 0 && (
+                  <div className="overflow-x-auto border-t border-[var(--edge-soft)] pt-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-2">
+                      {t('forms.recent_invites')}
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase text-[var(--ink-muted)] border-b border-[var(--edge-soft)]">
+                          <th className="px-2 py-2">{t('common.name')}</th>
+                          <th className="px-2 py-2">{t('common.email')}</th>
+                          <th className="px-2 py-2">{t('forms.channel')}</th>
+                          <th className="px-2 py-2">{t('common.status')}</th>
+                          <th className="px-2 py-2">{t('common.date')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invites.map((inv) => (
+                          <tr key={inv.id} className="border-b border-[var(--edge-soft)]/60">
+                            <td className="px-2 py-2">{inv.full_name || '—'}</td>
+                            <td className="px-2 py-2 font-mono text-xs">{inv.email || inv.phone || '—'}</td>
+                            <td className="px-2 py-2 text-xs">{inv.channel}</td>
+                            <td className="px-2 py-2 text-xs">{inv.status}</td>
+                            <td className="px-2 py-2 text-xs whitespace-nowrap">
+                              {new Date((inv.sent_at || inv.created_at) + ((inv.sent_at || inv.created_at).includes('Z') ? '' : 'Z')).toLocaleString(locale)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               <div className="card">
                 <div className="px-5 py-3 border-b border-[var(--edge-soft)] font-semibold">
                   {t('forms.submissions')} ({subs.length})
@@ -216,6 +426,7 @@ export default function Forms() {
                           <th className="px-4 py-2">{t('common.name')}</th>
                           <th className="px-4 py-2">{t('common.phone')}</th>
                           <th className="px-4 py-2">{t('common.status')}</th>
+                          <th className="px-4 py-2">{t('forms.patient')}</th>
                           <th className="px-4 py-2">{t('forms.pixel')}</th>
                           <th className="px-4 py-2">{t('common.date')}</th>
                         </tr>
@@ -230,6 +441,15 @@ export default function Forms() {
                               {s.self_attested ? (
                                 <span className="ml-2 text-[11px] text-[var(--moss)]">✓ {t('forms.self_attested')}</span>
                               ) : null}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs font-mono">
+                              {s.patient_id ? (
+                                <a href={`/patients/${s.patient_id}`} className="underline">
+                                  #{s.patient_id.slice(0, 8)}
+                                </a>
+                              ) : (
+                                '—'
+                              )}
                             </td>
                             <td className="px-4 py-2.5 text-xs">
                               {s.pixel_viewed_at ? (

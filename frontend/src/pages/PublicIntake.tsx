@@ -10,6 +10,8 @@ type FormMeta = {
   description?: string | null;
   consent_text: string;
   policy_version: string;
+  kind?: string;
+  emergency_notice?: boolean;
 };
 
 type ClinicMeta = {
@@ -17,6 +19,23 @@ type ClinicMeta = {
   address?: string | null;
   phone?: string | null;
 };
+
+const CHRONIC_OPTS = [
+  'hypertension', 'diabetes', 'thyroid', 'asthma_copd', 'heart_disease',
+  'kidney_disease', 'liver_disease', 'cancer', 'obesity', 'anxiety_depression', 'none',
+] as const;
+
+const RED_FLAG_OPTS = [
+  'chest_pain', 'shortness_of_breath', 'severe_bleeding', 'high_fever',
+  'neuro_deficit', 'severe_allergic_reaction', 'sudden_severe_pain', 'none',
+] as const;
+
+function toggleIn(list: string[], key: string, exclusiveNone = true): string[] {
+  if (key === 'none') return list.includes('none') ? [] : ['none'];
+  const withoutNone = list.filter((x) => x !== 'none');
+  if (withoutNone.includes(key)) return withoutNone.filter((x) => x !== key);
+  return exclusiveNone ? [...withoutNone, key] : [...list, key];
+}
 
 export default function PublicIntake() {
   const { slug = '' } = useParams();
@@ -31,6 +50,7 @@ export default function PublicIntake() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [urgentHint, setUrgentHint] = useState(false);
   const [error, setError] = useState('');
 
   const [fullName, setFullName] = useState('');
@@ -40,12 +60,30 @@ export default function PublicIntake() {
   const [cpf, setCpf] = useState('');
   const [city, setCity] = useState('');
   const [stateUf, setStateUf] = useState('SP');
+  const [gender, setGender] = useState('');
   const [notes, setNotes] = useState('');
+
+  const [chiefComplaint, setChiefComplaint] = useState('');
+  const [symptomDuration, setSymptomDuration] = useState('');
+  const [allergies, setAllergies] = useState('');
+  const [medications, setMedications] = useState('');
+  const [chronic, setChronic] = useState<string[]>([]);
+  const [surgeries, setSurgeries] = useState('');
+  const [familyHx, setFamilyHx] = useState('');
+  const [pregnancy, setPregnancy] = useState('na');
+  const [smoking, setSmoking] = useState('never');
+  const [alcohol, setAlcohol] = useState('never');
+  const [redFlags, setRedFlags] = useState<string[]>([]);
+  const [urgency, setUrgency] = useState('routine');
+  const [additionalNotes, setAdditionalNotes] = useState('');
+
   const [consentLgpd, setConsentLgpd] = useState(false);
   const [consentWhatsapp, setConsentWhatsapp] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
   const [consentCalls, setConsentCalls] = useState(false);
   const [selfAttested, setSelfAttested] = useState(false);
+
+  const isTriage = form?.kind === 'pre_triage' || slug === 'pre-triagem-paciente';
 
   useEffect(() => {
     if (!slug) return;
@@ -78,7 +116,7 @@ export default function PublicIntake() {
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- t is unstable; slug drives reload
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   const onSubmit = async (e: FormEvent) => {
@@ -88,30 +126,48 @@ export default function PublicIntake() {
     setError('');
     try {
       const cpfDigits = cpf.replace(/\D/g, '');
+      const body: Record<string, unknown> = {
+        pixel_token: pixelToken,
+        full_name: fullName.trim(),
+        birth_date: birthDate,
+        phone: phone.trim(),
+        email: email.trim() || null,
+        cpf: cpfDigits || null,
+        city: city.trim() || null,
+        state: stateUf.trim().toUpperCase() || null,
+        notes: notes.trim() || null,
+        consent_lgpd: consentLgpd,
+        consent_whatsapp: consentWhatsapp,
+        consent_marketing: consentMarketing,
+        consent_calls: consentCalls,
+        self_attested: selfAttested,
+      };
+      if (isTriage) {
+        Object.assign(body, {
+          gender: gender || null,
+          chief_complaint: chiefComplaint.trim(),
+          symptom_duration: symptomDuration || null,
+          allergies: allergies.trim() || null,
+          current_medications: medications.trim() || null,
+          chronic_conditions: chronic,
+          prior_surgeries: surgeries.trim() || null,
+          family_history: familyHx.trim() || null,
+          pregnancy_status: pregnancy || null,
+          smoking,
+          alcohol,
+          red_flags: redFlags,
+          urgency_self: urgency,
+          additional_notes: additionalNotes.trim() || null,
+        });
+      }
       const res = await fetch(`${API_BASE}/api/public/forms/${encodeURIComponent(slug)}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept-Language': locale },
-        body: JSON.stringify({
-          pixel_token: pixelToken,
-          full_name: fullName.trim(),
-          birth_date: birthDate,
-          phone: phone.trim(),
-          email: email.trim() || null,
-          cpf: cpfDigits || null,
-          city: city.trim() || null,
-          state: stateUf.trim().toUpperCase() || null,
-          notes: notes.trim() || null,
-          consent_lgpd: consentLgpd,
-          consent_whatsapp: consentWhatsapp,
-          consent_marketing: consentMarketing,
-          consent_calls: consentCalls,
-          self_attested: selfAttested,
-        }),
+        body: JSON.stringify(body),
       });
-      const body = await res.json();
-      if (!res.ok) {
-        throw new Error(body.message || body.error || 'submit_failed');
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'submit_failed');
+      setUrgentHint(!!data.urgent_hint);
       setDone(true);
     } catch (err: any) {
       setError(err.message || t('errors.generic'));
@@ -140,20 +196,16 @@ export default function PublicIntake() {
     <div
       className={`min-h-screen bg-[var(--paper)] text-[var(--ink)] ${embed ? 'py-4 px-3' : 'py-10 px-4'}`}
       data-testid="public-intake"
+      data-kind={form?.kind || 'cadastro'}
       style={{
         backgroundImage:
           'radial-gradient(ellipse at top, rgba(201,162,90,0.12), transparent 55%), linear-gradient(180deg, #f7efdc 0%, #f2e6cc 40%, #ead9b8 100%)',
       }}
     >
       {pixelUrl ? (
-        <img
-          src={pixelUrl}
-          alt=""
-          width={1}
-          height={1}
+        <img src={pixelUrl} alt="" width={1} height={1}
           style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-          data-testid="consent-pixel"
-        />
+          data-testid="consent-pixel" />
       ) : null}
 
       <div className={`mx-auto ${embed ? 'max-w-lg' : 'max-w-xl'}`}>
@@ -170,15 +222,9 @@ export default function PublicIntake() {
                 <div className="text-xs text-[var(--ink-muted)]">{t('public_form.tagline')}</div>
               </div>
             </div>
-            <select
-              className="input text-xs py-1.5 w-auto"
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as any)}
-              aria-label={t('common.language')}
-            >
-              {locales.map((l) => (
-                <option key={l} value={l}>{localeLabels[l]}</option>
-              ))}
+            <select className="input text-xs py-1.5 w-auto" value={locale}
+              onChange={(e) => setLocale(e.target.value as any)} aria-label={t('common.language')}>
+              {locales.map((l) => <option key={l} value={l}>{localeLabels[l]}</option>)}
             </select>
           </div>
         )}
@@ -189,6 +235,11 @@ export default function PublicIntake() {
               <div className="text-3xl font-display text-[var(--moss)]">✓</div>
               <h1 className="font-display text-2xl">{t('public_form.success_title')}</h1>
               <p className="text-[var(--ink-muted)]">{t('public_form.success_body')}</p>
+              {urgentHint && (
+                <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] border border-[#e2b8a8] rounded-lg px-3 py-2">
+                  {t('public_form.urgent_followup')}
+                </p>
+              )}
             </div>
           ) : (
             <form onSubmit={onSubmit} className="space-y-5" data-testid="public-intake-form">
@@ -199,46 +250,174 @@ export default function PublicIntake() {
                 )}
               </div>
 
-              {error && (
-                <div className="rounded-lg border border-[var(--clay)]/40 bg-[var(--clay)]/10 px-3 py-2 text-sm text-[var(--clay)]">
-                  {error}
+              {isTriage && (
+                <div className="rounded-lg border border-[#c45c3e]/35 bg-[#f8e8e2]/70 px-3 py-2 text-sm text-[#6b2a1a]" role="note">
+                  {t('public_form.emergency_banner')}
                 </div>
               )}
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                <label className="block sm:col-span-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.full_name')} *</span>
-                  <input required className="input mt-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="pf-name" autoComplete="name" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.birth_date')} *</span>
-                  <input required type="date" className="input mt-1 w-full" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} data-testid="pf-birth" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.phone')} *</span>
-                  <input required className="input mt-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+55 11 99999-0000" data-testid="pf-phone" autoComplete="tel" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.email')}</span>
-                  <input type="email" className="input mt-1 w-full" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="pf-email" autoComplete="email" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.cpf')}</span>
-                  <input className="input mt-1 w-full" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" data-testid="pf-cpf" inputMode="numeric" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.city')}</span>
-                  <input className="input mt-1 w-full" value={city} onChange={(e) => setCity(e.target.value)} data-testid="pf-city" />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.state')}</span>
-                  <input className="input mt-1 w-full" maxLength={2} value={stateUf} onChange={(e) => setStateUf(e.target.value.toUpperCase())} data-testid="pf-state" />
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.notes')}</span>
-                  <textarea className="input mt-1 w-full" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="pf-notes" />
-                </label>
-              </div>
+              {error && (
+                <div className="rounded-lg border border-[var(--clay)]/40 bg-[var(--clay)]/10 px-3 py-2 text-sm text-[var(--clay)]">{error}</div>
+              )}
+
+              <fieldset className="space-y-3">
+                <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_identity')}</legend>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.full_name')} *</span>
+                    <input required className="input mt-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="pf-name" autoComplete="name" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.birth_date')} *</span>
+                    <input required type="date" className="input mt-1 w-full" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} data-testid="pf-birth" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.phone')} *</span>
+                    <input required className="input mt-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+55 11 99999-0000" data-testid="pf-phone" autoComplete="tel" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.email')}</span>
+                    <input type="email" className="input mt-1 w-full" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="pf-email" autoComplete="email" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.cpf')}</span>
+                    <input className="input mt-1 w-full" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" data-testid="pf-cpf" inputMode="numeric" />
+                  </label>
+                  {isTriage && (
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.gender')}</span>
+                      <select className="input mt-1 w-full" value={gender} onChange={(e) => setGender(e.target.value)} data-testid="pf-gender">
+                        <option value="">—</option>
+                        <option value="F">{t('public_form.gender_F')}</option>
+                        <option value="M">{t('public_form.gender_M')}</option>
+                        <option value="O">{t('public_form.gender_O')}</option>
+                        <option value="N">{t('public_form.gender_N')}</option>
+                      </select>
+                    </label>
+                  )}
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.city')}</span>
+                    <input className="input mt-1 w-full" value={city} onChange={(e) => setCity(e.target.value)} data-testid="pf-city" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.state')}</span>
+                    <input className="input mt-1 w-full" maxLength={2} value={stateUf} onChange={(e) => setStateUf(e.target.value.toUpperCase())} data-testid="pf-state" />
+                  </label>
+                  {!isTriage && (
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.notes')}</span>
+                      <textarea className="input mt-1 w-full" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="pf-notes" />
+                    </label>
+                  )}
+                </div>
+              </fieldset>
+
+              {isTriage && (
+                <>
+                  <fieldset className="space-y-3" data-testid="pf-triage-clinical">
+                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_clinical')}</legend>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.chief_complaint')} *</span>
+                      <textarea required className="input mt-1 w-full" rows={3} value={chiefComplaint} onChange={(e) => setChiefComplaint(e.target.value)} data-testid="pf-complaint" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.symptom_duration')} *</span>
+                      <select required className="input mt-1 w-full" value={symptomDuration} onChange={(e) => setSymptomDuration(e.target.value)} data-testid="pf-duration">
+                        <option value="">—</option>
+                        {(['lt_24h', 'd1_7', 'w1_4', 'm1_3', 'gt_3m'] as const).map((k) => (
+                          <option key={k} value={k}>{t(`public_form.duration_${k}`)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.allergies')}</span>
+                      <textarea className="input mt-1 w-full" rows={2} value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder={t('public_form.allergies_ph')} data-testid="pf-allergies" />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.medications')}</span>
+                      <textarea className="input mt-1 w-full" rows={2} value={medications} onChange={(e) => setMedications(e.target.value)} data-testid="pf-meds" />
+                    </label>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-2">{t('public_form.chronic')}</div>
+                      <div className="grid sm:grid-cols-2 gap-1.5">
+                        {CHRONIC_OPTS.map((k) => (
+                          <label key={k} className="flex gap-2 items-center text-sm cursor-pointer">
+                            <input type="checkbox" checked={chronic.includes(k)}
+                              onChange={() => setChronic((prev) => toggleIn(prev, k))} />
+                            {t(`public_form.chronic_${k}`)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.surgeries')}</span>
+                      <textarea className="input mt-1 w-full" rows={2} value={surgeries} onChange={(e) => setSurgeries(e.target.value)} />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.family_history')}</span>
+                      <textarea className="input mt-1 w-full" rows={2} value={familyHx} onChange={(e) => setFamilyHx(e.target.value)} />
+                    </label>
+                  </fieldset>
+
+                  <fieldset className="space-y-3">
+                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_lifestyle')}</legend>
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.pregnancy')}</span>
+                        <select className="input mt-1 w-full" value={pregnancy} onChange={(e) => setPregnancy(e.target.value)}>
+                          {(['na', 'no', 'yes', 'breastfeeding', 'unknown'] as const).map((k) => (
+                            <option key={k} value={k}>{t(`public_form.pregnancy_${k}`)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.smoking')}</span>
+                        <select className="input mt-1 w-full" value={smoking} onChange={(e) => setSmoking(e.target.value)}>
+                          {(['never', 'former', 'current'] as const).map((k) => (
+                            <option key={k} value={k}>{t(`public_form.smoking_${k}`)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.alcohol')}</span>
+                        <select className="input mt-1 w-full" value={alcohol} onChange={(e) => setAlcohol(e.target.value)}>
+                          {(['never', 'social', 'frequent'] as const).map((k) => (
+                            <option key={k} value={k}>{t(`public_form.alcohol_${k}`)}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </fieldset>
+
+                  <fieldset className="space-y-3" data-testid="pf-triage-safety">
+                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_safety')}</legend>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-2">{t('public_form.red_flags')} *</div>
+                      <div className="grid sm:grid-cols-2 gap-1.5">
+                        {RED_FLAG_OPTS.map((k) => (
+                          <label key={k} className="flex gap-2 items-center text-sm cursor-pointer">
+                            <input type="checkbox" checked={redFlags.includes(k)}
+                              onChange={() => setRedFlags((prev) => toggleIn(prev, k))} />
+                            {t(`public_form.flag_${k}`)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.urgency')} *</span>
+                      <select required className="input mt-1 w-full" value={urgency} onChange={(e) => setUrgency(e.target.value)} data-testid="pf-urgency">
+                        {(['routine', 'soon', 'urgent'] as const).map((k) => (
+                          <option key={k} value={k}>{t(`public_form.urgency_${k}`)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.additional_notes')}</span>
+                      <textarea className="input mt-1 w-full" rows={2} value={additionalNotes} onChange={(e) => setAdditionalNotes(e.target.value)} />
+                    </label>
+                  </fieldset>
+                </>
+              )}
 
               <div className="rounded-lg border border-[var(--edge-soft)] bg-[var(--paper-mid)]/50 p-4 space-y-3 text-sm">
                 <p className="text-[var(--ink-muted)] leading-relaxed">{form?.consent_text}</p>
@@ -249,7 +428,6 @@ export default function PublicIntake() {
                     {t('privacy.page_title')}
                   </a>
                 </p>
-
                 <label className="flex gap-2 items-start cursor-pointer">
                   <input type="checkbox" className="mt-1" checked={selfAttested} onChange={(e) => setSelfAttested(e.target.checked)} required data-testid="pf-self" />
                   <span>{t('public_form.self_attested')} *</span>
@@ -280,9 +458,7 @@ export default function PublicIntake() {
         </div>
 
         {!embed && clinic?.phone && (
-          <p className="text-center text-xs text-[var(--ink-muted)] mt-4">
-            {clinic.name} · {clinic.phone}
-          </p>
+          <p className="text-center text-xs text-[var(--ink-muted)] mt-4">{clinic.name} · {clinic.phone}</p>
         )}
       </div>
     </div>

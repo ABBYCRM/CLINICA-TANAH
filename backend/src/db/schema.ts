@@ -947,7 +947,37 @@ function migrate(): void {
     CREATE INDEX IF NOT EXISTS idx_intake_sub_tenant ON intake_submissions(tenant_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_intake_sub_pixel ON intake_submissions(pixel_token);
   `);
+  // Intake form kind + field template JSON; invite send log (before seed)
+  for (const sql of [
+    `ALTER TABLE intake_forms ADD COLUMN kind TEXT NOT NULL DEFAULT 'cadastro'`,
+    `ALTER TABLE intake_forms ADD COLUMN fields_json TEXT`,
+  ]) {
+    try { openDb().exec(sql); } catch { /* exists */ }
+  }
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS intake_invites (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      form_id TEXT NOT NULL,
+      patient_id TEXT,
+      full_name TEXT,
+      email TEXT,
+      phone TEXT,
+      channel TEXT NOT NULL DEFAULT 'email',
+      status TEXT NOT NULL DEFAULT 'pending',
+      link TEXT,
+      error TEXT,
+      mailto_url TEXT,
+      sent_by TEXT,
+      sent_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_intake_inv_tenant ON intake_invites(tenant_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_intake_inv_form ON intake_invites(form_id, created_at);
+  `);
+
   ensureDefaultIntakeForm(DEFAULT_TENANT_ID);
+  ensurePreTriageIntakeForm(DEFAULT_TENANT_ID);
 
   seedMarketingDefaults(DEFAULT_TENANT_ID);
   ensureRecallAutomation(DEFAULT_TENANT_ID);
@@ -965,16 +995,51 @@ function migrate(): void {
 
 function ensureDefaultIntakeForm(tenantId: string): void {
   const db = openDb();
-  const exists = db.prepare(`SELECT id FROM intake_forms WHERE tenant_id = ? AND slug = 'cadastro-paciente'`).get(tenantId);
-  if (exists) return;
+  const exists = db.prepare(`SELECT id FROM intake_forms WHERE tenant_id = ? AND slug = 'cadastro-paciente'`).get(tenantId) as any;
+  if (exists) {
+    try {
+      db.prepare(`UPDATE intake_forms SET kind = COALESCE(kind, 'cadastro') WHERE id = ?`).run(exists.id);
+    } catch { /* kind col may not exist yet on first pass */ }
+    return;
+  }
   const consent =
     'Declaro que sou a pessoa identificada neste formulário e autorizo a Clínica Tanah a tratar meus dados pessoais e de saúde conforme a LGPD (Lei 13.709/2018), para cadastro, atendimento e comunicações administrativas. Autorizo, se marcado abaixo, o contato via WhatsApp, SMS e telefone para lembretes, confirmações e mensagens de marketing, podendo revogar a qualquer momento respondendo SAIR ou solicitando à clínica.';
   db.prepare(`
-    INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text)
+    INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text, kind)
     VALUES (?, ?, 'Cadastro do paciente', 'cadastro-paciente',
       'Formulário público de cadastro com prova de preenchimento pelo próprio paciente (pixel + IP/UA) — conformidade LGPD / consentimento para comunicações (equivalente TCPA no Brasil).',
-      1, '1.0', ?)
+      1, '1.0', ?, 'cadastro')
   `).run(`form_cadastro_${tenantId}`, tenantId, consent);
+}
+
+function ensurePreTriageIntakeForm(tenantId: string): void {
+  const db = openDb();
+  const exists = db.prepare(`SELECT id FROM intake_forms WHERE tenant_id = ? AND slug = 'pre-triagem-paciente'`).get(tenantId);
+  if (exists) return;
+  // Dynamic import avoided — inline consent from template semantics
+  const consent =
+    'Declaro que sou a pessoa identificada neste formulário de pré-triagem / pré-consulta e autorizo a Clínica Tanah a tratar meus dados pessoais e de saúde conforme a LGPD (Lei 13.709/2018), para cadastro, avaliação clínica inicial, atendimento e comunicações administrativas. '
+    + 'Entendo que este formulário NÃO substitui atendimento de urgência/emergência: em caso de dor no peito, falta de ar intensa, sangramento grave, febre muito alta, déficit neurológico ou reação alérgica grave, devo procurar serviço de emergência (SAMU 192 / PS). '
+    + 'Autorizo, se marcado abaixo, contato via WhatsApp, SMS e telefone para lembretes e confirmações, podendo revogar a qualquer momento (SAIR no WhatsApp ou solicitação à clínica).';
+  try {
+    db.prepare(`
+      INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text, kind)
+      VALUES (?, ?, 'Pré-triagem / novo paciente', 'pre-triagem-paciente',
+        'Pré-cadastro e pré-triagem clínica para novos pacientes: queixa, alergias, medicações, comorbidades e sinais de alerta. Pode ser enviado por e-mail antes da consulta.',
+        1, '1.1', ?, 'pre_triage')
+    `).run(`form_pretriagem_${tenantId}`, tenantId, consent);
+  } catch (e: any) {
+    // kind column might not exist on very first create before ALTER — retry without kind
+    try {
+      db.prepare(`
+        INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text)
+        VALUES (?, ?, 'Pré-triagem / novo paciente', 'pre-triagem-paciente',
+          'Pré-cadastro e pré-triagem clínica para novos pacientes.',
+          1, '1.1', ?)
+      `).run(`form_pretriagem_${tenantId}`, tenantId, consent);
+      try { db.prepare(`UPDATE intake_forms SET kind = 'pre_triage' WHERE slug = 'pre-triagem-paciente' AND tenant_id = ?`).run(tenantId); } catch { /* */ }
+    } catch { /* duplicate */ }
+  }
 }
 
 function ensureRecallAutomation(tenantId: string): void {
