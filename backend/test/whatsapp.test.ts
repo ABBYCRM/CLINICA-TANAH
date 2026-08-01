@@ -80,7 +80,7 @@ describe('WhatsApp bot — Portuguese flow', () => {
     expect(reply).toMatch(/Promoç|campanha|Check-up|SAIR/i);
   });
 
-  it('SAIR triggers opt-out', async () => {
+  it('SAIR confirms marketing opt-out without locking clinical thread', async () => {
     const phone = '+5511933333333';
     persistIncoming(phone, 'oi');
     await handleMessage(phone, 'oi', 'pt-BR');
@@ -88,8 +88,22 @@ describe('WhatsApp bot — Portuguese flow', () => {
     await handleMessage(phone, 'SAIR', 'pt-BR');
     const reply = await getLastBotMessage(phone);
     expect(reply.toLowerCase()).toMatch(/removid|respeit/);
-    const conv = db.prepare(`SELECT opted_out FROM whatsapp_conversations WHERE phone = ?`).get(phone) as any;
-    expect(conv.opted_out).toBe(1);
+    const conv = db.prepare(`SELECT opted_out, state FROM whatsapp_conversations WHERE phone = ?`).get(phone) as any;
+    // SAIR opts out of marketing campaigns but keeps the conversation usable for clinical utility
+    expect(conv.state).toBe('idle');
+    expect(conv.opted_out).toBe(0);
+  });
+
+  it('atendente marks conversation awaiting_human for inbound desk', async () => {
+    const phone = '+5511922222211';
+    persistIncoming(phone, 'oi');
+    await handleMessage(phone, 'oi', 'pt-BR');
+    persistIncoming(phone, 'atendente');
+    await handleMessage(phone, 'atendente', 'pt-BR');
+    const reply = await getLastBotMessage(phone);
+    expect(reply.toLowerCase()).toMatch(/atendente|instantes|paci/);
+    const conv = db.prepare(`SELECT state FROM whatsapp_conversations WHERE phone = ?`).get(phone) as any;
+    expect(conv.state).toBe('awaiting_human');
   });
 
   it('English-speaker gets English menu', async () => {

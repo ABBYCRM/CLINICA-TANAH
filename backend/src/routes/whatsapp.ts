@@ -122,7 +122,7 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
 
   if (['atendente', 'humano', 'recepção', 'recepcao', 'agent'].includes(lower)) {
     await reply(phone, locale, 'transfer_to_human', {}, tenantId);
-    updateConversation(phone, tenantId, { state: 'idle' });
+    updateConversation(phone, tenantId, { state: 'awaiting_human' });
     return;
   }
 
@@ -343,6 +343,7 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
       }
       if (['9', 'humano', 'atendente', 'recepção', 'reception', 'agente'].some(k => lower === k || lower.includes(k))) {
         await reply(phone, locale, 'transfer_to_human', {}, tenantId);
+        updateConversation(phone, tenantId, { state: 'awaiting_human' });
         return;
       }
       if (['endereço', 'endereco', 'horário', 'horario', 'address', 'hours'].some(k => lower === k || lower.includes(k))) {
@@ -591,14 +592,62 @@ router.post('/webhook', async (req: Request, res: Response) => {
   }
 });
 
-// Staff inbox view
+// Staff inbox view — inbound-first conversation list with last-message preview
 router.get('/conversations', authenticate, (req, res) => {
-  res.json({ conversations: db.prepare(`
-    SELECT c.*, p.full_name AS patient_name
-    FROM whatsapp_conversations c LEFT JOIN patients p ON p.id = c.patient_id
+  const rows = db.prepare(`
+    SELECT c.*, p.full_name AS patient_name,
+      (
+        SELECT m.body FROM whatsapp_messages m
+        WHERE m.tenant_id = c.tenant_id
+          AND m.phone = c.phone
+        ORDER BY m.created_at DESC LIMIT 1
+      ) AS last_message_body,
+      (
+        SELECT m.direction FROM whatsapp_messages m
+        WHERE m.tenant_id = c.tenant_id
+          AND m.phone = c.phone
+        ORDER BY m.created_at DESC LIMIT 1
+      ) AS last_message_direction
+    FROM whatsapp_conversations c
+    LEFT JOIN patients p ON p.id = c.patient_id
     WHERE c.tenant_id = ?
-    ORDER BY c.last_message_at DESC LIMIT 200
-  `).all(req.tenantId) });
+    ORDER BY
+      CASE WHEN c.state = 'awaiting_human' THEN 0 ELSE 1 END,
+      c.last_message_at DESC
+    LIMIT 200
+  `).all(req.tenantId) as any[];
+
+  const conversations = rows.map((c) => ({
+    ...c,
+    needs_human: c.state === 'awaiting_human' || (c.last_message_direction === 'in' && c.state === 'idle'),
+    awaiting_bot: String(c.state || '').startsWith('awaiting_') && c.state !== 'awaiting_human',
+  }));
+  res.json({ conversations });
+});
+
+/** Staff claims a human handoff — clears awaiting_human so the bot does not steal the thread. */
+router.post('/conversations/:phone/claim', authenticate, requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req: Request, res: Response) => {
+  const phone = decodeURIComponent(req.params.phone);
+  let updated = false;
+  for (const p of phoneLookupVariants(phone)) {
+    const conv = db.prepare(`SELECT id, state FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(p, req.tenantId) as any;
+    if (!conv) continue;
+    updateConversation(p, req.tenantId!, { state: 'idle' });
+    updated = true;
+    logAudit({
+      tenantId: req.tenantId,
+      actorId: req.user!.id,
+      actorEmail: req.user!.email,
+      action: 'whatsapp_claim_conversation',
+      resourceType: 'whatsapp_conversation',
+      resourceId: p,
+      legalBasis: 'consent_art7_I',
+      afterValue: { from_state: conv.state, to_state: 'idle' },
+    });
+    break;
+  }
+  if (!updated) { res.status(404).json({ error: 'not_found' }); return; }
+  res.json({ ok: true, phone, state: 'idle' });
 });
 
 router.get('/messages', authenticate, (req: Request, res: Response) => {
@@ -636,6 +685,16 @@ router.post('/send', authenticate, requireRole('admin','receptionist','doctor','
     }
   } catch { /* ignore */ }
   const result = await sendTextMessage(phone, body, req.tenantId!);
+  // Staff reply claims the thread — leave awaiting_human
+  try {
+    for (const p of phoneLookupVariants(phone)) {
+      const conv = db.prepare(`SELECT state FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(p, req.tenantId) as any;
+      if (conv?.state === 'awaiting_human') {
+        updateConversation(p, req.tenantId!, { state: 'idle' });
+        break;
+      }
+    }
+  } catch { /* ignore */ }
   logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'whatsapp_staff_send', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
   res.status(result.ok ? 200 : 502).json(result);
 });
