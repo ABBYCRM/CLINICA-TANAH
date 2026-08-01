@@ -147,29 +147,42 @@ function normalizeResult(parsed: any, model: string, fallbackText: string): OcrI
 }
 
 async function callVision(model: string, dataUrl: string, apiKey: string): Promise<string> {
-  const res = await fetch(`${NVIDIA_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      top_p: 0.1,
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: SYSTEM_PROMPT },
-            { type: 'image_url', image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-    }),
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 22_000);
+  let res: Response;
+  try {
+    res = await fetch(`${NVIDIA_BASE}/chat/completions`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        top_p: 0.1,
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: SYSTEM_PROMPT },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+  } catch (e: any) {
+    const err: any = new Error(e?.name === 'AbortError' ? 'nvidia_timeout' : (e?.message || 'nvidia_fetch_failed'));
+    err.code = e?.name === 'AbortError' ? 'nvidia_ocr_failed' : 'nvidia_ocr_failed';
+    err.status = 504;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const text = await res.text();
   let body: any = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
@@ -209,19 +222,37 @@ export async function extractInvoiceFromImage(opts: {
   }
 
   let lastErr: any = null;
-  const maxKeyAttempts = Math.min(keys.length, 8);
-  for (let attempt = 0; attempt < maxKeyAttempts; attempt++) {
+  const deadline = Date.now() + 50_000; // stay under DO gateway ~60s
+  // Auth/rate-limit: try more keys. Parse/model failures: keep budget tight.
+  let keyBudget = Math.min(keys.length, 6);
+  let parseFailKeys = 0;
+
+  for (let attempt = 0; attempt < keyBudget; attempt++) {
+    if (Date.now() > deadline) break;
     const apiKey = nextKey();
+    let authFail = false;
+    let hadParseFail = false;
+
     for (const model of FALLBACK_MODELS) {
+      if (Date.now() > deadline) break;
       try {
         const content = await callVision(model, dataUrl, apiKey);
         const parsed = parseModelJson(content);
         return normalizeResult(parsed, model, content);
       } catch (e: any) {
         lastErr = e;
-        // try next model on parse/model errors; rotate key on rate limit / auth
-        if (e?.status === 401 || e?.status === 403 || e?.code === 'nvidia_rate_limited') break;
+        if (e?.status === 401 || e?.status === 403 || e?.code === 'nvidia_rate_limited') {
+          authFail = true;
+          break; // next key
+        }
+        // HTTP OK but unusable JSON / model error → try next model, then limited keys
+        hadParseFail = true;
       }
+    }
+
+    if (!authFail && hadParseFail) {
+      parseFailKeys += 1;
+      if (parseFailKeys >= 2) break; // unlikely another key fixes bad image/parse
     }
   }
   throw lastErr || Object.assign(new Error('nvidia_ocr_failed'), { code: 'nvidia_ocr_failed' });
