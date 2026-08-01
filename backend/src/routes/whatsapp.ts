@@ -619,7 +619,8 @@ router.get('/conversations', authenticate, (req, res) => {
 
   const conversations = rows.map((c) => ({
     ...c,
-    needs_human: c.state === 'awaiting_human' || (c.last_message_direction === 'in' && c.state === 'idle'),
+    needs_human: c.state === 'awaiting_human',
+    inbound_waiting: c.last_message_direction === 'in' && c.state !== 'awaiting_human' && !c.opted_out,
     awaiting_bot: String(c.state || '').startsWith('awaiting_') && c.state !== 'awaiting_human',
   }));
   res.json({ conversations });

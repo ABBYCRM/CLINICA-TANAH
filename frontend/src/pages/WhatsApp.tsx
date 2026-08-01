@@ -106,7 +106,7 @@ export default function WhatsApp() {
     const q = inboxSearch.trim().toLowerCase();
     return conversations.filter((c) => {
       if (inboxFilter === 'needs_human' && !(c.needs_human || c.state === 'awaiting_human')) return false;
-      if (inboxFilter === 'inbound' && c.last_message_direction !== 'in') return false;
+      if (inboxFilter === 'inbound' && !(c.inbound_waiting || c.last_message_direction === 'in')) return false;
       if (inboxFilter === 'bot' && !(c.awaiting_bot || String(c.state || '').startsWith('awaiting_'))) return false;
       if (inboxFilter === 'opted_out' && !c.opted_out) return false;
       if (!q) return true;
