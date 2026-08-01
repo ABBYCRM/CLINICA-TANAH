@@ -87,19 +87,19 @@ export default function Encounters() {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.35)]">
+      <div className="desk-feed-tabs flex flex-wrap gap-1 border-b border-[rgba(201,162,90,0.35)]">
         <button type="button" className={`crm-feed-tab ${tab === 'active' ? 'is-active' : ''}`} data-testid="enc-tab-active" onClick={() => setTab('active')}>
           {t('encounters.tab_active')}
-          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.active}</span>
+          <span className="ml-1.5 tabular-nums opacity-90">{counts.active}</span>
         </button>
         <button type="button" className={`crm-feed-tab ${tab === 'cancelled' ? 'is-active' : ''}`} data-testid="enc-tab-cancelled" onClick={() => setTab('cancelled')}>
           {t('encounters.tab_cancelled')}
-          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.cancelled}</span>
+          <span className="ml-1.5 tabular-nums opacity-90">{counts.cancelled}</span>
         </button>
       </div>
 
       {tab === 'cancelled' && (
-        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed max-w-3xl rounded-lg px-3 py-2"
+        <p className="text-sm text-[color:var(--ink)] leading-relaxed max-w-3xl rounded-lg px-3 py-2"
           style={{ background: 'linear-gradient(180deg,#f7f1e6,#efe6d8)', border: '1px solid rgba(176,183,192,0.45)' }}>
           {t('encounters.retention_notice')}
         </p>
