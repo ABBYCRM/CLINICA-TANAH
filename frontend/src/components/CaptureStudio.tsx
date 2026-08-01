@@ -365,10 +365,10 @@ export default function CaptureStudio({
           })}
         </div>
 
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_13.5rem] gap-3 items-start">
-          <div className="space-y-3 min-w-0">
+        <div className="flex flex-col lg:flex-row gap-3 items-start">
+          <div className="space-y-3 w-full lg:w-auto lg:max-w-full lg:flex-shrink-0">
             <div
-              className={`relative aspect-[3/4] max-h-[min(440px,70vh)] w-full mx-auto rounded-xl overflow-hidden border-2 border-dashed ${
+              className={`relative mx-auto h-[min(28rem,68vh)] aspect-[3/4] max-w-full rounded-xl overflow-hidden border-2 border-dashed ${
                 dragOver ? 'border-[color:var(--brass)] bg-[#f3eadc]' : 'border-[rgba(176,183,192,0.65)] bg-gradient-to-b from-[#faf6ef] to-[#efe6d8]'
               }`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -380,8 +380,9 @@ export default function CaptureStudio({
               }}
               data-testid="capture-stage"
             >
-              <div className="absolute inset-8 border border-[rgba(139,110,60,0.35)] rounded-[40%] pointer-events-none" />
-              <div className="absolute bottom-6 left-6 right-6 h-px bg-[rgba(139,110,60,0.45)] pointer-events-none" />
+              {/* Pose guide — scaled to the portrait frame, not a wide empty stage */}
+              <div className="absolute inset-[5%] border border-[rgba(139,110,60,0.32)] rounded-[45%/38%] pointer-events-none z-[2]" />
+              <div className="absolute bottom-[12%] left-[14%] right-[14%] h-px bg-[rgba(139,110,60,0.4)] pointer-events-none z-[2]" />
 
               {previewSrc ? (
                 <button
@@ -394,7 +395,7 @@ export default function CaptureStudio({
                   <img
                     src={previewSrc}
                     alt={`${t('body.vista')} ${viewLabel(view)}`}
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover object-top"
                   />
                 </button>
               ) : (
@@ -415,7 +416,7 @@ export default function CaptureStudio({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 max-w-[min(100%,21rem)] mx-auto lg:mx-0">
               <button
                 type="button"
                 className="btn-primary text-sm"
@@ -469,13 +470,13 @@ export default function CaptureStudio({
               )}
             </div>
             {asset && (
-              <p className="text-[11px] text-[color:var(--ink-muted)] leading-relaxed" data-testid="capture-retention-hint">
+              <p className="text-[11px] text-[color:var(--ink-muted)] leading-relaxed max-w-[min(100%,21rem)] mx-auto lg:mx-0" data-testid="capture-retention-hint">
                 {t('body.capture_delete_retention')}
               </p>
             )}
             {status && (
               <p
-                className={`text-sm ${/sucesso|success|concluída|conclu|enviada|retid|removida|ready|aberta|opened/i.test(status) && !/cannot|falh|fail|erro|error|invalid/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
+                className={`text-sm max-w-[min(100%,21rem)] mx-auto lg:mx-0 ${/sucesso|success|concluída|conclu|enviada|retid|removida|ready|aberta|opened/i.test(status) && !/cannot|falh|fail|erro|error|invalid/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
                 role="status"
                 data-testid="capture-status"
               >
@@ -484,7 +485,7 @@ export default function CaptureStudio({
             )}
           </div>
 
-          <aside className="space-y-3 min-w-0">
+          <aside className="space-y-3 min-w-0 w-full lg:w-[13.5rem] lg:flex-shrink-0">
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.quality')}</h4>
               {quality ? (
