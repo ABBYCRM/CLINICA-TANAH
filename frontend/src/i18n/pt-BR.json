@@ -614,7 +614,21 @@
     "reason": "Motivo",
     "unit_cost": "Custo unitário",
     "sale_price": "Preço de venda",
-    "anvisa": "Registro ANVISA"
+    "anvisa": "Registro ANVISA",
+    "alerts_ok": "OK — nenhum alerta",
+    "anvisa_recalls_title": "Alertas ANVISA / Recolhimentos",
+    "anvisa_recalls_hint": "Cruzamento do estoque com alertas sanitários e recolhimentos da ANVISA (catálogo curado + sincronização opcional via feed). Confira sempre o portal oficial.",
+    "anvisa_recalls_none": "Nenhum recolhimento ou alerta ANVISA coincide com o estoque atual.",
+    "anvisa_sync": "Atualizar ANVISA",
+    "anvisa_portal": "Portal ANVISA",
+    "anvisa_synced_at": "Última sincronização: {{date}}",
+    "anvisa_matched_stock": "Itens em estoque afetados",
+    "anvisa_open_alert": "Abrir fonte do alerta",
+    "anvisa_severity_critical": "Crítico",
+    "anvisa_severity_high": "Alto",
+    "anvisa_severity_medium": "Médio",
+    "anvisa_severity_info": "Info",
+    "anvisa_severity_low": "Baixo"
   },
   "vendors": {
     "title": "Fornecedores",

@@ -14,6 +14,7 @@ import path from 'path';
 import fs from 'fs';
 import { migratePhiAtRest } from '../services/phiCrypto';
 import { ensureBodyMedicationLibrary } from '../services/bodyMedicationLibrary';
+import { ensureAnvisaSanitaryAlerts } from '../services/anvisaSanitaryAlerts';
 import { ensurePatientDocumentsSchema } from '../services/patientDocumentsVault';
 
 let _db: Database.Database | null = null;
@@ -1412,6 +1413,12 @@ export function seedMarketingDefaults(tenantId: string): void {
     ensureBodyMedicationLibrary(openDb());
   } catch (e) {
     console.warn('ensureBodyMedicationLibrary failed:', (e as Error)?.message || e);
+  }
+
+  try {
+    ensureAnvisaSanitaryAlerts(openDb());
+  } catch (e) {
+    console.warn('ensureAnvisaSanitaryAlerts failed:', (e as Error)?.message || e);
   }
 
   // ============================================================

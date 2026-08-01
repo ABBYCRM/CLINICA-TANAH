@@ -614,7 +614,21 @@
     "reason": "Motivo",
     "unit_cost": "Costo unitario",
     "sale_price": "Precio de venta",
-    "anvisa": "Registro ANVISA"
+    "anvisa": "Registro ANVISA",
+    "alerts_ok": "OK — sin alertas",
+    "anvisa_recalls_title": "Alertas ANVISA / Retiros",
+    "anvisa_recalls_hint": "Cruza el inventario con alertas sanitarias y retiros de ANVISA (catálogo curado + sincronización opcional). Confirme siempre en el portal oficial.",
+    "anvisa_recalls_none": "Ningún retiro o alerta ANVISA coincide con el inventario actual.",
+    "anvisa_sync": "Actualizar ANVISA",
+    "anvisa_portal": "Portal ANVISA",
+    "anvisa_synced_at": "Última sincronización: {{date}}",
+    "anvisa_matched_stock": "Ítems de inventario afectados",
+    "anvisa_open_alert": "Abrir fuente de la alerta",
+    "anvisa_severity_critical": "Crítico",
+    "anvisa_severity_high": "Alto",
+    "anvisa_severity_medium": "Medio",
+    "anvisa_severity_info": "Info",
+    "anvisa_severity_low": "Bajo"
   },
   "vendors": {
     "title": "Proveedores",

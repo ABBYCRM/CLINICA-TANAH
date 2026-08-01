@@ -11,10 +11,18 @@ export default function Inventory() {
   const { t, locale } = useI18n();
   const [tab, setTab] = useState<Tab>('items');
   const [items, setItems] = useState<any[]>([]);
-  const [alerts, setAlerts] = useState<any>({ low_stock: [], expiring_soon: [] });
+  const [alerts, setAlerts] = useState<any>({
+    low_stock: [],
+    expiring_soon: [],
+    anvisa_recalls: [],
+    anvisa_synced_at: null,
+    anvisa_sync_source: null,
+    anvisa_portal_url: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [syncingAnvisa, setSyncingAnvisa] = useState(false);
 
   // modal state shared by tabs
   const [itemForm, setItemForm] = useState<{ open: boolean; initial: any | null }>({ open: false, initial: null });
@@ -84,27 +92,140 @@ export default function Inventory() {
       {error && <FormError message={error} />}
 
       {tab === 'alerts' && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="card p-4">
-            <h3 className="font-semibold text-rose-700 mb-3">⚠ {t('dashboard.low_stock')}</h3>
-            {alerts.low_stock.length === 0 && <div className="text-sm text-slate-400">OK</div>}
-            <ul className="space-y-2">
-              {alerts.low_stock.map((it: any) => (
-                <li key={it.id} className="flex justify-between text-sm border-b border-slate-100 pb-1">
-                  <span>{it.name}</span>
-                  <span className="font-mono text-rose-600">{it.current_stock} / min {it.min_stock}</span>
-                </li>
-              ))}
-            </ul>
+        <div className="space-y-4" data-testid="inventory-alerts">
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="card p-4">
+              <h3 className="font-semibold text-rose-700 mb-3">⚠ {t('dashboard.low_stock')}</h3>
+              {(alerts.low_stock?.length ?? 0) === 0 && <div className="text-sm text-[color:var(--ink-muted)]">{t('inventory.alerts_ok')}</div>}
+              <ul className="space-y-2">
+                {(alerts.low_stock || []).map((it: any) => (
+                  <li key={it.id} className="flex justify-between text-sm border-b border-slate-100 pb-1">
+                    <span>{it.name}</span>
+                    <span className="font-mono text-rose-600">{it.current_stock} / min {it.min_stock}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="card p-4">
+              <h3 className="font-semibold text-amber-700 mb-3">{t('dashboard.expiring_batches')}</h3>
+              {(alerts.expiring_soon?.length ?? 0) === 0 && <div className="text-sm text-[color:var(--ink-muted)]">{t('inventory.alerts_ok')}</div>}
+              <ul className="space-y-2">
+                {(alerts.expiring_soon || []).map((b: any) => (
+                  <li key={b.id} className="flex justify-between text-sm border-b border-slate-100 pb-1">
+                    <span>{b.item_name}</span>
+                    <span className="font-mono text-amber-700">{b.expiry_date} ({b.days_to_expiry}d)</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <div className="card p-4">
-            <h3 className="font-semibold text-amber-700 mb-3">{t('dashboard.expiring_batches')}</h3>
-            {alerts.expiring_soon.length === 0 && <div className="text-sm text-slate-400">OK</div>}
-            <ul className="space-y-2">
-              {alerts.expiring_soon.map((b: any) => (
-                <li key={b.id} className="flex justify-between text-sm border-b border-slate-100 pb-1">
-                  <span>{b.item_name}</span>
-                  <span className="font-mono text-amber-700">{b.expiry_date} ({b.days_to_expiry}d)</span>
+
+          <div className="card p-4" data-testid="anvisa-recalls">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="font-semibold text-orange-800">{t('inventory.anvisa_recalls_title')}</h3>
+                <p className="text-sm text-[color:var(--ink-muted)] mt-1 max-w-2xl">{t('inventory.anvisa_recalls_hint')}</p>
+                {alerts.anvisa_synced_at && (
+                  <p className="text-xs text-[color:var(--ink-muted)] mt-1">
+                    {t('inventory.anvisa_synced_at', {
+                      date: new Date(alerts.anvisa_synced_at).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es' : 'en'),
+                    })}
+                    {alerts.anvisa_sync_source ? ` · ${alerts.anvisa_sync_source}` : ''}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {alerts.anvisa_portal_url && (
+                  <a
+                    href={alerts.anvisa_portal_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary !py-1.5 text-sm"
+                    data-testid="anvisa-portal-link"
+                  >
+                    {t('inventory.anvisa_portal')}
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary !py-1.5 text-sm"
+                  data-testid="sync-anvisa-recalls"
+                  disabled={syncingAnvisa}
+                  onClick={async () => {
+                    setSyncingAnvisa(true);
+                    setError('');
+                    try {
+                      await api.post('/api/inventory/anvisa-recalls/sync', {});
+                      refresh();
+                    } catch (e: any) {
+                      setError(e.message || t('errors.generic'));
+                    } finally {
+                      setSyncingAnvisa(false);
+                    }
+                  }}
+                >
+                  {syncingAnvisa ? t('common.loading') : t('inventory.anvisa_sync')}
+                </button>
+              </div>
+            </div>
+
+            {(alerts.anvisa_recalls?.length ?? 0) === 0 && (
+              <div className="text-sm text-[color:var(--ink-muted)]" data-testid="anvisa-recalls-empty">
+                {t('inventory.anvisa_recalls_none')}
+              </div>
+            )}
+            <ul className="space-y-3">
+              {(alerts.anvisa_recalls || []).map((a: any) => (
+                <li
+                  key={a.id}
+                  className="border border-orange-100 rounded-lg p-3 bg-orange-50/40"
+                  data-testid={`anvisa-recall-${a.id}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-[color:var(--ink)]">{a.title}</div>
+                      <div className="text-xs text-[color:var(--ink-muted)] mt-0.5 font-mono">
+                        {[a.alert_code, a.alert_type, a.anvisa_registry].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <span
+                      className={`shrink-0 text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${
+                        a.severity === 'critical' ? 'bg-rose-100 text-rose-800' :
+                        a.severity === 'high' ? 'bg-orange-100 text-orange-900' :
+                        'bg-amber-100 text-amber-900'
+                      }`}
+                    >
+                      {(['critical','high','medium','info','low'].includes(a.severity) ? t(`inventory.anvisa_severity_${a.severity}`) : a.severity)}
+                    </span>
+                  </div>
+                  {a.action_required && (
+                    <p className="text-sm text-[color:var(--ink)] mt-2">{a.action_required}</p>
+                  )}
+                  <div className="mt-2 text-sm">
+                    <div className="text-[color:var(--ink-muted)] text-xs uppercase tracking-wide mb-1">{t('inventory.anvisa_matched_stock')}</div>
+                    <ul className="space-y-1">
+                      {(a.matched_items || []).map((it: any) => (
+                        <li key={it.id} className="flex flex-wrap justify-between gap-2 border-b border-orange-100/80 pb-1">
+                          <span>{it.name} <span className="font-mono text-xs text-[color:var(--ink-muted)]">({it.sku})</span></span>
+                          {it.matched_batches?.length > 0 && (
+                            <span className="font-mono text-xs text-rose-700">
+                              {t('inventory.batch')}: {it.matched_batches.join(', ')}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {a.source_url && (
+                    <a
+                      href={a.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-2 text-sm text-orange-800 underline underline-offset-2"
+                    >
+                      {t('inventory.anvisa_open_alert')}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

@@ -4,6 +4,12 @@ import { z } from 'zod';
 import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
+import {
+  ensureAnvisaSanitaryAlerts,
+  getMatchedAlertsForTenant,
+  getSyncMeta,
+  syncAnvisaSanitaryAlerts,
+} from '../services/anvisaSanitaryAlerts';
 
 const router = Router();
 router.use(authenticate);
@@ -346,7 +352,40 @@ router.get('/alerts', (req: Request, res: Response) => {
     WHERE date(b.expiry_date) <= date('now', '+30 days') AND b.tenant_id = ?
     ORDER BY b.expiry_date ASC
   `).all(req.tenantId);
-  res.json({ low_stock: lowStock, expiring_soon: expiring });
+
+  // ANVISA / Brazilian health-authority recalls matched to clinic stock
+  ensureAnvisaSanitaryAlerts(db);
+  const anvisa_recalls = getMatchedAlertsForTenant(db, req.tenantId!);
+  const anvisa_meta = getSyncMeta(db);
+
+  res.json({
+    low_stock: lowStock,
+    expiring_soon: expiring,
+    anvisa_recalls,
+    anvisa_synced_at: anvisa_meta.last_sync_at,
+    anvisa_sync_source: anvisa_meta.last_sync_source,
+    anvisa_portal_url: anvisa_meta.portal_url,
+  });
+});
+
+/** Refresh ANVISA sanitary alerts / medication recalls (curated + optional live feed). */
+router.post('/anvisa-recalls/sync', requireRole('admin', 'pharmacist'), async (req: Request, res: Response) => {
+  try {
+    const result = await syncAnvisaSanitaryAlerts(db);
+    const matched = getMatchedAlertsForTenant(db, req.tenantId!);
+    logAudit({
+      tenantId: req.tenantId,
+      actorId: req.user!.id,
+      actorEmail: req.user!.email,
+      action: 'sync_anvisa_recalls',
+      resourceType: 'anvisa_sanitary_alerts',
+      legalBasis: 'legal_obligation_art7_II',
+      afterValue: { source: result.source, upserted: result.upserted, matched: matched.length },
+    });
+    res.json({ ...result, matched: matched.length, recalls: matched });
+  } catch (e: any) {
+    res.status(502).json({ error: 'anvisa_sync_failed', message: e?.message || String(e) });
+  }
 });
 
 // VENDORS

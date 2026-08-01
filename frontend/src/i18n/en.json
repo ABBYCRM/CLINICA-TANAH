@@ -614,7 +614,21 @@
     "reason": "Reason",
     "unit_cost": "Unit cost",
     "sale_price": "Sale price",
-    "anvisa": "ANVISA registry"
+    "anvisa": "ANVISA registry",
+    "alerts_ok": "OK — no alerts",
+    "anvisa_recalls_title": "ANVISA alerts / recalls",
+    "anvisa_recalls_hint": "Matches clinic stock against ANVISA sanitary alerts and medication recalls (curated catalog + optional feed sync). Always confirm on the official portal.",
+    "anvisa_recalls_none": "No ANVISA recall or alert matches current stock.",
+    "anvisa_sync": "Sync ANVISA",
+    "anvisa_portal": "ANVISA portal",
+    "anvisa_synced_at": "Last sync: {{date}}",
+    "anvisa_matched_stock": "Affected stock items",
+    "anvisa_open_alert": "Open alert source",
+    "anvisa_severity_critical": "Critical",
+    "anvisa_severity_high": "High",
+    "anvisa_severity_medium": "Medium",
+    "anvisa_severity_info": "Info",
+    "anvisa_severity_low": "Low"
   },
   "vendors": {
     "title": "Vendors",
