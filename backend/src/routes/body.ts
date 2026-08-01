@@ -515,8 +515,14 @@ async function runGenerate(req: Request, scenarioId: string, patientId: string, 
 
   let referencePublicUrl: string | null = null;
   const origin = (process.env.APP_ORIGIN || '').replace(/\/$/, '');
-  if (capture?.id && capture?.image_path && fs.existsSync(capture.image_path) && origin) {
-    referencePublicUrl = `${origin}/api/public/body-asset/${signBodyAssetToken(capture.id)}`;
+  if (capture?.id && capture?.image_path && fs.existsSync(capture.image_path) && /^https:\/\//i.test(origin)) {
+    const candidate = `${origin}/api/public/body-asset/${signBodyAssetToken(capture.id)}`;
+    try {
+      const head = await fetch(candidate, { method: 'GET' });
+      if (head.ok) referencePublicUrl = candidate;
+    } catch {
+      referencePublicUrl = null;
+    }
   }
 
   const result = await generateBodyScenarioImage({
@@ -539,15 +545,60 @@ async function runGenerate(req: Request, scenarioId: string, patientId: string, 
       UPDATE body_scenarios SET status = 'pending', provider = ?, provider_task_id = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(result.provider, result.taskId, scenarioId);
-    // Best-effort short poll (DO request budget)
-    for (let i = 0; i < 8; i++) {
-      await new Promise((r) => setTimeout(r, 4000));
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
       const polled = await pollA2e(result.taskId!);
       if (polled.status === 'completed' && polled.imageUrl) {
         await persistScenarioImage(req.tenantId!, patientId, scenarioId, polled.provider, polled.imageUrl, result.taskId);
         return;
       }
       if (polled.status === 'failed') {
+        // Reference download failures → retry once as text-only photoreal generation
+        const err = String(polled.error || '');
+        if (/download|fetch|url|image/i.test(err) && referencePublicUrl) {
+          const retry = await generateBodyScenarioImage({
+            name: `clinica-tanah-${scenarioId.slice(0, 8)}-txt`,
+            prompt,
+            referencePath: null,
+            referencePublicUrl: null,
+          });
+          if (retry.status === 'pending' && retry.taskId) {
+            db.prepare(`
+              UPDATE body_scenarios SET status = 'pending', provider = ?, provider_task_id = ?, error = NULL, updated_at = datetime('now')
+              WHERE id = ?
+            `).run(retry.provider, retry.taskId, scenarioId);
+            for (let j = 0; j < 12; j++) {
+              await new Promise((r) => setTimeout(r, 5000));
+              const p2 = await pollA2e(retry.taskId!);
+              if (p2.status === 'completed' && p2.imageUrl) {
+                await persistScenarioImage(req.tenantId!, patientId, scenarioId, p2.provider, p2.imageUrl, retry.taskId);
+                return;
+              }
+              if (p2.status === 'failed') {
+                db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
+                  .run((p2.error || 'failed').slice(0, 500), scenarioId);
+                return;
+              }
+            }
+            return;
+          }
+          if (retry.status === 'completed' && (retry.imageUrl || retry.imageBytes)) {
+            if (retry.imageBytes) {
+              const dir = bodyUploadsDir(req.tenantId!, patientId);
+              const imagePath = path.join(dir, `scenario-${scenarioId}.jpg`);
+              fs.writeFileSync(imagePath, retry.imageBytes);
+              db.prepare(`
+                UPDATE body_scenarios SET status = 'completed', provider = ?, image_path = ?, error = NULL, updated_at = datetime('now')
+                WHERE id = ?
+              `).run(retry.provider, imagePath, scenarioId);
+              return;
+            }
+            if (retry.imageUrl) {
+              await persistScenarioImage(req.tenantId!, patientId, scenarioId, retry.provider, retry.imageUrl, retry.taskId);
+              return;
+            }
+          }
+        }
         db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
           .run((polled.error || 'failed').slice(0, 500), scenarioId);
         return;

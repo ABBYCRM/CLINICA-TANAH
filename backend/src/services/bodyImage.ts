@@ -224,13 +224,25 @@ export async function generateBodyScenarioImage(opts: {
     return { provider: 'a2e', status: 'failed', error: 'no_image_provider_configured' };
   }
 
+  // A2E can only fetch publicly reachable HTTPS reference URLs (not localhost).
+  const publicRef = opts.referencePublicUrl
+    && /^https:\/\//i.test(opts.referencePublicUrl)
+    && !/localhost|127\.0\.0\.1/i.test(opts.referencePublicUrl)
+    ? opts.referencePublicUrl
+    : null;
+
   let last: ImageGenResult | null = null;
+  const errors: string[] = [];
   for (const provider of order) {
     try {
       if (provider === 'a2e') {
-        const inputImages = opts.referencePublicUrl ? [opts.referencePublicUrl] : undefined;
-        last = await startA2e({ name: opts.name, prompt: opts.prompt, inputImages });
-        if (last.status !== 'failed') return last;
+        // Try with reference first (identity-preserving edit), then text-only.
+        const attempts: Array<string[] | undefined> = publicRef ? [[publicRef], undefined] : [undefined];
+        for (const inputImages of attempts) {
+          last = await startA2e({ name: opts.name, prompt: opts.prompt, inputImages });
+          if (last.status !== 'failed') return last;
+          errors.push(`a2e:${last.error || 'failed'}`);
+        }
         continue;
       }
       if (provider === 'gemini') {
@@ -246,8 +258,10 @@ export async function generateBodyScenarioImage(opts: {
           referenceMime,
         });
         if (last.status !== 'failed') return last;
+        errors.push(`gemini:${last.error || 'failed'}`);
       }
     } catch (e: any) {
+      errors.push(`${provider}:${e?.message || String(e)}`);
       last = {
         provider,
         status: 'failed',
@@ -255,7 +269,9 @@ export async function generateBodyScenarioImage(opts: {
       };
     }
   }
-  return last || { provider: 'a2e', status: 'failed', error: 'image_generation_failed' };
+  return last
+    ? { ...last, error: errors.join(' | ').slice(0, 500) }
+    : { provider: 'a2e', status: 'failed', error: 'image_generation_failed' };
 }
 
 export function imageProvidersStatus() {
