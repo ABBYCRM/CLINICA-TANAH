@@ -307,35 +307,30 @@ async function generateAndPersistOneView(opts: {
 
   // Poll A2E if pending
   if (result.status === 'pending' && result.taskId) {
-    for (let i = 0; i < 12; i++) {
+    let terminal = false;
+    for (let i = 0; i < 6; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       const polled = await pollA2e(result.taskId!);
       if (polled.status === 'completed' && polled.imageUrl) {
         result = polled;
+        terminal = true;
         break;
       }
       if (polled.status === 'failed') {
-        // Retry text-only once, then local morph via generateBodyScenarioImage order
-        result = await generateBodyScenarioImage({
-          name: `clinica-tanah-${opts.scenarioId.slice(0, 8)}-${opts.view}-retry`,
-          prompt: opts.prompt,
-          referencePath: opts.referencePath,
-          referencePublicUrl: null,
-        });
-        if (result.status === 'pending' && result.taskId) {
-          for (let j = 0; j < 12; j++) {
-            await new Promise((r) => setTimeout(r, 5000));
-            const p2 = await pollA2e(result.taskId!);
-            if (p2.status === 'completed') { result = p2; break; }
-            if (p2.status === 'failed') { result = p2; break; }
-          }
-        }
+        result = polled;
+        terminal = true;
         break;
       }
     }
+    if (!terminal && result.status === 'pending') {
+      result = {
+        ...result,
+        status: 'failed',
+        error: result.error || 'a2e_poll_timeout',
+      };
+    }
   }
 
-  const dir = bodyUploadsDir(opts.tenantId, opts.patientId);
   let imageBytes = result.imageBytes;
   if (!imageBytes && result.imageUrl) {
     try {
@@ -343,6 +338,33 @@ async function generateAndPersistOneView(opts: {
       if (res.ok) imageBytes = Buffer.from(await res.arrayBuffer());
     } catch { /* */ }
   }
+
+  // A2E pending short-circuits the provider chain — if we still have no bytes, force
+  // Gemini/Bitdeer/local_morph with local reference (skip A2E by omitting public URL).
+  if ((!imageBytes || result.status === 'failed') && opts.referencePath) {
+    const fallback = await generateBodyScenarioImage({
+      name: `clinica-tanah-${opts.scenarioId.slice(0, 8)}-${opts.view}-fallback`,
+      prompt: opts.prompt,
+      referencePath: opts.referencePath,
+      referencePublicUrl: null,
+    });
+    if (fallback.status === 'pending' && fallback.taskId) {
+      // Should not happen for gemini/local_morph; ignore pending A2E if misconfigured
+    } else if (fallback.status === 'completed' && (fallback.imageBytes || fallback.imageUrl)) {
+      result = fallback;
+      imageBytes = fallback.imageBytes;
+      if (!imageBytes && fallback.imageUrl) {
+        try {
+          const res = await fetch(fallback.imageUrl);
+          if (res.ok) imageBytes = Buffer.from(await res.arrayBuffer());
+        } catch { /* */ }
+      }
+    } else if (!imageBytes) {
+      result = fallback;
+    }
+  }
+
+  const dir = bodyUploadsDir(opts.tenantId, opts.patientId);
 
   if (!imageBytes || result.status === 'failed') {
     return {
