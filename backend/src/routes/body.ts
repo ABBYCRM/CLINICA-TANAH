@@ -676,6 +676,11 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
     .all(req.tenantId, patient.id) as any[];
   const horizon = Number(req.body?.horizon_weeks) || 12;
   const plan_config = (req.body?.plan_config || {}) as PlanConfig;
+  if (!plan_config.medication_record_ids?.length && !plan_config.nutrition_plan_ids?.length && !plan_config.exercise_plan_ids?.length) {
+    plan_config.medication_record_ids = medications.map((m) => m.id);
+    plan_config.nutrition_plan_ids = plans.filter((p) => p.plan_type === 'nutrition').map((p) => p.id);
+    plan_config.exercise_plan_ids = plans.filter((p) => p.plan_type === 'exercise').map((p) => p.id);
+  }
   const assumptions: ScenarioAssumptions = {
     sleep_adequate: !!req.body?.sleep_adequate,
     hydration_adequate: !!req.body?.hydration_adequate,
