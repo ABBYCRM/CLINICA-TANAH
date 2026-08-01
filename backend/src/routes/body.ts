@@ -23,6 +23,12 @@ import {
   imageProvidersStatus,
   pollA2e,
 } from '../services/bodyImage';
+import {
+  applySessionConsistency,
+  CAPTURE_VIEWS,
+  processClinicalPhoto,
+  type CaptureView,
+} from '../services/captureQuality';
 
 const router = Router();
 router.use(authenticate);
@@ -42,9 +48,9 @@ function assetSigningSecret(): string {
 }
 
 /** Short-lived HMAC token so A2E can fetch a capture without CRM auth. */
-export function signBodyAssetToken(captureId: string, ttlSec = 3600): string {
+export function signBodyAssetToken(assetId: string, ttlSec = 3600): string {
   const exp = Math.floor(Date.now() / 1000) + ttlSec;
-  const payload = `${captureId}.${exp}`;
+  const payload = `${assetId}.${exp}`;
   const sig = createHmac('sha256', assetSigningSecret()).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
@@ -56,13 +62,13 @@ export function publicBodyAssetHandler(req: Request, res: Response): void {
     res.status(400).json({ error: 'invalid_token' });
     return;
   }
-  const [captureId, expStr, sig] = parts;
+  const [assetId, expStr, sig] = parts;
   const exp = Number(expStr);
-  if (!captureId || !Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) {
+  if (!assetId || !Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) {
     res.status(401).json({ error: 'expired' });
     return;
   }
-  const expect = createHmac('sha256', assetSigningSecret()).update(`${captureId}.${expStr}`).digest('base64url');
+  const expect = createHmac('sha256', assetSigningSecret()).update(`${assetId}.${expStr}`).digest('base64url');
   try {
     const a = Buffer.from(sig);
     const b = Buffer.from(expect);
@@ -74,7 +80,10 @@ export function publicBodyAssetHandler(req: Request, res: Response): void {
     res.status(401).json({ error: 'bad_signature' });
     return;
   }
-  const row = db.prepare(`SELECT * FROM body_captures WHERE id = ?`).get(captureId) as any;
+  const row = (
+    db.prepare(`SELECT * FROM body_capture_assets WHERE id = ?`).get(assetId)
+    || db.prepare(`SELECT * FROM body_captures WHERE id = ?`).get(assetId)
+  ) as any;
   if (!row?.image_path || !fs.existsSync(row.image_path)) {
     res.status(404).json({ error: 'not_found' });
     return;
@@ -124,6 +133,230 @@ function simulationsAllowed(consents: ReturnType<typeof consentMap>) {
   );
 }
 
+function serializeSession(session: any, req: Request) {
+  const assetsRows = db.prepare(`
+    SELECT * FROM body_capture_assets WHERE session_id = ? ORDER BY created_at ASC
+  `).all(session.id) as any[];
+  const assets: Record<string, any> = {};
+  for (const a of assetsRows) {
+    assets[a.view] = {
+      id: a.id,
+      view: a.view,
+      content_type: a.content_type,
+      width: a.width,
+      height: a.height,
+      sha256: a.sha256,
+      quality: a.quality_json ? JSON.parse(a.quality_json) : null,
+      metrics: a.metrics_json ? JSON.parse(a.metrics_json) : null,
+      preview_url: `/api/clinical/body/${session.patient_id}/capture-sessions/${session.id}/assets/${a.view}/image`,
+      created_at: a.created_at,
+    };
+  }
+  return {
+    id: session.id,
+    patient_id: session.patient_id,
+    status: session.status,
+    validated_at: session.validated_at,
+    quality_summary: session.quality_summary ? JSON.parse(session.quality_summary) : null,
+    created_at: session.created_at,
+    updated_at: session.updated_at,
+    assets,
+    views_complete: CAPTURE_VIEWS.every((v) => !!assets[v]),
+  };
+}
+
+function latestFrontAsset(tenantId: string, patientId: string) {
+  return db.prepare(`
+    SELECT a.* FROM body_capture_assets a
+    JOIN body_capture_sessions s ON s.id = a.session_id
+    WHERE a.tenant_id = ? AND a.patient_id = ? AND a.view = 'front'
+    ORDER BY CASE s.status WHEN 'complete' THEN 0 ELSE 1 END, a.created_at DESC
+    LIMIT 1
+  `).get(tenantId, patientId) as any;
+}
+
+/** Create capture session — BodyPath: POST /patients/:id/capture-sessions */
+router.post('/:patientId/capture-sessions', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const patient = patientInTenant(req.params.patientId, req.tenantId!);
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  const consents = consentMap(req.tenantId!, patient.id);
+  if (!consents.clinical_record.granted || !consents.image_processing.granted) {
+    res.status(403).json({ error: 'consent_required', message: 'image_processing_and_clinical_record_required' });
+    return;
+  }
+  const id = uuid();
+  db.prepare(`
+    INSERT INTO body_capture_sessions (id, tenant_id, patient_id, status, created_by)
+    VALUES (?, ?, ?, 'open', ?)
+  `).run(id, req.tenantId, patient.id, req.user!.id);
+  const session = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ?`).get(id);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'create_body_capture_session', resourceType: 'body_capture_session', resourceId: id,
+    afterValue: { patient_id: patient.id },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.status(201).json(serializeSession(session, req));
+});
+
+/** Upload one view — BodyPath: POST /capture-sessions/:id/assets */
+router.post('/capture-sessions/:sessionId/assets', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const session = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.sessionId, req.tenantId) as any;
+  if (!session) { res.status(404).json({ error: 'not_found' }); return; }
+  if (session.status === 'complete') {
+    res.status(409).json({ error: 'session_immutable', message: 'Validated sessions cannot replace originals.' });
+    return;
+  }
+
+  const parsed = z.object({
+    view: z.enum(['front', 'left', 'right', 'back']),
+    content_type: z.string().default('image/jpeg'),
+    data_base64: z.string().min(32).optional(),
+    image_base64: z.string().min(32).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  const b64 = (parsed.data.data_base64 || parsed.data.image_base64 || '').replace(/^data:[^;]+;base64,/, '');
+  if (!b64) { res.status(400).json({ error: 'validation', message: 'data_base64_required' }); return; }
+
+  let buf: Buffer;
+  try { buf = Buffer.from(b64, 'base64'); } catch {
+    res.status(400).json({ error: 'invalid_image' }); return;
+  }
+  if (buf.length > 8 * 1024 * 1024) {
+    res.status(400).json({ error: 'image_too_large', message: 'max_8mb' });
+    return;
+  }
+
+  const analyzed = processClinicalPhoto(buf, parsed.data.content_type);
+  const assetId = uuid();
+  const dir = bodyUploadsDir(req.tenantId!, session.patient_id);
+  const imagePath = path.join(dir, `session-${session.id}-${parsed.data.view}-${assetId}.jpg`);
+  // Immutable original: never overwrite in place — new asset id path always
+  fs.writeFileSync(imagePath, analyzed.buffer);
+
+  db.prepare(`
+    INSERT INTO body_capture_assets
+      (id, tenant_id, session_id, patient_id, view, image_path, content_type, sha256, width, height, quality_json, metrics_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id, view) DO UPDATE SET
+      id = excluded.id,
+      image_path = excluded.image_path,
+      content_type = excluded.content_type,
+      sha256 = excluded.sha256,
+      width = excluded.width,
+      height = excluded.height,
+      quality_json = excluded.quality_json,
+      metrics_json = excluded.metrics_json,
+      created_at = datetime('now')
+  `).run(
+    assetId, req.tenantId, session.id, session.patient_id, parsed.data.view,
+    imagePath, analyzed.contentType, analyzed.sha256, analyzed.width, analyzed.height,
+    JSON.stringify(analyzed.quality), JSON.stringify(analyzed.metrics),
+  );
+
+  // Also mirror front into legacy body_captures for older scenario wiring
+  if (parsed.data.view === 'front') {
+    db.prepare(`
+      INSERT INTO body_captures
+        (id, tenant_id, patient_id, view_angle, status, image_path, content_type, notes, created_by, validated_at)
+      VALUES (?, ?, ?, 'front', 'uploaded', ?, ?, ?, ?, NULL)
+    `).run(assetId, req.tenantId, session.patient_id, imagePath, analyzed.contentType, `session:${session.id}`, req.user!.id);
+  }
+
+  db.prepare(`UPDATE body_capture_sessions SET updated_at = datetime('now') WHERE id = ?`).run(session.id);
+  const fresh = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ?`).get(session.id);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'upload_body_capture_asset', resourceType: 'body_capture_asset', resourceId: assetId,
+    afterValue: { session_id: session.id, view: parsed.data.view, sha256: analyzed.sha256, exif_stripped: true },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.status(201).json(serializeSession(fresh, req));
+});
+
+/** Validate full set — BodyPath: POST /capture-sessions/:id/validate */
+router.post('/capture-sessions/:sessionId/validate', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const session = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.sessionId, req.tenantId) as any;
+  if (!session) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const assets = db.prepare(`SELECT * FROM body_capture_assets WHERE session_id = ?`).all(session.id) as any[];
+  const missing = CAPTURE_VIEWS.filter((v) => !assets.some((a) => a.view === v));
+  if (missing.length) {
+    res.status(400).json({ error: 'incomplete_set', missing, message: 'All four views required: front, left, right, back.' });
+    return;
+  }
+
+  const scored = applySessionConsistency(assets.map((a) => ({
+    view: a.view,
+    metrics: a.metrics_json ? JSON.parse(a.metrics_json) : {},
+    quality: a.quality_json ? JSON.parse(a.quality_json) : {},
+  })));
+  const upd = db.prepare(`UPDATE body_capture_assets SET quality_json = ? WHERE session_id = ? AND view = ?`);
+  for (const s of scored) {
+    upd.run(JSON.stringify(s.quality), session.id, s.view);
+  }
+
+  const summary = Object.fromEntries(scored.map((s) => [s.view, s.quality]));
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE body_capture_sessions
+    SET status = 'complete', validated_at = ?, quality_summary = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(now, JSON.stringify(summary), session.id);
+
+  // Lock front legacy row
+  const front = assets.find((a) => a.view === 'front');
+  if (front) {
+    db.prepare(`UPDATE body_captures SET status = 'validated', validated_at = ? WHERE id = ?`).run(now, front.id);
+  }
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'validate_body_capture_session', resourceType: 'body_capture_session', resourceId: session.id,
+    afterValue: { views: CAPTURE_VIEWS.length },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+
+  const fresh = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ?`).get(session.id);
+  res.json(serializeSession(fresh, req));
+});
+
+router.get('/:patientId/capture-sessions/:sessionId', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const session = db.prepare(`
+    SELECT * FROM body_capture_sessions WHERE id = ? AND patient_id = ? AND tenant_id = ?
+  `).get(req.params.sessionId, req.params.patientId, req.tenantId) as any;
+  if (!session) { res.status(404).json({ error: 'not_found' }); return; }
+  res.json(serializeSession(session, req));
+});
+
+router.get('/:patientId/capture-sessions/:sessionId/assets/:view/image', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const view = req.params.view as CaptureView;
+  if (!CAPTURE_VIEWS.includes(view)) { res.status(400).json({ error: 'invalid_view' }); return; }
+  const row = db.prepare(`
+    SELECT a.* FROM body_capture_assets a
+    JOIN body_capture_sessions s ON s.id = a.session_id
+    WHERE a.session_id = ? AND a.patient_id = ? AND a.tenant_id = ? AND a.view = ?
+  `).get(req.params.sessionId, req.params.patientId, req.tenantId, view) as any;
+  if (!row?.image_path || !fs.existsSync(row.image_path)) {
+    res.status(404).json({ error: 'not_found' });
+    return;
+  }
+  res.setHeader('Content-Type', row.content_type || 'image/jpeg');
+  res.setHeader('Cache-Control', 'private, max-age=60');
+  res.setHeader('X-Content-SHA256', row.sha256 || '');
+  fs.createReadStream(row.image_path).pipe(res);
+});
+
 function latestMeasurement(tenantId: string, patientId: string) {
   return db.prepare(`
     SELECT * FROM body_measurements
@@ -157,6 +390,11 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     FROM body_captures WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
   `).all(req.tenantId, patient.id) as any[];
+  const sessions = db.prepare(`
+    SELECT * FROM body_capture_sessions WHERE tenant_id = ? AND patient_id = ?
+    ORDER BY created_at DESC LIMIT 20
+  `).all(req.tenantId, patient.id) as any[];
+  const capture_sessions = sessions.map((s) => serializeSession(s, req));
   const scenarios = db.prepare(`
     SELECT id, capture_id, title, goal, weeks, status, provider, image_url,
            CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
@@ -192,6 +430,10 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     medications,
     plans,
     captures,
+    capture_sessions,
+    active_capture_session: capture_sessions.find((s: any) => s.status === 'complete')
+      || capture_sessions[0]
+      || null,
     scenarios,
     consents,
     simulations_allowed: simulationsAllowed(consents),
@@ -199,6 +441,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
       medications: medications.length,
       plans: plans.length,
       captures: captures.length,
+      capture_sessions: capture_sessions.length,
       scenarios: scenarios.length,
     },
     image_providers: imageProvidersStatus(),
@@ -450,13 +693,17 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   let capture: any = null;
   if (parsed.data.capture_id) {
     capture = db.prepare(`
-      SELECT * FROM body_captures WHERE id = ? AND patient_id = ? AND tenant_id = ?
-    `).get(parsed.data.capture_id, patient.id, req.tenantId);
+      SELECT * FROM body_capture_assets WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(parsed.data.capture_id, patient.id, req.tenantId)
+      || db.prepare(`
+        SELECT * FROM body_captures WHERE id = ? AND patient_id = ? AND tenant_id = ?
+      `).get(parsed.data.capture_id, patient.id, req.tenantId);
   } else {
-    capture = db.prepare(`
-      SELECT * FROM body_captures WHERE patient_id = ? AND tenant_id = ? AND image_path IS NOT NULL
-      ORDER BY created_at DESC LIMIT 1
-    `).get(patient.id, req.tenantId);
+    capture = latestFrontAsset(req.tenantId!, patient.id)
+      || db.prepare(`
+        SELECT * FROM body_captures WHERE patient_id = ? AND tenant_id = ? AND image_path IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1
+      `).get(patient.id, req.tenantId);
   }
 
   const prompt = buildScenarioPrompt({

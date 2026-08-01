@@ -1157,5 +1157,37 @@ export function seedMarketingDefaults(tenantId: string): void {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_body_scen_patient ON body_scenarios(tenant_id, patient_id);
+
+    -- Multi-view capture sessions (BodyPath parity: front/left/right/back)
+    CREATE TABLE IF NOT EXISTS body_capture_sessions (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      validated_at TEXT,
+      quality_summary TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_sess_patient ON body_capture_sessions(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_capture_assets (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      view TEXT NOT NULL CHECK(view IN ('front','left','right','back')),
+      image_path TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      sha256 TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      quality_json TEXT,
+      metrics_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(session_id, view)
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_asset_session ON body_capture_assets(session_id);
   `);
 }

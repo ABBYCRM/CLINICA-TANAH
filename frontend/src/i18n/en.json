@@ -1257,6 +1257,32 @@
       "cross_border_transfer": "Cross-border transfer",
       "research": "Research",
       "marketing": "Marketing"
+    },
+    "capture_title": "Standardized capture",
+    "capture_subtitle": "Front, left, right and back · EXIF GPS removed on server · immutable originals",
+    "quality": "Quality",
+    "waiting_view": "Waiting for view capture.",
+    "privacy": "Privacy",
+    "public_export_blocked": "Clinical images and simulations cannot be published through this flow.",
+    "validate_set": "Validate set",
+    "choose_photo": "Choose photo",
+    "capture_uploading": "Uploading…",
+    "capture_tap": "Tap to upload photo — {{view}}",
+    "capture_pose_hint": "Or drag an image here. Pose: arms 10–15 cm from torso, neutral head.",
+    "capture_uploaded": "{{view}} uploaded successfully.",
+    "capture_validated": "Quality validation completed.",
+    "capture_validate_failed": "Validation failed",
+    "capture_upload_failed": "Upload failed",
+    "capture_invalid_type": "Upload images only (JPEG, PNG, WebP or HEIC).",
+    "capture_too_large": "File exceeds 8MB. Reduce resolution and try again.",
+    "capture_locked": "Set validated (immutable originals)",
+    "capture_set": "View set",
+    "vista": "View",
+    "views": {
+      "front": "Front",
+      "left": "Left",
+      "right": "Right",
+      "back": "Back"
     }
   }
 }

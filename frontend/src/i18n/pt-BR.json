@@ -1257,6 +1257,32 @@
       "cross_border_transfer": "Transferência internacional",
       "research": "Pesquisa",
       "marketing": "Marketing"
+    },
+    "capture_title": "Captura padronizada",
+    "capture_subtitle": "Frente, esquerda, direita e costas · EXIF GPS removido no servidor · originais imutáveis",
+    "quality": "Qualidade",
+    "waiting_view": "Aguardando captura da vista.",
+    "privacy": "Privacidade",
+    "public_export_blocked": "Imagens clínicas e simulações não podem ser publicadas por este fluxo.",
+    "validate_set": "Validar conjunto",
+    "choose_photo": "Escolher foto",
+    "capture_uploading": "Enviando…",
+    "capture_tap": "Toque para enviar foto — {{view}}",
+    "capture_pose_hint": "Ou arraste uma imagem aqui. Posição: braços 10–15 cm do tronco, cabeça neutra.",
+    "capture_uploaded": "{{view}} enviada com sucesso.",
+    "capture_validated": "Validação de qualidade concluída.",
+    "capture_validate_failed": "Validação falhou",
+    "capture_upload_failed": "Upload falhou",
+    "capture_invalid_type": "Envie apenas imagens (JPEG, PNG, WebP ou HEIC).",
+    "capture_too_large": "Arquivo excede 8MB. Reduza a resolução e tente novamente.",
+    "capture_locked": "Conjunto validado (originais imutáveis)",
+    "capture_set": "Conjunto de vistas",
+    "vista": "Vista",
+    "views": {
+      "front": "Frente",
+      "left": "Esquerda",
+      "right": "Direita",
+      "back": "Costas"
     }
   }
 }

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
+import CaptureStudio from './CaptureStudio';
 
 type BodyTab = 'capture' | 'measurements' | 'medications' | 'lifestyle' | 'scenarios' | 'reports';
 
@@ -82,6 +83,7 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
   const [scenarioTitle, setScenarioTitle] = useState('');
   const [scenarioGoal, setScenarioGoal] = useState('');
   const [scenarioWeeks, setScenarioWeeks] = useState('12');
+  const [activeSession, setActiveSession] = useState<any | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -93,6 +95,7 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
         if (cs.height_cm != null) setHeight(String(cs.height_cm));
         if (cs.weight_kg != null) setWeight(String(cs.weight_kg));
         if (cs.waist_cm != null) setWaist(String(cs.waist_cm));
+        setActiveSession(d.active_capture_session || null);
       })
       .catch((e) => setError(e?.message || t('errors.generic')))
       .finally(() => setLoading(false));
@@ -195,41 +198,18 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
     }
   };
 
-  const onCaptureFile = async (file: File | null) => {
-    if (!file) return;
-    setBusy('capture');
-    setError('');
-    try {
-      const b64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      await api.post(`/api/clinical/body/${patientId}/captures`, {
-        view_angle: 'front',
-        content_type: file.type || 'image/jpeg',
-        image_base64: b64,
-      });
-      load();
-      setTab('scenarios');
-    } catch (e: any) {
-      setError(e?.body?.message || e?.message || t('body.consent_required'));
-    } finally {
-      setBusy('');
-    }
-  };
-
   const createScenario = async () => {
     setBusy('scenario');
     setError('');
     try {
-      const latestCapture = (data?.captures || [])[0];
+      const frontId = activeSession?.assets?.front?.id
+        || data?.active_capture_session?.assets?.front?.id
+        || null;
       await api.post(`/api/clinical/body/${patientId}/scenarios`, {
         title: scenarioTitle.trim() || t('body.scenario_default_title'),
         goal: scenarioGoal.trim() || t('body.scenario_default_goal'),
         weeks: Number(scenarioWeeks) || 12,
-        capture_id: latestCapture?.id || null,
+        capture_id: frontId,
         generate: true,
       });
       setScenarioTitle('');
@@ -373,24 +353,15 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
           )}
 
           {tab === 'capture' && (
-            <section className="crm-record-panel space-y-3" data-testid="body-capture">
-              <h3 className="crm-record-panel-title">{t('body.tabs.capture')}</h3>
-              <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">{t('body.capture_hint')}</p>
-              <label className="btn-secondary inline-flex cursor-pointer text-sm">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(e) => onCaptureFile(e.target.files?.[0] || null)}
-                />
-                {busy === 'capture' ? '…' : t('body.upload_photo')}
-              </label>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {(data?.captures || []).slice(0, 6).map((c: any) => (
-                  <CaptureThumb key={c.id} patientId={patientId} capture={c} />
-                ))}
-              </div>
-            </section>
+            <CaptureStudio
+              patientId={patientId}
+              initialSession={activeSession}
+              onSessionChange={(s) => {
+                setActiveSession(s);
+                load();
+              }}
+              onGoScenarios={() => setTab('scenarios')}
+            />
           )}
 
           {tab === 'scenarios' && (
@@ -483,23 +454,6 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
           </section>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function CaptureThumb({ patientId, capture }: { patientId: string; capture: any }) {
-  const src = useAuthBlob(
-    capture.has_image ? `/api/clinical/body/${patientId}/captures/${capture.id}/image` : null,
-    [patientId, capture.id, capture.has_image],
-  );
-  return (
-    <div className="crm-timeline-card overflow-hidden p-0">
-      {src ? (
-        <img src={src} alt="" className="w-full aspect-[3/4] object-cover" />
-      ) : (
-        <div className="aspect-[3/4] bg-[#efe6d8] flex items-center justify-center text-xs text-[color:var(--ink-muted)]">{capture.view_angle}</div>
-      )}
-      <div className="px-2 py-1.5 text-[11px] text-[color:var(--ink-muted)]">{capture.status} · {capture.created_at?.slice(0, 16)}</div>
     </div>
   );
 }
