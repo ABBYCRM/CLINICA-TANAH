@@ -370,6 +370,20 @@ h1, h2, .font-display {
     padding: 0.2rem;
     box-shadow: var(--shadow-field);
   }
+  .crm-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--edge-soft);
+    background: linear-gradient(180deg, rgba(236, 232, 224, 0.95), rgba(214, 210, 202, 0.9));
+    box-shadow: var(--shadow-field);
+  }
+  .crm-filter-bar .crm-filter {
+    max-width: 100%;
+  }
   .crm-view-tab {
     @apply px-3 py-2.5 text-sm font-semibold border-b-2 border-transparent transition-all duration-150;
     color: var(--ink-muted);

@@ -155,9 +155,9 @@ export default function Patients() {
   };
 
   return (
-    <div className="crm-page space-y-0" data-testid="patients-crm">
+    <div className="crm-page space-y-3" data-testid="patients-crm">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="page-title">{t('patients.title')}</h1>
           <p className="page-subtitle" data-testid="patients-count">
@@ -196,7 +196,7 @@ export default function Patients() {
         </div>
       </div>
 
-      {error && <div className="mb-3"><FormError message={error} /></div>}
+      {error && <FormError message={error} />}
 
       {/* Saved views */}
       <div className="crm-views flex flex-wrap items-center gap-1">
@@ -221,7 +221,7 @@ export default function Patients() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 py-3 border-b border-slate-200 bg-white/60">
+      <div className="crm-filter-bar" data-testid="patients-filter-bar">
         <select
           className="crm-filter"
           value={insurance}
@@ -258,7 +258,7 @@ export default function Patients() {
             {t('patients.filters.clear')} ({activeFilters})
           </button>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="w-full sm:w-auto sm:ml-auto flex items-center gap-2">
           <select className="crm-filter" value={sort} onChange={(e) => setSort(e.target.value)} data-testid="patients-sort">
             <option value="name">{t('patients.sort.name')}</option>
             <option value="created_desc">{t('patients.sort.created_desc')}</option>
@@ -269,7 +269,7 @@ export default function Patients() {
       </div>
 
       {/* Search + table tools */}
-      <div className="flex flex-wrap items-center gap-3 py-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <svg viewBox="0 0 24 24" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2}>
             <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
@@ -287,7 +287,7 @@ export default function Patients() {
       </div>
 
       {/* Table */}
-      <div className="card overflow-hidden !rounded-lg">
+      <div className="card overflow-hidden !rounded-[0.85rem]">
         <div className="overflow-x-auto">
           <table className="w-full crm-table">
             <thead>
