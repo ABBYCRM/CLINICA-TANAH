@@ -5,8 +5,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
+import CatalogPicker from './CatalogPicker';
+import {
+  ADHERENCE_OPTIONS,
+  ALCOHOL_OPTIONS,
+  CALORIE_PRESETS,
+  CARDIO_MODALITIES,
+  DEFICIT_PRESETS,
+  EXERCISE_TEMPLATES,
+  HORIZON_OPTIONS,
+  INTENSITY_OPTIONS,
+  MAGNITUDE_OPTIONS,
+  NUTRITION_TEMPLATES,
+  SESSION_MINUTES,
+  SLEEP_HOURS,
+  STEPS_TARGETS,
+  STRESS_LEVELS,
+  TRAINING_STYLES,
+  pickLabel,
+} from '../lib/lifestyleCatalogs';
 
-const HORIZONS = [4, 8, 12, 24, 52, 54];
+const HORIZONS = [4, 8, 12, 16, 24, 36, 52];
 const ADHERENCE = ['low', 'moderate', 'high'] as const;
 
 const REVIEW_KEYS = [
@@ -147,7 +166,7 @@ export default function ScenarioSimulator({
   onRefresh: () => void;
   onNavigate?: (tab: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const summary = data?.clinical_summary || {};
   const latest = data?.latest_measurement || null;
   const session = data?.active_capture_session || null;
@@ -163,6 +182,7 @@ export default function ScenarioSimulator({
   const [nutIds, setNutIds] = useState<string[]>([]);
   const [exIds, setExIds] = useState<string[]>([]);
   const [horizon, setHorizon] = useState(12);
+  const [customHorizon, setCustomHorizon] = useState('');
   const [medAdh, setMedAdh] = useState<typeof ADHERENCE[number]>('moderate');
   const [nutAdh, setNutAdh] = useState<typeof ADHERENCE[number]>('moderate');
   const [exAdh, setExAdh] = useState<typeof ADHERENCE[number]>('moderate');
@@ -176,6 +196,17 @@ export default function ScenarioSimulator({
   const [comorbidity, setComorbidity] = useState(true);
   const [dailyCalories, setDailyCalories] = useState('');
   const [deficitKcal, setDeficitKcal] = useState('');
+  const [nutOverrideId, setNutOverrideId] = useState('');
+  const [exOverrideId, setExOverrideId] = useState('');
+  const [trainingStyle, setTrainingStyle] = useState('full_body');
+  const [cardioModality, setCardioModality] = useState('walking');
+  const [intensity, setIntensity] = useState('moderate');
+  const [resistMinutes, setResistMinutes] = useState('45');
+  const [cardioMinutes, setCardioMinutes] = useState('30');
+  const [stepsTarget, setStepsTarget] = useState('8000');
+  const [sleepHours, setSleepHours] = useState('7');
+  const [stressLevel, setStressLevel] = useState('moderate');
+  const [alcohol, setAlcohol] = useState('none');
   const [envelope, setEnvelope] = useState<any | null>(null);
   const [pinned, setPinned] = useState<any | null>(null);
   const [busy, setBusy] = useState('');
@@ -220,6 +251,33 @@ export default function ScenarioSimulator({
     setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   };
 
+  const effectiveHorizon = customHorizon.trim()
+    ? Math.min(104, Math.max(1, Number(customHorizon) || horizon))
+    : horizon;
+
+  const applyNutOverride = (id: string) => {
+    setNutOverrideId(id);
+    const tpl = NUTRITION_TEMPLATES.find((x) => x.id === id);
+    if (!tpl || !id || id === 'nut_custom') return;
+    if (tpl.daily_calories != null) setDailyCalories(String(tpl.daily_calories));
+    if (tpl.deficit_kcal != null) setDeficitKcal(String(tpl.deficit_kcal));
+    if (tpl.protein_g != null) setProtein(true);
+  };
+
+  const applyExOverride = (id: string) => {
+    setExOverrideId(id);
+    const tpl = EXERCISE_TEMPLATES.find((x) => x.id === id);
+    if (!tpl || !id || id === 'ex_custom') return;
+    if (tpl.training_style) setTrainingStyle(tpl.training_style);
+    if (tpl.resistance_days != null) setResistDays(tpl.resistance_days);
+    if (tpl.cardio_days != null) setCardioDays(tpl.cardio_days);
+    if (tpl.resistance_minutes != null) setResistMinutes(String(tpl.resistance_minutes));
+    if (tpl.cardio_minutes != null) setCardioMinutes(String(tpl.cardio_minutes));
+    if (tpl.cardio_modality) setCardioModality(tpl.cardio_modality);
+    if (tpl.intensity) setIntensity(tpl.intensity);
+    if (tpl.steps_target != null) setStepsTarget(String(tpl.steps_target));
+  };
+
   const planConfig = useMemo(() => ({
     medication_record_ids: medIds,
     nutrition_plan_ids: nutIds,
@@ -232,7 +290,15 @@ export default function ScenarioSimulator({
     protein_emphasis: protein,
     daily_calories: dailyCalories ? Number(dailyCalories) : null,
     deficit_kcal: deficitKcal ? Number(deficitKcal) : null,
-  }), [medIds, nutIds, exIds, medAdh, nutAdh, exAdh, resistDays, cardioDays, protein, dailyCalories, deficitKcal]);
+    nutrition_template_id: nutOverrideId || null,
+    exercise_template_id: exOverrideId || null,
+    training_style: trainingStyle || null,
+    cardio_modality: cardioModality || null,
+    intensity: intensity || null,
+    resistance_minutes: resistMinutes ? Number(resistMinutes) : null,
+    cardio_minutes: cardioMinutes ? Number(cardioMinutes) : null,
+    steps_target: stepsTarget ? Number(stepsTarget) : null,
+  }), [medIds, nutIds, exIds, medAdh, nutAdh, exAdh, resistDays, cardioDays, protein, dailyCalories, deficitKcal, nutOverrideId, exOverrideId, trainingStyle, cardioModality, intensity, resistMinutes, cardioMinutes, stepsTarget]);
 
   const assumptions = useMemo(() => ({
     sleep_adequate: sleep,
@@ -240,13 +306,17 @@ export default function ScenarioSimulator({
     recovery_adequate: recovery,
     comorbidity_stable: comorbidity,
     change_magnitude: magnitude,
-  }), [sleep, hydration, recovery, comorbidity, magnitude]);
+    sleep_hours: sleepHours ? Number(sleepHours) : null,
+    stress_level: stressLevel || null,
+    alcohol: alcohol || null,
+    steps_target: stepsTarget ? Number(stepsTarget) : null,
+  }), [sleep, hydration, recovery, comorbidity, magnitude, sleepHours, stressLevel, alcohol, stepsTarget]);
 
   const calcEnvelope = async () => {
     setBusy('preview'); setError('');
     try {
       const res = await api.post(`/api/clinical/body/${patientId}/scenarios/preview`, {
-        horizon_weeks: horizon,
+        horizon_weeks: effectiveHorizon,
         plan_config: planConfig,
         assumptions,
         sleep_adequate: sleep,
@@ -271,8 +341,8 @@ export default function ScenarioSimulator({
       const res = await api.post(`/api/clinical/body/${patientId}/scenarios`, {
         title: t('body.scenario_default_title'),
         goal: t('body.scenario_default_goal'),
-        weeks: horizon,
-        horizon_weeks: horizon,
+        weeks: effectiveHorizon,
+        horizon_weeks: effectiveHorizon,
         capture_id: frontId,
         capture_session_id: session?.id || null,
         generate: true,
@@ -673,62 +743,202 @@ export default function ScenarioSimulator({
         </div>
       </section>
 
-      <section className="crm-inset-panel space-y-3">
+      <section className="crm-inset-panel space-y-3" data-testid="sim-horizon-habits">
         <h4 className="font-display text-base text-[color:var(--ink)]">2. {t('body.sim_horizon_habits')}</h4>
-        <div className="flex flex-wrap gap-1.5">
-          {HORIZONS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              className={`crm-feed-tab ${horizon === w ? 'is-active' : ''}`}
-              onClick={() => setHorizon(w)}
-            >
-              {w}w
-            </button>
-          ))}
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-2">{t('body.sim_horizon')}</div>
+          <div className="flex flex-wrap gap-1.5" data-testid="sim-horizons">
+            {HORIZONS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                className={`crm-feed-tab ${!customHorizon && horizon === w ? 'is-active' : ''}`}
+                onClick={() => { setHorizon(w); setCustomHorizon(''); }}
+                data-testid={`sim-horizon-${w}`}
+              >
+                {w}w
+              </button>
+            ))}
+          </div>
+          <label className="text-xs text-[color:var(--ink-muted)] block mt-2 max-w-xs">
+            {t('body.sim_horizon_custom')}
+            <input
+              className="input mt-1 w-full"
+              type="number"
+              min={1}
+              max={104}
+              value={customHorizon}
+              onChange={(e) => setCustomHorizon(e.target.value)}
+              placeholder={t('body.sim_horizon_custom_ph')}
+              data-testid="sim-horizon-custom"
+            />
+          </label>
+          <select
+            className="input mt-2 w-full max-w-md"
+            value={customHorizon || String(horizon)}
+            onChange={(e) => {
+              setCustomHorizon('');
+              setHorizon(Number(e.target.value) || 12);
+            }}
+            data-testid="sim-horizon-select"
+          >
+            {HORIZON_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+            ))}
+          </select>
         </div>
 
         <div className="grid sm:grid-cols-3 gap-2">
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_adh_med')}
-            <select className="input mt-1 w-full" value={medAdh} onChange={(e) => setMedAdh(e.target.value as any)}>
-              {ADHERENCE.map((a) => <option key={a} value={a}>{t(`body.adh_${a}`)}</option>)}
+            <select className="input mt-1 w-full" value={medAdh} onChange={(e) => setMedAdh(e.target.value as any)} data-testid="sim-adh-med">
+              {ADHERENCE_OPTIONS.map((a) => (
+                <option key={a.id} value={a.id}>{pickLabel(a.labels, locale)}</option>
+              ))}
             </select>
           </label>
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_adh_nut')}
-            <select className="input mt-1 w-full" value={nutAdh} onChange={(e) => setNutAdh(e.target.value as any)}>
-              {ADHERENCE.map((a) => <option key={a} value={a}>{t(`body.adh_${a}`)}</option>)}
+            <select className="input mt-1 w-full" value={nutAdh} onChange={(e) => setNutAdh(e.target.value as any)} data-testid="sim-adh-nut">
+              {ADHERENCE_OPTIONS.map((a) => (
+                <option key={a.id} value={a.id}>{pickLabel(a.labels, locale)}</option>
+              ))}
             </select>
           </label>
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_adh_ex')}
-            <select className="input mt-1 w-full" value={exAdh} onChange={(e) => setExAdh(e.target.value as any)}>
-              {ADHERENCE.map((a) => <option key={a} value={a}>{t(`body.adh_${a}`)}</option>)}
+            <select className="input mt-1 w-full" value={exAdh} onChange={(e) => setExAdh(e.target.value as any)} data-testid="sim-adh-ex">
+              {ADHERENCE_OPTIONS.map((a) => (
+                <option key={a.id} value={a.id}>{pickLabel(a.labels, locale)}</option>
+              ))}
             </select>
           </label>
         </div>
 
+        <CatalogPicker
+          items={NUTRITION_TEMPLATES}
+          value={nutOverrideId}
+          onChange={applyNutOverride}
+          label={t('body.sim_nut_override')}
+          placeholder={t('body.life_nut_search_ph')}
+          testId="sim-nut-override"
+        />
+
+        <CatalogPicker
+          items={EXERCISE_TEMPLATES}
+          value={exOverrideId}
+          onChange={applyExOverride}
+          label={t('body.sim_ex_override')}
+          placeholder={t('body.life_ex_search_ph')}
+          testId="sim-ex-override"
+        />
+
         <div className="grid sm:grid-cols-3 gap-2">
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_resist')}
-            <input className="input mt-1 w-full" type="number" min={0} max={7} value={resistDays} onChange={(e) => setResistDays(Number(e.target.value) || 0)} />
+            <input className="input mt-1 w-full" type="number" min={0} max={7} value={resistDays} onChange={(e) => setResistDays(Number(e.target.value) || 0)} data-testid="sim-resist" />
           </label>
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_cardio')}
-            <input className="input mt-1 w-full" type="number" min={0} max={7} value={cardioDays} onChange={(e) => setCardioDays(Number(e.target.value) || 0)} />
+            <input className="input mt-1 w-full" type="number" min={0} max={7} value={cardioDays} onChange={(e) => setCardioDays(Number(e.target.value) || 0)} data-testid="sim-cardio" />
           </label>
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_magnitude')}
-            <select className="input mt-1 w-full" value={magnitude} onChange={(e) => setMagnitude(e.target.value as any)}>
-              <option value="conservative">{t('body.sim_mag_conservative')}</option>
-              <option value="moderate">{t('body.sim_mag_moderate')}</option>
+            <select className="input mt-1 w-full" value={magnitude} onChange={(e) => setMagnitude(e.target.value as any)} data-testid="sim-magnitude">
+              {MAGNITUDE_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_training_style')}
+            <select className="input mt-1 w-full" value={trainingStyle} onChange={(e) => setTrainingStyle(e.target.value)} data-testid="sim-training-style">
+              {TRAINING_STYLES.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_cardio_modality')}
+            <select className="input mt-1 w-full" value={cardioModality} onChange={(e) => setCardioModality(e.target.value)} data-testid="sim-cardio-modality">
+              {CARDIO_MODALITIES.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_intensity')}
+            <select className="input mt-1 w-full" value={intensity} onChange={(e) => setIntensity(e.target.value)} data-testid="sim-intensity">
+              {INTENSITY_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_steps')}
+            <select className="input mt-1 w-full" value={stepsTarget} onChange={(e) => setStepsTarget(e.target.value)} data-testid="sim-steps">
+              {STEPS_TARGETS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_resist_min')}
+            <select className="input mt-1 w-full" value={resistMinutes} onChange={(e) => setResistMinutes(e.target.value)} data-testid="sim-resist-min">
+              {SESSION_MINUTES.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_cardio_min')}
+            <select className="input mt-1 w-full" value={cardioMinutes} onChange={(e) => setCardioMinutes(e.target.value)} data-testid="sim-cardio-min">
+              {SESSION_MINUTES.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
             </select>
           </label>
         </div>
 
         <div className="grid sm:grid-cols-2 gap-2">
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_calories')}
+            <select className="input mt-1 w-full" value={dailyCalories} onChange={(e) => setDailyCalories(e.target.value)} data-testid="sim-calories-preset">
+              <option value="">{t('body.sim_calories_ph')}</option>
+              {CALORIE_PRESETS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
             <input className="input mt-1 w-full" type="number" min={800} max={6000} value={dailyCalories}
               onChange={(e) => setDailyCalories(e.target.value)} placeholder={t('body.sim_calories_ph')} data-testid="sim-calories" />
           </label>
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_deficit')}
+            <select className="input mt-1 w-full" value={deficitKcal} onChange={(e) => setDeficitKcal(e.target.value)} data-testid="sim-deficit-preset">
+              <option value="">{t('body.catalog_custom')}</option>
+              {DEFICIT_PRESETS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
             <input className="input mt-1 w-full" type="number" min={0} max={1500} value={deficitKcal}
               onChange={(e) => setDeficitKcal(e.target.value)} placeholder="500" data-testid="sim-deficit" />
+          </label>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-2">
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_sleep_hours')}
+            <select className="input mt-1 w-full" value={sleepHours} onChange={(e) => setSleepHours(e.target.value)} data-testid="sim-sleep-hours">
+              {SLEEP_HOURS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_stress')}
+            <select className="input mt-1 w-full" value={stressLevel} onChange={(e) => setStressLevel(e.target.value)} data-testid="sim-stress">
+              {STRESS_LEVELS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_alcohol')}
+            <select className="input mt-1 w-full" value={alcohol} onChange={(e) => setAlcohol(e.target.value)} data-testid="sim-alcohol">
+              {ALCOHOL_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+              ))}
+            </select>
           </label>
         </div>
 
