@@ -475,7 +475,28 @@
     "cancel_default_reason": "Cancelled by clinical team",
     "restore": "Restore (set active)",
     "retention_notice": "Clinical retention archive: cancelled prescriptions are not deleted — they remain auditable in the chart.",
-    "cancelled_meta": "Cancelled on {{when}} · {{by}}"
+    "cancelled_meta": "Cancelled on {{when}} · {{by}}",
+    "stock_bridge_hint": "Clinic-stock lines FEFO-debit inventory, create an invoice, and post P&L journals (medication revenue + COGS).",
+    "external_med": "External medication (no stock)",
+    "quantity": "Stock qty",
+    "dispense_from_stock": "Dispense from clinic stock (adjust inventory + accounting)",
+    "mark_paid_on_dispense": "Mark paid on dispense",
+    "dispensed": "Dispensed (stock)",
+    "paid": "Paid",
+    "unpaid": "Open",
+    "view_trail": "Stock / payment trail",
+    "mark_paid": "Record payment",
+    "trail_title": "Prescription trail",
+    "prescribed_by": "Prescriber",
+    "dispensed_by": "Dispensed by",
+    "stock_out": "Stock outs",
+    "invoice": "Invoice",
+    "no_invoice": "No linked invoice",
+    "journals": "Journal entries",
+    "open_invoices": "Open invoices",
+    "open_accounting": "Open accounting",
+    "stock_qty": "Stock −{{qty}}",
+    "insufficient_stock": "Insufficient stock for {{item}} (available {{available}}, requested {{requested}})."
   },
   "inventory": {
     "title": "Inventory",
@@ -557,7 +578,12 @@
       "equity": "Equity",
       "revenue": "Revenue",
       "expense": "Expense"
-    }
+    },
+    "internal_pnl": "Internal P&L",
+    "gross_margin": "Gross margin",
+    "cogs": "COGS (medications)",
+    "medication_revenue": "Medication revenue",
+    "dispense_summary": "Dispenses in period"
   },
   "invoices": {
     "title": "Invoices",

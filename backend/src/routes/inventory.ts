@@ -279,14 +279,55 @@ router.post('/movements', requireRole('admin','pharmacist','nurse','doctor'), (r
 
 router.get('/movements', (req: Request, res: Response) => {
   const itemId = req.query.item_id as string | undefined;
-  let sql = `SELECT m.*, i.name AS item_name, u.full_name AS user_name FROM stock_movements m
+  const prescriptionId = req.query.prescription_id as string | undefined;
+  let sql = `SELECT m.*, i.name AS item_name, i.sku, u.full_name AS user_name,
+                    pr.patient_id AS prescription_patient_id,
+                    p.full_name AS patient_name,
+                    pr.practitioner_id,
+                    doc.full_name AS practitioner_name,
+                    inv.id AS invoice_id, inv.invoice_number, inv.status AS invoice_status, inv.total AS invoice_total
+             FROM stock_movements m
              JOIN inventory_items i ON i.id = m.item_id
              LEFT JOIN users u ON u.id = m.user_id
+             LEFT JOIN prescriptions pr ON pr.id = m.reference_id AND m.reason LIKE 'prescription_dispense%'
+             LEFT JOIN patients p ON p.id = pr.patient_id
+             LEFT JOIN users doc ON doc.id = pr.practitioner_id
+             LEFT JOIN invoices inv ON inv.id = pr.invoice_id
              WHERE m.tenant_id = ?`;
   const args: any[] = [req.tenantId];
   if (itemId) { sql += ` AND m.item_id = ?`; args.push(itemId); }
-  sql += ` ORDER BY m.created_at DESC LIMIT 200`;
+  if (prescriptionId) { sql += ` AND m.reference_id = ?`; args.push(prescriptionId); }
+  sql += ` ORDER BY m.created_at DESC LIMIT 300`;
   res.json({ movements: db.prepare(sql).all(...args) });
+});
+
+/** Clinic dispense trail — where stock went, who prescribed, paid? */
+router.get('/dispense-trail', requireRole('admin', 'pharmacist', 'doctor', 'nurse', 'accountant'), (req: Request, res: Response) => {
+  const from = (req.query.from as string) || new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const to = (req.query.to as string) || new Date().toISOString().slice(0, 10);
+  const rows = db.prepare(`
+    SELECT m.id, m.created_at, m.quantity, m.movement_type, m.reason, m.reference_id AS prescription_id,
+           i.id AS item_id, i.name AS item_name, i.sku,
+           b.batch_number,
+           p.full_name AS patient_name,
+           doc.full_name AS practitioner_name,
+           u.full_name AS moved_by_name,
+           inv.invoice_number, inv.status AS invoice_status, inv.total AS invoice_total, inv.paid_at
+    FROM stock_movements m
+    JOIN inventory_items i ON i.id = m.item_id
+    LEFT JOIN inventory_batches b ON b.id = m.batch_id
+    LEFT JOIN users u ON u.id = m.user_id
+    LEFT JOIN prescriptions pr ON pr.id = m.reference_id
+    LEFT JOIN patients p ON p.id = pr.patient_id
+    LEFT JOIN users doc ON doc.id = pr.practitioner_id
+    LEFT JOIN invoices inv ON inv.id = pr.invoice_id
+    WHERE m.tenant_id = ?
+      AND m.reason IN ('prescription_dispense','prescription_dispense_reverse')
+      AND date(m.created_at) BETWEEN date(?) AND date(?)
+    ORDER BY m.created_at DESC
+    LIMIT 400
+  `).all(req.tenantId, from, to);
+  res.json({ from, to, trail: rows });
 });
 
 router.get('/alerts', (req: Request, res: Response) => {

@@ -13,6 +13,12 @@ import {
   nvidiaKeysConfigured,
   uploadsRoot,
 } from '../services/nvidiaOcr';
+import {
+  autoPostInvoicePaid,
+  incomeStatement as ledgerIncomeStatement,
+  ensureChart as ledgerEnsureChart,
+} from '../services/ledger';
+import { ensureDispenseAccounts } from '../services/prescriptionDispense';
 
 const router = Router();
 router.use(authenticate);
@@ -39,6 +45,7 @@ const chartOfAccounts = [
   { code: '4.1.01.001', name: 'Receita de Consultas', type: 'revenue' },
   { code: '4.1.01.002', name: 'Receita de Exames', type: 'revenue' },
   { code: '4.1.01.003', name: 'Receita de Procedimentos', type: 'revenue' },
+  { code: '4.1.01.005', name: 'Receita de Medicamentos', type: 'revenue' },
   { code: '4.1.02.001', name: 'Receita de Convênios', type: 'revenue' },
   // Expenses
   { code: '5.1.01.001', name: 'Salários', type: 'expense' },
@@ -51,6 +58,7 @@ const chartOfAccounts = [
   { code: '5.1.02.003', name: 'Água e Esgoto', type: 'expense' },
   { code: '5.1.02.004', name: 'Material de Consumo', type: 'expense' },
   { code: '5.1.02.005', name: 'Medicamentos', type: 'expense' },
+  { code: '5.1.02.006', name: 'Medicamentos Consumidos (CMV)', type: 'expense' },
   { code: '5.1.03.001', name: 'Serviços Contábeis', type: 'expense' },
   { code: '5.1.03.002', name: 'Marketing', type: 'expense' },
 ];
@@ -211,6 +219,7 @@ router.get('/trial-balance', (req: Request, res: Response) => {
 
 router.get('/income-statement', (req: Request, res: Response) => {
   ensureChart(req.tenantId!);
+  ensureDispenseAccounts(req.tenantId!);
   const from = (req.query.from as string) || new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
   const to = (req.query.to as string) || new Date().toISOString().slice(0,10);
   const rows = db.prepare(`
@@ -227,14 +236,82 @@ router.get('/income-statement', (req: Request, res: Response) => {
     GROUP BY a.id
     ORDER BY a.type, a.code
   `).all(from, to, req.tenantId) as any[];
-  const revenue = rows.filter((r) => r.type === 'revenue').reduce((s, r) => s + Number(r.amount), 0);
-  const expenses = rows.filter((r) => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0);
+  const mapped = rows.map((r) => ({ ...r, amount: Number(r.amount) }));
+  const revenue = mapped.filter((r) => r.type === 'revenue').reduce((s, r) => s + r.amount, 0);
+  const expenses = mapped.filter((r) => r.type === 'expense').reduce((s, r) => s + r.amount, 0);
+  const cogs = mapped.filter((r) => r.code === '5.1.02.006').reduce((s, r) => s + r.amount, 0);
+  const medication_revenue = mapped.filter((r) => r.code === '4.1.01.005').reduce((s, r) => s + r.amount, 0);
   res.json({
     from, to,
-    lines: rows.map((r) => ({ ...r, amount: Number(r.amount) })),
+    lines: mapped,
     total_revenue: revenue,
     total_expenses: expenses,
+    cogs,
+    medication_revenue,
+    gross_margin: revenue - cogs,
     net_income: revenue - expenses,
+  });
+});
+
+/** Internal clinic P&L with medication dispense trail summary for the period. */
+router.get('/internal-pnl', requireRole('admin', 'accountant'), (req: Request, res: Response) => {
+  ensureChart(req.tenantId!);
+  ensureDispenseAccounts(req.tenantId!);
+  const from = (req.query.from as string) || new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const to = (req.query.to as string) || new Date().toISOString().slice(0, 10);
+
+  const pl = ledgerIncomeStatement(req.tenantId!, from, to);
+
+  const dispenses = db.prepare(`
+    SELECT pr.id AS prescription_id, pr.dispensed_at, pr.dispense_status,
+           p.full_name AS patient_name, u.full_name AS practitioner_name,
+           du.full_name AS dispensed_by_name,
+           i.id AS invoice_id, i.invoice_number, i.total AS invoice_total, i.status AS invoice_status, i.paid_at
+    FROM prescriptions pr
+    JOIN patients p ON p.id = pr.patient_id
+    JOIN users u ON u.id = pr.practitioner_id
+    LEFT JOIN users du ON du.id = pr.dispensed_by
+    LEFT JOIN invoices i ON i.id = pr.invoice_id
+    WHERE pr.tenant_id = ?
+      AND pr.dispense_status IN ('dispensed','reversed')
+      AND date(COALESCE(pr.dispensed_at, pr.created_at)) BETWEEN date(?) AND date(?)
+    ORDER BY pr.dispensed_at DESC
+    LIMIT 200
+  `).all(req.tenantId, from, to) as any[];
+
+  const stockMoves = db.prepare(`
+    SELECT m.item_id, i.name AS item_name, i.sku,
+           SUM(CASE WHEN m.movement_type = 'out' THEN m.quantity ELSE 0 END) AS qty_out,
+           SUM(CASE WHEN m.movement_type = 'in' THEN m.quantity ELSE 0 END) AS qty_in
+    FROM stock_movements m
+    JOIN inventory_items i ON i.id = m.item_id
+    WHERE m.tenant_id = ?
+      AND m.reason IN ('prescription_dispense','prescription_dispense_reverse')
+      AND date(m.created_at) BETWEEN date(?) AND date(?)
+    GROUP BY m.item_id
+    ORDER BY qty_out DESC
+  `).all(req.tenantId, from, to) as any[];
+
+  const paidTotal = dispenses
+    .filter((d) => d.invoice_status === 'paid')
+    .reduce((s, d) => s + Number(d.invoice_total || 0), 0);
+  const issuedTotal = dispenses
+    .filter((d) => d.invoice_status === 'issued')
+    .reduce((s, d) => s + Number(d.invoice_total || 0), 0);
+
+  res.json({
+    from, to,
+    pnl: pl,
+    medication: {
+      revenue: pl.medication_revenue,
+      cogs: pl.cogs,
+      gross_margin: Number(pl.medication_revenue || 0) - Number(pl.cogs || 0),
+      invoices_paid_total: paidTotal,
+      invoices_open_total: issuedTotal,
+      dispense_count: dispenses.length,
+    },
+    dispenses,
+    stock_by_item: stockMoves,
   });
 });
 
@@ -682,10 +759,32 @@ router.delete('/invoices/documents/:docId', requireRole('admin', 'accountant'), 
 });
 
 router.put('/invoices/:id/mark-paid', requireRole('admin','accountant'), (req: Request, res: Response) => {
-  const inv = db.prepare(`SELECT id, status FROM invoices WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  const inv = db.prepare(`SELECT * FROM invoices WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`UPDATE invoices SET status = 'paid', paid_at = datetime('now') WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
-  res.json({ ok: true });
+  if (inv.status === 'paid') {
+    res.json({ ok: true, already: true });
+    return;
+  }
+  const method = typeof req.body?.payment_method === 'string' ? req.body.payment_method : (inv.payment_method || 'cash');
+  const paidAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  db.prepare(`
+    UPDATE invoices SET status = 'paid', paid_at = ?, payment_method = ?
+    WHERE id = ? AND tenant_id = ?
+  `).run(paidAt, method, req.params.id, req.tenantId);
+  let journalId: string | null = null;
+  try {
+    ensureDispenseAccounts(req.tenantId!);
+    journalId = autoPostInvoicePaid(req.tenantId!, req.user!.id, {
+      ...inv,
+      status: 'paid',
+      paid_at: paidAt,
+      payment_method: method,
+    });
+  } catch (e: any) {
+    // Payment recorded even if journal period closed
+    journalId = null;
+  }
+  res.json({ ok: true, paid_at: paidAt, journal_id: journalId });
 });
 
 // Edit an invoice — only while unpaid (paid invoices are fiscal records)
@@ -739,10 +838,14 @@ function ensureChart(tenantId: string): void {
   if (count === 0) {
     const insert = db.prepare(`INSERT INTO chart_of_accounts (id, tenant_id, code, name, type) VALUES (?,?,?,?,?)`);
     for (const a of chartOfAccounts) insert.run(uuid(), tenantId, a.code, a.name, a.type);
+  } else {
+    // Upsert newer CoA codes (medicamentos) onto existing charts
+    ensureDispenseAccounts(tenantId);
   }
 }
 
 // silence unused until we expose upload roots in admin
 void uploadsRoot;
+void ledgerEnsureChart;
 
 export default router;

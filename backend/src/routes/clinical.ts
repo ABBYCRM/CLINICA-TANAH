@@ -12,6 +12,12 @@ import {
   sealPrescriptionItems,
 } from '../services/phiCrypto';
 import { stampFromUser, formatStampLabel } from '../services/clinicalStamp';
+import {
+  dispensePrescription,
+  prescriptionDispenseTrail,
+  reverseDispenseOnCancel,
+  stockLinkedItems,
+} from '../services/prescriptionDispense';
 
 const router = Router();
 router.use(authenticate);
@@ -41,8 +47,15 @@ const prescriptionSchema = z.object({
     frequency: z.string(),
     duration: z.string(),
     instructions: z.string().optional().nullable(),
+    inventory_item_id: z.string().optional().nullable(),
+    quantity: z.number().positive().optional().nullable(),
+    unit_price: z.number().min(0).optional().nullable(),
   })).min(1),
   send_via_whatsapp: z.boolean().optional().default(false),
+  /** When true (default if any stock-linked line), decrement clinic inventory + bill. */
+  dispense_from_stock: z.boolean().optional(),
+  mark_paid: z.boolean().optional().default(false),
+  payment_method: z.string().optional().nullable(),
 });
 
 // ENCOUNTERS
@@ -259,12 +272,22 @@ router.get('/prescriptions', requireRole('admin', 'doctor', 'nurse', 'pharmacist
     args.push(statusFilter);
   }
   sql += ` ORDER BY pr.created_at DESC LIMIT 200`;
-  const rows = (db.prepare(sql).all(...args) as any[]).map((pr) => ({
-    ...pr,
-    status: pr.status || 'active',
-    items: revealPrescriptionItems(pr.items),
-    stamp_label: formatStampLabel(pr),
-  }));
+  const rows = (db.prepare(sql).all(...args) as any[]).map((pr) => {
+    const items = revealPrescriptionItems(pr.items);
+    const inv = pr.invoice_id
+      ? db.prepare(`SELECT id, invoice_number, total, status, paid_at, payment_method FROM invoices WHERE id = ?`).get(pr.invoice_id) as any
+      : null;
+    return {
+      ...pr,
+      status: pr.status || 'active',
+      items,
+      stamp_label: formatStampLabel(pr),
+      dispense_status: pr.dispense_status || 'none',
+      invoice: inv || null,
+      stock_linked: stockLinkedItems(items).length,
+      paid: inv?.status === 'paid',
+    };
+  });
   const counts = db.prepare(`
     SELECT
       SUM(CASE WHEN COALESCE(status, 'active') = 'active' THEN 1 ELSE 0 END) AS active,
@@ -287,24 +310,85 @@ router.post('/prescriptions', requireRole('admin', 'doctor'), (req: Request, res
   const d = parsed.data;
   const id = uuid();
   const stamp = stampFromUser(req.user!.id);
-  db.prepare(`
-    INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp, status,
-                               signer_name, signer_council, signer_council_state, signed_at)
-    VALUES (?,?,?,?,?,?,?, 'active',?,?,?,?)
-  `).run(
-    id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id,
-    sealPrescriptionItems(d.items), d.send_via_whatsapp ? 1 : 0,
-    stamp.signer_name, stamp.signer_council, stamp.signer_council_state, stamp.signed_at,
-  );
+  const linked = stockLinkedItems(d.items);
+  const shouldDispense = d.dispense_from_stock !== false && linked.length > 0;
+
+  try {
+    db.prepare(`
+      INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp, status,
+                                 signer_name, signer_council, signer_council_state, signed_at, dispense_status)
+      VALUES (?,?,?,?,?,?,?, 'active',?,?,?,?, 'none')
+    `).run(
+      id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id,
+      sealPrescriptionItems(d.items), d.send_via_whatsapp ? 1 : 0,
+      stamp.signer_name, stamp.signer_council, stamp.signer_council_state, stamp.signed_at,
+    );
+  } catch (e: any) {
+    res.status(500).json({ error: 'create_failed', message: e.message });
+    return;
+  }
+
+  let dispense: any = null;
+  if (shouldDispense) {
+    try {
+      dispense = dispensePrescription({
+        tenantId: req.tenantId!,
+        userId: req.user!.id,
+        prescriptionId: id,
+        markPaid: !!d.mark_paid,
+        paymentMethod: d.payment_method ?? null,
+      });
+    } catch (e: any) {
+      // Reverse any partial stock if dispense failed mid-flight, then remove the new Rx
+      try {
+        reverseDispenseOnCancel({
+          tenantId: req.tenantId!,
+          userId: req.user!.id,
+          prescriptionId: id,
+        });
+      } catch { /* best effort */ }
+      // Soft-cancel instead of hard-delete if anything was written; else hard-delete brand-new empty Rx
+      const moved = db.prepare(`
+        SELECT COUNT(*) AS c FROM stock_movements
+        WHERE tenant_id = ? AND reference_id = ? AND reason = 'prescription_dispense'
+      `).get(req.tenantId, id) as any;
+      if (Number(moved?.c || 0) > 0) {
+        db.prepare(`
+          UPDATE prescriptions SET status = 'cancelled', cancelled_at = datetime('now'),
+            cancelled_by = ?, cancel_reason = ?, dispense_status = 'reversed'
+          WHERE id = ? AND tenant_id = ?
+        `).run(req.user!.id, `dispense_failed:${e.code || e.message}`, id, req.tenantId);
+      } else {
+        db.prepare(`DELETE FROM prescriptions WHERE id = ? AND tenant_id = ?`).run(id, req.tenantId);
+      }
+      const code = e.code || 'dispense_failed';
+      const status = code === 'insufficient_stock' ? 409 : 400;
+      res.status(status).json({
+        error: code,
+        message: e.message,
+        item_name: e.item_name,
+        available: e.available,
+        requested: e.requested,
+      });
+      return;
+    }
+  }
+
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'create_prescription', resourceType: 'prescription', resourceId: id,
+    afterValue: {
+      dispense_from_stock: shouldDispense,
+      invoice_id: dispense?.invoice_id || null,
+      stock_lines: linked.length,
+    },
     legalBasis: 'health_protection_art7_VIII',
   });
   res.status(201).json({
     id, sent_via_whatsapp: d.send_via_whatsapp, status: 'active',
     stamp_label: formatStampLabel(stamp),
+    dispense,
   });
 });
 
@@ -321,6 +405,13 @@ router.put('/prescriptions/:id', requireRole('admin', 'doctor'), (req: Request, 
   }
   const parsed = prescriptionSchema.pick({ items: true }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  if ((before.dispense_status || 'none') === 'dispensed') {
+    res.status(409).json({
+      error: 'already_dispensed',
+      message: 'Receita já dispensada do estoque. Cancele (reverte estoque se não paga) ou emita nova.',
+    });
+    return;
+  }
   db.prepare(`UPDATE prescriptions SET items = ? WHERE id = ? AND tenant_id = ?`)
     .run(sealPrescriptionItems(parsed.data.items), req.params.id, req.tenantId);
   logAudit({
@@ -347,6 +438,16 @@ function cancelPrescription(req: Request, res: Response) {
   const reasonRaw = req.body?.reason ?? req.query.reason;
   const reason = typeof reasonRaw === 'string' ? reasonRaw.slice(0, 500) : null;
   const now = new Date().toISOString();
+
+  let reverse: any = null;
+  try {
+    reverse = reverseDispenseOnCancel({
+      tenantId: req.tenantId!,
+      userId: req.user!.id,
+      prescriptionId: req.params.id,
+    });
+  } catch { /* best-effort stock reverse */ }
+
   db.prepare(`
     UPDATE prescriptions
     SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ?
@@ -356,17 +457,20 @@ function cancelPrescription(req: Request, res: Response) {
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'cancel_prescription', resourceType: 'prescription', resourceId: req.params.id,
-    beforeValue: { status: p.status || 'active' },
-    afterValue: { status: 'cancelled', reason },
+    beforeValue: { status: p.status || 'active', dispense_status: p.dispense_status },
+    afterValue: { status: 'cancelled', reason, stock_reverse: reverse },
     legalBasis: 'health_protection_art7_VIII',
   });
-  res.json({ ok: true, status: 'cancelled', cancelled_at: now, clinical_retention: true });
+  res.json({
+    ok: true, status: 'cancelled', cancelled_at: now, clinical_retention: true,
+    stock_reverse: reverse,
+  });
 }
 
 router.post('/prescriptions/:id/cancel', requireRole('doctor', 'admin'), cancelPrescription);
 router.delete('/prescriptions/:id', requireRole('doctor', 'admin'), cancelPrescription);
 
-/** Restore a cancelled prescription to active (vigente). */
+/** Restore a cancelled prescription to active (vigente). Does NOT re-dispense stock. */
 router.post('/prescriptions/:id/restore', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
   const p = db.prepare(`SELECT * FROM prescriptions WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
@@ -384,10 +488,56 @@ router.post('/prescriptions/:id/restore', requireRole('doctor', 'admin'), (req: 
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'restore_prescription', resourceType: 'prescription', resourceId: req.params.id,
     beforeValue: { status: 'cancelled' },
-    afterValue: { status: 'active' },
+    afterValue: { status: 'active', note: 'stock_not_re_dispensed' },
     legalBasis: 'health_protection_art7_VIII',
   });
-  res.json({ ok: true, status: 'active' });
+  res.json({ ok: true, status: 'active', note: 'Reabre a receita; re-dispensar estoque via POST /dispense se necessário.' });
+});
+
+/** Explicit dispense (pharmacist / admin) for Rx that was created without stock debit. */
+router.post('/prescriptions/:id/dispense', requireRole('admin', 'doctor', 'pharmacist', 'nurse'), (req: Request, res: Response) => {
+  try {
+    const result = dispensePrescription({
+      tenantId: req.tenantId!,
+      userId: req.user!.id,
+      prescriptionId: req.params.id,
+      markPaid: !!req.body?.mark_paid,
+      paymentMethod: req.body?.payment_method ?? null,
+    });
+    logAudit({
+      tenantId: req.tenantId,
+      actorId: req.user!.id, actorEmail: req.user!.email,
+      action: 'dispense_prescription', resourceType: 'prescription', resourceId: req.params.id,
+      afterValue: {
+        invoice_id: result.invoice_id,
+        total: result.invoice_total,
+        cogs: result.total_cogs,
+        paid: result.invoice_status === 'paid',
+      },
+      legalBasis: 'health_protection_art7_VIII',
+    });
+    res.status(result.already ? 200 : 201).json(result);
+  } catch (e: any) {
+    const code = e.code || 'dispense_failed';
+    const status = code === 'insufficient_stock' ? 409
+      : code === 'not_found' ? 404
+      : code === 'prescription_cancelled' ? 409
+      : 400;
+    res.status(status).json({
+      error: code,
+      message: e.message,
+      item_name: e.item_name,
+      available: e.available,
+      requested: e.requested,
+    });
+  }
+});
+
+/** Trail: stock out, who prescribed, invoice, paid?, journals. */
+router.get('/prescriptions/:id/trail', requireRole('admin', 'doctor', 'nurse', 'pharmacist', 'accountant'), (req: Request, res: Response) => {
+  const trail = prescriptionDispenseTrail(req.tenantId!, req.params.id);
+  if (!trail) { res.status(404).json({ error: 'not_found' }); return; }
+  res.json(trail);
 });
 
 export default router;

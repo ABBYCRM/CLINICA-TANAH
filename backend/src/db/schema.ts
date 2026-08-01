@@ -1437,4 +1437,23 @@ export function seedMarketingDefaults(tenantId: string): void {
     );
     CREATE INDEX IF NOT EXISTS idx_attach_patient ON clinical_attachments(tenant_id, patient_id, created_at);
   `);
+
+  // ============================================================
+  // Rx ↔ Inventory ↔ Contabilidade — dispense + invoice trail
+  // ============================================================
+  for (const sql of [
+    `ALTER TABLE prescriptions ADD COLUMN dispense_status TEXT NOT NULL DEFAULT 'none'`,
+    `ALTER TABLE prescriptions ADD COLUMN dispensed_at TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN dispensed_by TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN invoice_id TEXT`,
+    `ALTER TABLE invoices ADD COLUMN prescription_id TEXT`,
+  ]) {
+    try { openDb().exec(sql); } catch { /* exists */ }
+  }
+  try {
+    openDb().exec(`CREATE INDEX IF NOT EXISTS idx_inv_prescription ON invoices(prescription_id)`);
+  } catch { /* exists */ }
+  try {
+    openDb().exec(`CREATE INDEX IF NOT EXISTS idx_mvmt_ref ON stock_movements(reference_id)`);
+  } catch { /* exists */ }
 }

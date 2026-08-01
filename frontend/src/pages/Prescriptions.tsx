@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
 
-interface RxItem { medication: string; dosage: string; frequency: string; duration: string; instructions?: string; }
+interface RxItem {
+  medication: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions?: string;
+  inventory_item_id?: string;
+  quantity?: number | '';
+  unit_price?: number | '';
+}
 
 type RxTab = 'active' | 'cancelled';
 
@@ -21,6 +31,11 @@ function fmtWhen(v?: string | null, locale = 'pt-BR') {
   });
 }
 
+function money(n: number | null | undefined, locale = 'pt-BR') {
+  if (n == null || Number.isNaN(Number(n))) return '—';
+  return Number(n).toLocaleString(locale, { style: 'currency', currency: 'BRL' });
+}
+
 export default function Prescriptions() {
   const { t, locale } = useI18n();
   const [tab, setTab] = useState<RxTab>('active');
@@ -30,6 +45,8 @@ export default function Prescriptions() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [cancelling, setCancelling] = useState<any | null>(null);
+  const [trailId, setTrailId] = useState<string | null>(null);
+  const [trail, setTrail] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -46,6 +63,18 @@ export default function Prescriptions() {
   };
 
   useEffect(load, [locale, tab]);
+
+  const openTrail = async (id: string) => {
+    setTrailId(id);
+    setTrail(null);
+    try {
+      const d = await api.get(`/api/clinical/prescriptions/${id}/trail`);
+      setTrail(d);
+    } catch (e: any) {
+      setError(e.body?.message || e.message || t('errors.generic'));
+      setTrailId(null);
+    }
+  };
 
   const cancelRx = async () => {
     if (!cancelling) return;
@@ -72,6 +101,19 @@ export default function Prescriptions() {
       await api.post(`/api/clinical/prescriptions/${p.id}/restore`, {});
       if (tab !== 'active') setTab('active');
       else load();
+    } catch (err: any) {
+      setError(err.body?.message || err.message || t('errors.generic'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markPaid = async (p: any) => {
+    if (!p.invoice?.id) return;
+    setBusy(true);
+    try {
+      await api.put(`/api/accounting/invoices/${p.invoice.id}/mark-paid`, { payment_method: 'pix' });
+      load();
     } catch (e: any) {
       setError(e.body?.message || e.message || t('errors.generic'));
     } finally {
@@ -91,6 +133,10 @@ export default function Prescriptions() {
           + {t('prescriptions.new')}
         </button>
       </div>
+
+      <p className="text-xs text-[color:var(--ink-muted)] max-w-3xl leading-relaxed">
+        {t('prescriptions.stock_bridge_hint')}
+      </p>
 
       <div className="flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.35)]">
         <button
@@ -130,6 +176,7 @@ export default function Prescriptions() {
         {prescriptions.map((p) => {
           const items = parseItems(p.items);
           const cancelled = (p.status || 'active') === 'cancelled';
+          const dispensed = (p.dispense_status || 'none') === 'dispensed';
           return (
             <div
               key={p.id}
@@ -153,14 +200,21 @@ export default function Prescriptions() {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
+                  {dispensed && (
+                    <span className="badge-green">{t('prescriptions.dispensed')}</span>
+                  )}
+                  {p.invoice && (
+                    <span className={`badge ${p.paid ? 'badge-green' : 'badge-yellow'}`}>
+                      {p.invoice.invoice_number} · {p.paid ? t('prescriptions.paid') : t('prescriptions.unpaid')}
+                      {' · '}{money(p.invoice.total, locale)}
+                    </span>
+                  )}
                   {cancelled ? (
                     <span className="badge-red">{t('prescriptions.status_cancelled')}</span>
                   ) : p.sent_via_whatsapp ? (
                     <span className="badge-green">✓ {t('prescriptions.send_via_whatsapp')}</span>
-                  ) : (
-                    <span className="badge-slate">PDF</span>
-                  )}
+                  ) : null}
                   {!cancelled && (
                     <RowActions
                       onEdit={() => { setEditing(p); setShowForm(true); }}
@@ -188,9 +242,24 @@ export default function Prescriptions() {
                     {(it.dosage || it.frequency || it.duration) ? (
                       <> — {[it.dosage, it.frequency, it.duration].filter(Boolean).join(', ')}</>
                     ) : null}
+                    {it.inventory_item_id && it.quantity ? (
+                      <span className="ml-2 text-xs text-[color:var(--ink-muted)]">
+                        {t('prescriptions.stock_qty', { qty: String(it.quantity) })}
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="btn-secondary text-xs" onClick={() => openTrail(p.id)}>
+                  {t('prescriptions.view_trail')}
+                </button>
+                {!cancelled && dispensed && p.invoice && !p.paid && (
+                  <button type="button" className="btn-primary text-xs" disabled={busy} onClick={() => markPaid(p)}>
+                    {t('prescriptions.mark_paid')}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -215,31 +284,123 @@ export default function Prescriptions() {
           onConfirm={cancelRx}
         />
       )}
+      {trailId && (
+        <Modal title={t('prescriptions.trail_title')} onClose={() => { setTrailId(null); setTrail(null); }} wide>
+          {!trail && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</p>}
+          {trail && (
+            <div className="space-y-3 text-sm" data-testid="rx-trail">
+              <div>
+                <div className="font-semibold">{trail.prescription.patient_name}</div>
+                <div className="text-xs text-[color:var(--ink-muted)]">
+                  {t('prescriptions.prescribed_by')}: {trail.prescription.practitioner_name}
+                  {trail.prescription.dispensed_by_name ? ` · ${t('prescriptions.dispensed_by')}: ${trail.prescription.dispensed_by_name}` : ''}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1">{t('prescriptions.stock_out')}</h4>
+                {(trail.stock_out || []).length === 0 && <p className="text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
+                <ul className="space-y-1">
+                  {(trail.stock_out || []).map((s: any) => (
+                    <li key={s.item_id}>{s.item_name}: −{s.quantity}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1">{t('prescriptions.invoice')}</h4>
+                {trail.invoice ? (
+                  <div>
+                    {trail.invoice.invoice_number} · {money(trail.invoice.total, locale)} ·{' '}
+                    <span className={trail.paid ? 'text-green-800' : 'text-amber-800'}>
+                      {trail.paid ? t('prescriptions.paid') : t('prescriptions.unpaid')}
+                    </span>
+                    <div className="mt-1">
+                      <Link to="/invoices" className="underline text-[color:var(--brass-deep)]">{t('prescriptions.open_invoices')}</Link>
+                      {' · '}
+                      <Link to="/accounting" className="underline text-[color:var(--brass-deep)]">{t('prescriptions.open_accounting')}</Link>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[color:var(--ink-muted)]">{t('prescriptions.no_invoice')}</p>
+                )}
+              </div>
+              {(trail.journals || []).length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1">{t('prescriptions.journals')}</h4>
+                  <ul className="space-y-1">
+                    {trail.journals.map((j: any) => (
+                      <li key={j.id}>{j.entry_number} · {j.description} · {money(j.total_debit, locale)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
 
-const emptyItem: RxItem = { medication: '', dosage: '', frequency: '', duration: '', instructions: '' };
+const emptyItem: RxItem = {
+  medication: '', dosage: '', frequency: '', duration: '', instructions: '',
+  inventory_item_id: '', quantity: '', unit_price: '',
+};
 
 function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
   const [encounters, setEncounters] = useState<any[]>([]);
+  const [stockItems, setStockItems] = useState<any[]>([]);
   const [encounterId, setEncounterId] = useState(initial?.encounter_id ?? '');
-  const [items, setItems] = useState<RxItem[]>(initial ? parseItems(initial.items) : [{ ...emptyItem }]);
+  const [items, setItems] = useState<RxItem[]>(initial ? parseItems(initial.items).map((it) => ({
+    ...emptyItem, ...it,
+    quantity: it.quantity ?? '',
+    unit_price: it.unit_price ?? '',
+    inventory_item_id: it.inventory_item_id ?? '',
+  })) : [{ ...emptyItem }]);
+  const [dispenseFromStock, setDispenseFromStock] = useState(true);
+  const [markPaid, setMarkPaid] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/api/clinical/encounters').then((d) => setEncounters(d.encounters)).catch(console.error);
+    api.get('/api/clinical/encounters').then((d) => setEncounters(d.encounters || [])).catch(console.error);
+    api.get('/api/inventory/items?category=medication')
+      .then((d) => setStockItems((d.items || []).filter((x: any) => x.category === 'medication' || true)))
+      .catch(() => setStockItems([]));
   }, []);
 
-  const setItem = (i: number, k: keyof RxItem, v: string) =>
-    setItems((arr) => arr.map((it, idx) => idx === i ? { ...it, [k]: v } : it));
+  const setItem = (i: number, patch: Partial<RxItem>) =>
+    setItems((arr) => arr.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+
+  const pickStock = (i: number, itemId: string) => {
+    const stock = stockItems.find((s) => s.id === itemId);
+    if (!stock) {
+      setItem(i, { inventory_item_id: '', medication: items[i].medication });
+      return;
+    }
+    setItem(i, {
+      inventory_item_id: stock.id,
+      medication: stock.name,
+      unit_price: stock.sale_price ?? stock.unit_cost ?? '',
+      quantity: items[i].quantity || 1,
+    });
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const clean = items.filter((it) => it.medication.trim());
+    const clean = items
+      .filter((it) => it.medication.trim())
+      .map((it) => ({
+        medication: it.medication.trim(),
+        dosage: it.dosage || '',
+        frequency: it.frequency || '',
+        duration: it.duration || '',
+        instructions: it.instructions || null,
+        inventory_item_id: it.inventory_item_id || null,
+        quantity: it.inventory_item_id && it.quantity !== '' ? Number(it.quantity) : null,
+        unit_price: it.unit_price !== '' && it.unit_price != null ? Number(it.unit_price) : null,
+      }));
     if (!clean.length) { setError(t('prescriptions.medication') + ' *'); return; }
     setSaving(true);
     try {
@@ -249,12 +410,25 @@ function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; 
         const enc = encounters.find((x) => x.id === encounterId);
         if (!enc) { setError(t('prescriptions.encounter') + ' *'); setSaving(false); return; }
         await api.post('/api/clinical/prescriptions', {
-          encounter_id: enc.id, patient_id: enc.patient_id, practitioner_id: enc.practitioner_id, items: clean,
+          encounter_id: enc.id,
+          patient_id: enc.patient_id,
+          practitioner_id: enc.practitioner_id,
+          items: clean,
+          dispense_from_stock: dispenseFromStock,
+          mark_paid: markPaid,
+          payment_method: markPaid ? 'pix' : null,
         });
       }
       onSaved();
     } catch (err: any) {
-      setError(err.body?.message || err.message || t('errors.generic'));
+      const msg = err.body?.error === 'insufficient_stock'
+        ? t('prescriptions.insufficient_stock', {
+          item: err.body?.item_name || '',
+          available: String(err.body?.available ?? ''),
+          requested: String(err.body?.requested ?? ''),
+        })
+        : (err.body?.message || err.message || t('errors.generic'));
+      setError(msg);
     } finally {
       setSaving(false);
     }
@@ -262,7 +436,7 @@ function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; 
 
   return (
     <Modal title={initial ? `${t('crud.edit')} — ${initial.patient_name}` : t('prescriptions.new')} onClose={onClose} wide>
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="space-y-4" data-testid="rx-form">
         <FormError message={error} />
         {!initial && (
           <div>
@@ -279,9 +453,20 @@ function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; 
         <div className="space-y-3">
           {items.map((it, i) => (
             <div key={i} className="rounded-xl border border-[rgba(176,183,192,0.45)] p-3 space-y-2" style={{ background: 'linear-gradient(180deg,#fbf7f0,#f3ebe0)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <input className="input flex-1" placeholder={t('prescriptions.medication') + ' *'} value={it.medication}
-                  onChange={(e) => setItem(i, 'medication', e.target.value)} required={i === 0} />
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="input flex-1 min-w-[12rem]"
+                  value={it.inventory_item_id || ''}
+                  onChange={(e) => pickStock(i, e.target.value)}
+                  data-testid={`rx-stock-${i}`}
+                >
+                  <option value="">{t('prescriptions.external_med')}</option>
+                  {stockItems.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} · est. {s.current_stock ?? '—'} · {money(s.sale_price)}
+                    </option>
+                  ))}
+                </select>
                 {items.length > 1 && (
                   <button type="button" onClick={() => setItems((arr) => arr.filter((_, idx) => idx !== i))}
                     className="rounded-lg p-1.5 text-[color:var(--ink-muted)] hover:bg-[#f8e8e2] hover:text-[#8b3a2a] transition-colors" aria-label="Remove item">
@@ -289,21 +474,50 @@ function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; 
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <input className="input" placeholder={t('prescriptions.dosage')} value={it.dosage} onChange={(e) => setItem(i, 'dosage', e.target.value)} />
-                <input className="input" placeholder={t('prescriptions.frequency')} value={it.frequency} onChange={(e) => setItem(i, 'frequency', e.target.value)} />
-                <input className="input" placeholder={t('prescriptions.duration')} value={it.duration} onChange={(e) => setItem(i, 'duration', e.target.value)} />
+              <input className="input w-full" placeholder={t('prescriptions.medication') + ' *'} value={it.medication}
+                onChange={(e) => setItem(i, { medication: e.target.value })} required={i === 0} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <input className="input" placeholder={t('prescriptions.dosage')} value={it.dosage} onChange={(e) => setItem(i, { dosage: e.target.value })} />
+                <input className="input" placeholder={t('prescriptions.frequency')} value={it.frequency} onChange={(e) => setItem(i, { frequency: e.target.value })} />
+                <input className="input" placeholder={t('prescriptions.duration')} value={it.duration} onChange={(e) => setItem(i, { duration: e.target.value })} />
+                {it.inventory_item_id ? (
+                  <input
+                    className="input"
+                    type="number"
+                    min={0.01}
+                    step="any"
+                    placeholder={t('prescriptions.quantity')}
+                    value={it.quantity}
+                    onChange={(e) => setItem(i, { quantity: e.target.value === '' ? '' : Number(e.target.value) })}
+                    required
+                    data-testid={`rx-qty-${i}`}
+                  />
+                ) : (
+                  <div />
+                )}
               </div>
-              <input className="input" placeholder={t('prescriptions.instructions')} value={it.instructions ?? ''} onChange={(e) => setItem(i, 'instructions', e.target.value)} />
+              <input className="input" placeholder={t('prescriptions.instructions')} value={it.instructions ?? ''} onChange={(e) => setItem(i, { instructions: e.target.value })} />
             </div>
           ))}
+          <button type="button" className="btn-secondary text-sm" onClick={() => setItems((arr) => [...arr, { ...emptyItem }])}>
+            + {t('prescriptions.add_item')}
+          </button>
         </div>
 
-        <button type="button" onClick={() => setItems((arr) => [...arr, { ...emptyItem }])} className="btn-secondary text-sm">
-          + {t('prescriptions.add_item')}
-        </button>
+        {!initial && (
+          <div className="space-y-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={dispenseFromStock} onChange={(e) => setDispenseFromStock(e.target.checked)} data-testid="rx-dispense-stock" />
+              {t('prescriptions.dispense_from_stock')}
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={markPaid} onChange={(e) => setMarkPaid(e.target.checked)} disabled={!dispenseFromStock} />
+              {t('prescriptions.mark_paid_on_dispense')}
+            </label>
+          </div>
+        )}
 
-        <FormActions saving={saving} onCancel={onClose} />
+        <FormActions onCancel={onClose} saving={saving} />
       </form>
     </Modal>
   );

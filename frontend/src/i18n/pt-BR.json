@@ -475,7 +475,28 @@
     "cancel_default_reason": "Cancelada pela equipe clínica",
     "restore": "Restaurar (tornar vigente)",
     "retention_notice": "Arquivo de retenção clínica (CFM): receitas canceladas não são excluídas — permanecem auditáveis no prontuário.",
-    "cancelled_meta": "Cancelada em {{when}} · {{by}}"
+    "cancelled_meta": "Cancelada em {{when}} · {{by}}",
+    "stock_bridge_hint": "Itens vinculados ao estoque da clínica debitam automaticamente o lote (FEFO), geram fatura e lançamentos no P&L (receita de medicamentos + CMV).",
+    "external_med": "Medicamento externo (sem estoque)",
+    "quantity": "Qtd. estoque",
+    "dispense_from_stock": "Dispensar do estoque da clínica (ajusta inventário + contabilidade)",
+    "mark_paid_on_dispense": "Marcar como pago na dispensação",
+    "dispensed": "Dispensada (estoque)",
+    "paid": "Paga",
+    "unpaid": "Em aberto",
+    "view_trail": "Rastro estoque / pagamento",
+    "mark_paid": "Baixar pagamento",
+    "trail_title": "Rastro da receita",
+    "prescribed_by": "Prescritor",
+    "dispensed_by": "Dispensado por",
+    "stock_out": "Saídas de estoque",
+    "invoice": "Fatura",
+    "no_invoice": "Sem fatura vinculada",
+    "journals": "Lançamentos contábeis",
+    "open_invoices": "Abrir faturas",
+    "open_accounting": "Abrir contabilidade",
+    "stock_qty": "Estoque −{{qty}}",
+    "insufficient_stock": "Estoque insuficiente para {{item}} (disponível {{available}}, pedido {{requested}})."
   },
   "inventory": {
     "title": "Estoque",
@@ -557,7 +578,12 @@
       "equity": "Patrimônio",
       "revenue": "Receita",
       "expense": "Despesa"
-    }
+    },
+    "internal_pnl": "P&L interno",
+    "gross_margin": "Margem bruta",
+    "cogs": "CMV (medicamentos)",
+    "medication_revenue": "Receita de medicamentos",
+    "dispense_summary": "Dispensações no período"
   },
   "invoices": {
     "title": "Faturas",

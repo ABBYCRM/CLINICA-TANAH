@@ -19,6 +19,7 @@ export default function Accounting() {
   const [tab, setTab] = useState<Tab>('tb');
   const [tb, setTb] = useState<any[]>([]);
   const [pl, setPl] = useState<any>(null);
+  const [internalPnl, setInternalPnl] = useState<any>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,8 +40,10 @@ export default function Accounting() {
       api.get('/api/accounting/income-statement'),
       api.get('/api/accounting/chart'),
       api.get('/api/accounting/journal'),
-    ]).then(([a, b, c, j]) => {
+      api.get('/api/accounting/internal-pnl').catch(() => null),
+    ]).then(([a, b, c, j, ip]) => {
       setTb(a.accounts); setPl(b); setAccounts(c.accounts); setEntries(j.entries);
+      setInternalPnl(ip);
     }).catch(console.error).finally(() => setLoading(false));
   }, [locale, refreshKey]);
 
@@ -128,11 +131,41 @@ export default function Accounting() {
         loading && !pl ? (
           <div className="card p-6 text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>
         ) : pl ? (
-          <DreWorksheet
-            initial={pl}
-            onError={(msg) => setError(msg)}
-            onMutated={refresh}
-          />
+          <div className="space-y-3">
+            {internalPnl?.medication && (
+              <section className="card p-4" data-testid="internal-pnl-meds">
+                <h2 className="font-semibold text-sm mb-2">{t('accounting.internal_pnl')} — {t('nav.prescriptions')}</h2>
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('accounting.medication_revenue')}</div>
+                    <div className="font-display text-lg tabular-nums">{Number(internalPnl.medication.revenue || 0).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('accounting.cogs')}</div>
+                    <div className="font-display text-lg tabular-nums">{Number(internalPnl.medication.cogs || 0).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('accounting.gross_margin')}</div>
+                    <div className="font-display text-lg tabular-nums">{Number(internalPnl.medication.gross_margin || 0).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('accounting.dispense_summary')}</div>
+                    <div className="font-display text-lg tabular-nums">{internalPnl.medication.dispense_count || 0}</div>
+                  </div>
+                </div>
+                {(pl.cogs != null || pl.gross_margin != null) && (
+                  <p className="text-xs text-[color:var(--ink-muted)] mt-2">
+                    DRE: CMV {Number(pl.cogs || 0).toFixed(2)} · {t('accounting.gross_margin')} {Number(pl.gross_margin || 0).toFixed(2)}
+                  </p>
+                )}
+              </section>
+            )}
+            <DreWorksheet
+              initial={pl}
+              onError={(msg) => setError(msg)}
+              onMutated={refresh}
+            />
+          </div>
         ) : null
       )}
 
