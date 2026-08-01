@@ -85,8 +85,13 @@ test.describe('Mobile Abrir prontuário', () => {
     await goto.click();
     await expect(page.getByTestId('timeline-inspector')).toHaveCount(0);
     await expect(page.getByTestId('workspace-tab-clinical')).toHaveClass(/is-active/);
-    await page.waitForTimeout(500);
-    await chartInViewport(page);
+    // wait for layout reorder + main scroll
+    await expect.poll(async () => {
+      return page.getByTestId('prontuario-chart').evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.bottom > 80 && r.top < window.innerHeight - 40;
+      });
+    }, { timeout: 5_000 }).toBe(true);
     await page.screenshot({ path: path.join(SHOT, 'inspector-open-clinical.png'), fullPage: true });
   });
 });

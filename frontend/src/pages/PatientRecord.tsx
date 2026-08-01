@@ -180,10 +180,21 @@ export default function PatientRecord() {
       if (!chart) return;
       const rect = chart.getBoundingClientRect();
       const inView = rect.top >= 0 && rect.top < window.innerHeight * 0.55;
-      if (!inView) chart.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (inView) return;
+      chart.scrollIntoView({ behavior: 'auto', block: 'start' });
+      // Mobile shell sometimes scrolls the window while <main> is not overflow-clipped
+      const after = chart.getBoundingClientRect();
+      if (!(after.top >= 0 && after.top < window.innerHeight * 0.55)) {
+        const delta = after.top - 8;
+        window.scrollBy({ top: delta, left: 0, behavior: 'auto' });
+        const main = chart.closest('main') as HTMLElement | null;
+        if (main && main.scrollHeight > main.clientHeight + 1) {
+          main.scrollBy({ top: delta, left: 0, behavior: 'auto' });
+        }
+      }
     };
-    const t1 = window.setTimeout(scroll, 60);
-    const t2 = window.setTimeout(scroll, 280);
+    const t1 = window.setTimeout(scroll, 50);
+    const t2 = window.setTimeout(scroll, 220);
     return () => {
       cancelled = true;
       window.clearTimeout(t1);
