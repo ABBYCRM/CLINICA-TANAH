@@ -29,6 +29,88 @@ import {
   processClinicalPhoto,
   type CaptureView,
 } from '../services/captureQuality';
+import {
+  buildPhotorealScenarioPrompt,
+  computeScenarioEnvelope,
+  type PlanConfig,
+  type ScenarioAssumptions,
+} from '../services/scenarioEnvelope';
+
+const NUM = z.number().finite().optional().nullable();
+const measurementBodySchema = z.object({
+  measured_at: z.string().optional().nullable(),
+  recorded_at: z.string().optional().nullable(),
+  height_cm: z.number().positive().max(300),
+  weight_kg: z.number().positive().max(500),
+  neck_cm: NUM, shoulders_cm: NUM, chest_cm: NUM, waist_cm: NUM, abdomen_cm: NUM, hip_cm: NUM,
+  arm_right_cm: NUM, arm_left_cm: NUM, forearm_right_cm: NUM, forearm_left_cm: NUM,
+  wrist_cm: NUM, thigh_right_cm: NUM, thigh_left_cm: NUM, calf_right_cm: NUM, calf_left_cm: NUM, ankle_cm: NUM,
+  body_fat_pct: NUM, muscle_mass_kg: NUM, bone_mass_kg: NUM, visceral_fat_level: NUM, body_water_pct: NUM,
+  systolic_mmhg: NUM, diastolic_mmhg: NUM, heart_rate_bpm: NUM, spo2_pct: NUM, temperature_c: NUM,
+  device_label: z.string().max(200).optional().nullable(),
+  clothing_note: z.string().max(500).optional().nullable(),
+  posture_note: z.string().max(500).optional().nullable(),
+  fasting_state: z.enum(['fasting', 'non_fasting', 'unknown']).optional().nullable(),
+  notes: z.string().max(4000).optional().nullable(),
+  verified: z.boolean().optional(),
+});
+
+function flattenMeasurement(row: any) {
+  if (!row) return null;
+  const payload = row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : {};
+  const notes = row.notes ? (open(row.notes) || row.notes) : null;
+  return {
+    id: row.id,
+    recorded_at: row.recorded_at,
+    measured_at: row.recorded_at,
+    height_cm: row.height_cm,
+    weight_kg: row.weight_kg,
+    waist_cm: row.waist_cm ?? payload.waist_cm ?? null,
+    bmi: row.bmi ?? calcBmi(row.height_cm, row.weight_kg),
+    whr: row.whr ?? null,
+    whtr: row.whtr ?? null,
+    device_label: row.device_label || payload.device_label || null,
+    fasting_state: row.fasting_state || payload.fasting_state || 'unknown',
+    clothing_note: row.clothing_note || payload.clothing_note || null,
+    posture_note: row.posture_note || payload.posture_note || null,
+    verified: !!row.verified,
+    notes,
+    ...payload,
+    // camelCase aliases for BodyPath-style consumers
+    heightCm: row.height_cm,
+    weightKg: row.weight_kg,
+    waistCm: row.waist_cm ?? payload.waist_cm ?? null,
+    neckCm: payload.neck_cm ?? null,
+    shouldersCm: payload.shoulders_cm ?? null,
+    chestCm: payload.chest_cm ?? null,
+    abdomenCm: payload.abdomen_cm ?? null,
+    hipCm: payload.hip_cm ?? null,
+    armRightCm: payload.arm_right_cm ?? null,
+    armLeftCm: payload.arm_left_cm ?? null,
+    forearmRightCm: payload.forearm_right_cm ?? null,
+    forearmLeftCm: payload.forearm_left_cm ?? null,
+    wristCm: payload.wrist_cm ?? null,
+    thighRightCm: payload.thigh_right_cm ?? null,
+    thighLeftCm: payload.thigh_left_cm ?? null,
+    calfRightCm: payload.calf_right_cm ?? null,
+    calfLeftCm: payload.calf_left_cm ?? null,
+    ankleCm: payload.ankle_cm ?? null,
+    bodyFatPct: payload.body_fat_pct ?? null,
+    muscleMassKg: payload.muscle_mass_kg ?? null,
+    boneMassKg: payload.bone_mass_kg ?? null,
+    visceralFatLevel: payload.visceral_fat_level ?? null,
+    bodyWaterPct: payload.body_water_pct ?? null,
+    systolicMmhg: payload.systolic_mmhg ?? null,
+    diastolicMmhg: payload.diastolic_mmhg ?? null,
+    heartRateBpm: payload.heart_rate_bpm ?? null,
+    spo2Pct: payload.spo2_pct ?? null,
+    temperatureC: payload.temperature_c ?? null,
+    deviceLabel: row.device_label || payload.device_label || null,
+    clothingNote: row.clothing_note || payload.clothing_note || null,
+    postureNote: row.posture_note || payload.posture_note || null,
+    fastingState: row.fasting_state || payload.fasting_state || 'unknown',
+  };
+}
 
 const router = Router();
 router.use(authenticate);
@@ -371,10 +453,11 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
 
-  const measurements = db.prepare(`
+  const measurementsRaw = db.prepare(`
     SELECT * FROM body_measurements WHERE tenant_id = ? AND patient_id = ?
     ORDER BY recorded_at DESC LIMIT 50
   `).all(req.tenantId, patient.id) as any[];
+  const measurements = measurementsRaw.map(flattenMeasurement);
   const latest = measurements[0] || null;
   const medications = db.prepare(`
     SELECT * FROM body_medications WHERE tenant_id = ? AND patient_id = ?
@@ -396,14 +479,14 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   `).all(req.tenantId, patient.id) as any[];
   const capture_sessions = sessions.map((s) => serializeSession(s, req));
   const scenarios = db.prepare(`
-    SELECT id, capture_id, title, goal, weeks, status, provider, image_url,
+    SELECT id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, status, provider, image_url,
            CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
-           error, created_at, updated_at
+           error, review_status, execution_plan, plan_config, assumptions, created_at, updated_at
     FROM body_scenarios WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
   `).all(req.tenantId, patient.id) as any[];
   const consents = consentMap(req.tenantId!, patient.id);
-  const bmi = calcBmi(latest?.height_cm, latest?.weight_kg);
+  const bmi = latest?.bmi ?? calcBmi(latest?.height_cm, latest?.weight_kg);
 
   logAudit({
     tenantId: req.tenantId,
@@ -424,8 +507,12 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
       height_cm: latest?.height_cm ?? null,
       weight_kg: latest?.weight_kg ?? null,
       waist_cm: latest?.waist_cm ?? null,
+      body_fat_pct: latest?.body_fat_pct ?? null,
       bmi,
+      whr: latest?.whr ?? null,
+      whtr: latest?.whtr ?? null,
     },
+    latest_measurement: latest,
     measurements,
     medications,
     plans,
@@ -434,7 +521,12 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     active_capture_session: capture_sessions.find((s: any) => s.status === 'complete')
       || capture_sessions[0]
       || null,
-    scenarios,
+    scenarios: scenarios.map((s) => ({
+      ...s,
+      execution_plan: s.execution_plan ? JSON.parse(s.execution_plan) : null,
+      plan_config: s.plan_config ? JSON.parse(s.plan_config) : null,
+      assumptions: s.assumptions ? JSON.parse(s.assumptions) : null,
+    })),
     consents,
     simulations_allowed: simulationsAllowed(consents),
     counts: {
@@ -452,37 +544,63 @@ router.post('/:patientId/measurements', requireRole('doctor', 'nurse', 'admin'),
   if (!requireClinical(req, res)) return;
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
-  const parsed = z.object({
-    height_cm: z.number().positive().max(300).optional().nullable(),
-    weight_kg: z.number().positive().max(500).optional().nullable(),
-    waist_cm: z.number().positive().max(400).optional().nullable(),
-    notes: z.string().max(2000).optional().nullable(),
-    recorded_at: z.string().optional().nullable(),
-  }).safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  const parsed = measurementBodySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
-  if (d.height_cm == null && d.weight_kg == null && d.waist_cm == null) {
-    res.status(400).json({ error: 'validation', message: 'at_least_one_metric' });
-    return;
-  }
+  const payload = {
+    neck_cm: d.neck_cm ?? null,
+    shoulders_cm: d.shoulders_cm ?? null,
+    chest_cm: d.chest_cm ?? null,
+    waist_cm: d.waist_cm ?? null,
+    abdomen_cm: d.abdomen_cm ?? null,
+    hip_cm: d.hip_cm ?? null,
+    arm_right_cm: d.arm_right_cm ?? null,
+    arm_left_cm: d.arm_left_cm ?? null,
+    forearm_right_cm: d.forearm_right_cm ?? null,
+    forearm_left_cm: d.forearm_left_cm ?? null,
+    wrist_cm: d.wrist_cm ?? null,
+    thigh_right_cm: d.thigh_right_cm ?? null,
+    thigh_left_cm: d.thigh_left_cm ?? null,
+    calf_right_cm: d.calf_right_cm ?? null,
+    calf_left_cm: d.calf_left_cm ?? null,
+    ankle_cm: d.ankle_cm ?? null,
+    body_fat_pct: d.body_fat_pct ?? null,
+    muscle_mass_kg: d.muscle_mass_kg ?? null,
+    bone_mass_kg: d.bone_mass_kg ?? null,
+    visceral_fat_level: d.visceral_fat_level ?? null,
+    body_water_pct: d.body_water_pct ?? null,
+    systolic_mmhg: d.systolic_mmhg ?? null,
+    diastolic_mmhg: d.diastolic_mmhg ?? null,
+    heart_rate_bpm: d.heart_rate_bpm ?? null,
+    spo2_pct: d.spo2_pct ?? null,
+    temperature_c: d.temperature_c ?? null,
+    device_label: d.device_label ?? null,
+    clothing_note: d.clothing_note ?? null,
+    posture_note: d.posture_note ?? null,
+    fasting_state: d.fasting_state ?? 'unknown',
+  };
+  const bmi = calcBmi(d.height_cm, d.weight_kg);
+  const whr = d.waist_cm && d.hip_cm ? Math.round((d.waist_cm / d.hip_cm) * 100) / 100 : null;
+  const whtr = d.waist_cm && d.height_cm ? Math.round((d.waist_cm / d.height_cm) * 100) / 100 : null;
   const id = uuid();
   db.prepare(`
     INSERT INTO body_measurements
-      (id, tenant_id, patient_id, height_cm, weight_kg, waist_cm, notes, recorded_at, recorded_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, tenant_id, patient_id, height_cm, weight_kg, waist_cm, notes, recorded_at, recorded_by,
+       payload, bmi, whr, whtr, device_label, fasting_state, clothing_note, posture_note, verified)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, req.tenantId, patient.id,
-    d.height_cm ?? null, d.weight_kg ?? null, d.waist_cm ?? null,
+    d.height_cm, d.weight_kg, d.waist_cm ?? null,
     d.notes ? seal(d.notes) : null,
-    d.recorded_at || new Date().toISOString(),
+    d.measured_at || d.recorded_at || new Date().toISOString(),
     req.user!.id,
+    JSON.stringify(payload), bmi, whr, whtr,
+    d.device_label ?? null, d.fasting_state ?? 'unknown',
+    d.clothing_note ?? null, d.posture_note ?? null,
+    d.verified === false ? 0 : 1,
   );
-  const row = db.prepare(`SELECT * FROM body_measurements WHERE id = ?`).get(id) as any;
-  if (row?.notes) row.notes = open(row.notes) || row.notes;
-  res.status(201).json({
-    measurement: row,
-    bmi: calcBmi(row.height_cm, row.weight_kg),
-  });
+  const row = db.prepare(`SELECT * FROM body_measurements WHERE id = ?`).get(id);
+  res.status(201).json({ measurement: flattenMeasurement(row) });
 });
 
 router.post('/:patientId/medications', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
@@ -495,15 +613,20 @@ router.post('/:patientId/medications', requireRole('doctor', 'nurse', 'admin'), 
     frequency: z.string().max(200).optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),
     started_at: z.string().optional().nullable(),
+    class_tag: z.string().max(80).optional().nullable(),
+    confirmation: z.string().max(80).optional().nullable(),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   const id = uuid();
   const d = parsed.data;
   db.prepare(`
     INSERT INTO body_medications
-      (id, tenant_id, patient_id, name, dosage, frequency, notes, started_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.tenantId, patient.id, d.name, d.dosage ?? null, d.frequency ?? null, d.notes ?? null, d.started_at ?? null);
+      (id, tenant_id, patient_id, name, dosage, frequency, notes, started_at, class_tag, confirmation)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, req.tenantId, patient.id, d.name, d.dosage ?? null, d.frequency ?? null, d.notes ?? null,
+    d.started_at ?? null, d.class_tag ?? null, d.confirmation ?? 'clinician_confirmed',
+  );
   const row = db.prepare(`SELECT * FROM body_medications WHERE id = ?`).get(id);
   res.status(201).json({ medication: row });
 });
@@ -524,16 +647,59 @@ router.post('/:patientId/plans', requireRole('doctor', 'nurse', 'admin'), (req: 
   const parsed = z.object({
     title: z.string().min(1).max(200),
     description: z.string().max(4000).optional().nullable(),
+    summary: z.string().max(4000).optional().nullable(),
     weeks: z.number().int().positive().max(104).optional().nullable(),
+    plan_type: z.enum(['nutrition', 'exercise']).default('nutrition'),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   const id = uuid();
   const d = parsed.data;
   db.prepare(`
-    INSERT INTO body_lifestyle_plans (id, tenant_id, patient_id, title, description, weeks)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, req.tenantId, patient.id, d.title, d.description ?? null, d.weeks ?? null);
+    INSERT INTO body_lifestyle_plans (id, tenant_id, patient_id, title, description, weeks, plan_type, summary)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, req.tenantId, patient.id, d.title, d.description ?? d.summary ?? null,
+    d.weeks ?? null, d.plan_type, d.summary ?? d.description ?? null,
+  );
   res.status(201).json({ plan: db.prepare(`SELECT * FROM body_lifestyle_plans WHERE id = ?`).get(id) });
+});
+
+/** Preview if/then envelope without generating images */
+router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const patient = patientInTenant(req.params.patientId, req.tenantId!);
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  const latest = flattenMeasurement(latestMeasurement(req.tenantId!, patient.id));
+  const medications = db.prepare(`SELECT id, name, class_tag FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+    .all(req.tenantId, patient.id) as any[];
+  const plans = db.prepare(`SELECT id, title, plan_type FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+    .all(req.tenantId, patient.id) as any[];
+  const horizon = Number(req.body?.horizon_weeks) || 12;
+  const plan_config = (req.body?.plan_config || {}) as PlanConfig;
+  const assumptions: ScenarioAssumptions = {
+    sleep_adequate: !!req.body?.sleep_adequate,
+    hydration_adequate: !!req.body?.hydration_adequate,
+    recovery_adequate: !!req.body?.recovery_adequate,
+    comorbidity_stable: req.body?.comorbidity_stable !== false,
+    change_magnitude: req.body?.change_magnitude === 'moderate' ? 'moderate' : 'conservative',
+    ...(req.body?.assumptions || {}),
+  };
+  const execution_plan = computeScenarioEnvelope({
+    horizon_weeks: horizon,
+    baseline: {
+      height_cm: latest?.height_cm,
+      weight_kg: latest?.weight_kg,
+      waist_cm: latest?.waist_cm,
+      body_fat_pct: latest?.body_fat_pct,
+      bmi: latest?.bmi,
+    },
+    medications,
+    nutritionPlans: plans.filter((p) => p.plan_type === 'nutrition'),
+    exercisePlans: plans.filter((p) => p.plan_type === 'exercise'),
+    plan_config,
+    assumptions,
+  });
+  res.json({ execution_plan });
 });
 
 router.post('/:patientId/consents', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
@@ -681,16 +847,66 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   }
 
   const parsed = z.object({
-    title: z.string().min(1).max(200).default('Cenário ilustrativo'),
+    title: z.string().min(1).max(200).optional().default('Cenário ilustrativo'),
     goal: z.string().max(500).optional().nullable(),
-    weeks: z.number().int().positive().max(104).optional().nullable(),
+    weeks: z.number().int().positive().max(260).optional().nullable(),
+    horizon_weeks: z.number().int().positive().max(260).optional().nullable(),
     capture_id: z.string().optional().nullable(),
+    capture_session_id: z.string().optional().nullable(),
+    photorealism: z.boolean().optional().default(true),
     generate: z.boolean().optional().default(true),
+    plan_config: z.record(z.any()).optional().nullable(),
+    assumptions: z.record(z.any()).optional().nullable(),
+    sleep_adequate: z.boolean().optional(),
+    hydration_adequate: z.boolean().optional(),
+    recovery_adequate: z.boolean().optional(),
+    comorbidity_stable: z.boolean().optional(),
+    change_magnitude: z.enum(['conservative', 'moderate']).optional(),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
 
-  const latest = latestMeasurement(req.tenantId!, patient.id);
+  const weeks = parsed.data.horizon_weeks || parsed.data.weeks || 12;
+  const latestFlat = flattenMeasurement(latestMeasurement(req.tenantId!, patient.id));
+  const medications = db.prepare(`SELECT id, name, class_tag FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+    .all(req.tenantId, patient.id) as any[];
+  const plans = db.prepare(`SELECT id, title, plan_type FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+    .all(req.tenantId, patient.id) as any[];
+
+  const plan_config = (parsed.data.plan_config || {}) as PlanConfig;
+  // Auto-select all active interventions if none chosen
+  if (!plan_config.medication_record_ids?.length && !plan_config.nutrition_plan_ids?.length && !plan_config.exercise_plan_ids?.length) {
+    plan_config.medication_record_ids = medications.map((m) => m.id);
+    plan_config.nutrition_plan_ids = plans.filter((p) => p.plan_type === 'nutrition').map((p) => p.id);
+    plan_config.exercise_plan_ids = plans.filter((p) => p.plan_type === 'exercise').map((p) => p.id);
+  }
+  const assumptions: ScenarioAssumptions = {
+    sleep_adequate: parsed.data.sleep_adequate ?? parsed.data.assumptions?.sleep_adequate ?? true,
+    hydration_adequate: parsed.data.hydration_adequate ?? parsed.data.assumptions?.hydration_adequate ?? true,
+    recovery_adequate: parsed.data.recovery_adequate ?? parsed.data.assumptions?.recovery_adequate ?? true,
+    comorbidity_stable: parsed.data.comorbidity_stable ?? parsed.data.assumptions?.comorbidity_stable ?? true,
+    change_magnitude: parsed.data.change_magnitude
+      || parsed.data.assumptions?.change_magnitude
+      || 'conservative',
+  };
+
+  const execution_plan = computeScenarioEnvelope({
+    horizon_weeks: weeks,
+    baseline: {
+      height_cm: latestFlat?.height_cm,
+      weight_kg: latestFlat?.weight_kg,
+      waist_cm: latestFlat?.waist_cm,
+      body_fat_pct: latestFlat?.body_fat_pct,
+      bmi: latestFlat?.bmi,
+    },
+    medications,
+    nutritionPlans: plans.filter((p) => p.plan_type === 'nutrition'),
+    exercisePlans: plans.filter((p) => p.plan_type === 'exercise'),
+    plan_config,
+    assumptions,
+  });
+
   let capture: any = null;
+  let captureSessionId = parsed.data.capture_session_id || null;
   if (parsed.data.capture_id) {
     capture = db.prepare(`
       SELECT * FROM body_capture_assets WHERE id = ? AND patient_id = ? AND tenant_id = ?
@@ -698,7 +914,16 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
       || db.prepare(`
         SELECT * FROM body_captures WHERE id = ? AND patient_id = ? AND tenant_id = ?
       `).get(parsed.data.capture_id, patient.id, req.tenantId);
+  } else if (captureSessionId) {
+    capture = db.prepare(`
+      SELECT * FROM body_capture_assets WHERE session_id = ? AND view = 'front' AND tenant_id = ?
+    `).get(captureSessionId, req.tenantId);
   } else {
+    const sess = db.prepare(`
+      SELECT * FROM body_capture_sessions WHERE patient_id = ? AND tenant_id = ?
+      ORDER BY CASE status WHEN 'complete' THEN 0 ELSE 1 END, created_at DESC LIMIT 1
+    `).get(patient.id, req.tenantId) as any;
+    captureSessionId = sess?.id || null;
     capture = latestFrontAsset(req.tenantId!, patient.id)
       || db.prepare(`
         SELECT * FROM body_captures WHERE patient_id = ? AND tenant_id = ? AND image_path IS NOT NULL
@@ -706,37 +931,56 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
       `).get(patient.id, req.tenantId);
   }
 
-  const prompt = buildScenarioPrompt({
+  const interventions = [
+    ...medications.filter((m) => (plan_config.medication_record_ids || []).includes(m.id)).map((m) => m.name),
+    ...plans.filter((p) => [...(plan_config.nutrition_plan_ids || []), ...(plan_config.exercise_plan_ids || [])].includes(p.id)).map((p) => p.title),
+  ];
+
+  const prompt = buildPhotorealScenarioPrompt({
+    weeks,
+    envelope: execution_plan,
     sex: patient.gender,
-    heightCm: latest?.height_cm,
-    weightKg: latest?.weight_kg,
-    waistCm: latest?.waist_cm,
-    weeks: parsed.data.weeks,
-    goal: parsed.data.goal,
     hasReferencePhoto: !!(capture?.image_path && fs.existsSync(capture.image_path)),
+    interventions,
   });
 
   const id = uuid();
   const snapshot = JSON.stringify({
-    height_cm: latest?.height_cm ?? null,
-    weight_kg: latest?.weight_kg ?? null,
-    waist_cm: latest?.waist_cm ?? null,
-    bmi: calcBmi(latest?.height_cm, latest?.weight_kg),
+    height_cm: latestFlat?.height_cm ?? null,
+    weight_kg: latestFlat?.weight_kg ?? null,
+    waist_cm: latestFlat?.waist_cm ?? null,
+    body_fat_pct: latestFlat?.body_fat_pct ?? null,
+    bmi: latestFlat?.bmi ?? null,
+    whr: latestFlat?.whr ?? null,
+    whtr: latestFlat?.whtr ?? null,
   });
 
   db.prepare(`
     INSERT INTO body_scenarios
-      (id, tenant_id, patient_id, capture_id, title, goal, weeks, prompt, status,
-       measurement_snapshot, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+      (id, tenant_id, patient_id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, prompt, status,
+       measurement_snapshot, created_by, plan_config, assumptions, execution_plan, photorealism, review_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 'pending_review')
   `).run(
-    id, req.tenantId, patient.id, capture?.id ?? null,
-    parsed.data.title, parsed.data.goal ?? null, parsed.data.weeks ?? 12,
+    id, req.tenantId, patient.id, capture?.id ?? null, captureSessionId,
+    parsed.data.title, parsed.data.goal ?? execution_plan.summary, weeks, weeks,
     seal(prompt), snapshot, req.user!.id,
+    JSON.stringify(plan_config), JSON.stringify(assumptions), JSON.stringify(execution_plan),
+    parsed.data.photorealism === false ? 0 : 1,
   );
 
   if (!parsed.data.generate) {
-    res.status(201).json({ scenario: db.prepare(`SELECT id, title, status, created_at FROM body_scenarios WHERE id = ?`).get(id) });
+    res.status(201).json({
+      id,
+      scenario: { id, title: parsed.data.title, status: 'draft', created_at: new Date().toISOString() },
+      execution_plan,
+    });
+    return;
+  }
+
+  if (!execution_plan.ok) {
+    db.prepare(`UPDATE body_scenarios SET status = 'blocked', error = ?, updated_at = datetime('now') WHERE id = ?`)
+      .run(execution_plan.blockers.join(' ').slice(0, 500), id);
+    res.status(400).json({ error: 'envelope_blocked', execution_plan, id });
     return;
   }
 
@@ -748,13 +992,14 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   }
 
   const scenario = db.prepare(`
-    SELECT id, capture_id, title, goal, weeks, status, provider, image_url,
+    SELECT id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, status, provider, image_url,
            CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
-           error, created_at, updated_at
+           error, review_status, execution_plan, created_at, updated_at
     FROM body_scenarios WHERE id = ?
-  `).get(id);
+  `).get(id) as any;
+  if (scenario?.execution_plan) scenario.execution_plan = JSON.parse(scenario.execution_plan);
 
-  res.status(201).json({ scenario });
+  res.status(201).json({ id, scenario, execution_plan });
 });
 
 async function runGenerate(req: Request, scenarioId: string, patientId: string, capture: any, prompt: string) {

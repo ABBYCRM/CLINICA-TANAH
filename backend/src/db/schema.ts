@@ -1190,4 +1190,30 @@ export function seedMarketingDefaults(tenantId: string): void {
     );
     CREATE INDEX IF NOT EXISTS idx_body_asset_session ON body_capture_assets(session_id);
   `);
+
+  // Expand anthropometrics + lifestyle + scenario simulator columns
+  for (const sql of [
+    `ALTER TABLE body_measurements ADD COLUMN payload TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN bmi REAL`,
+    `ALTER TABLE body_measurements ADD COLUMN whr REAL`,
+    `ALTER TABLE body_measurements ADD COLUMN whtr REAL`,
+    `ALTER TABLE body_measurements ADD COLUMN device_label TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN fasting_state TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN clothing_note TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN posture_note TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE body_lifestyle_plans ADD COLUMN plan_type TEXT NOT NULL DEFAULT 'nutrition'`,
+    `ALTER TABLE body_lifestyle_plans ADD COLUMN summary TEXT`,
+    `ALTER TABLE body_medications ADD COLUMN class_tag TEXT`,
+    `ALTER TABLE body_medications ADD COLUMN confirmation TEXT DEFAULT 'clinician_confirmed'`,
+    `ALTER TABLE body_scenarios ADD COLUMN capture_session_id TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN horizon_weeks INTEGER`,
+    `ALTER TABLE body_scenarios ADD COLUMN plan_config TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN assumptions TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN execution_plan TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN photorealism INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE body_scenarios ADD COLUMN review_status TEXT DEFAULT 'pending_review'`,
+  ]) {
+    try { openDb().exec(sql); } catch { /* exists */ }
+  }
 }
