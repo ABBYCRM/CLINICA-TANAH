@@ -134,11 +134,11 @@ export default function Prescriptions() {
         </button>
       </div>
 
-      <p className="text-xs text-[color:var(--ink-muted)] max-w-3xl leading-relaxed">
+      <p className="desk-copy text-sm max-w-3xl leading-relaxed">
         {t('prescriptions.stock_bridge_hint')}
       </p>
 
-      <div className="flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.35)]">
+      <div className="desk-feed-tabs flex flex-wrap gap-1 border-b border-[rgba(201,162,90,0.35)]">
         <button
           type="button"
           className={`crm-feed-tab ${tab === 'active' ? 'is-active' : ''}`}
@@ -146,7 +146,7 @@ export default function Prescriptions() {
           onClick={() => setTab('active')}
         >
           {t('prescriptions.tab_active')}
-          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.active}</span>
+          <span className="ml-1.5 tabular-nums opacity-90">{counts.active}</span>
         </button>
         <button
           type="button"
@@ -155,12 +155,12 @@ export default function Prescriptions() {
           onClick={() => setTab('cancelled')}
         >
           {t('prescriptions.tab_cancelled')}
-          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.cancelled}</span>
+          <span className="ml-1.5 tabular-nums opacity-90">{counts.cancelled}</span>
         </button>
       </div>
 
       {tab === 'cancelled' && (
-        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed max-w-3xl rounded-lg px-3 py-2"
+        <p className="text-sm text-[color:var(--ink)] leading-relaxed max-w-3xl rounded-lg px-3 py-2"
           style={{ background: 'linear-gradient(180deg,#f7f1e6,#efe6d8)', border: '1px solid rgba(176,183,192,0.45)' }}>
           {t('prescriptions.retention_notice')}
         </p>
@@ -169,9 +169,9 @@ export default function Prescriptions() {
       {error && <FormError message={error} />}
 
       <div className="grid gap-3">
-        {loading && <div className="text-[color:var(--ink-muted)] py-6 text-center">{t('common.loading')}</div>}
+        {loading && <div className="desk-copy py-6 text-center">{t('common.loading')}</div>}
         {!loading && prescriptions.length === 0 && (
-          <div className="card p-6 text-center text-[color:var(--ink-muted)]">{t('common.no_data')}</div>
+          <div className="card p-6 text-center text-[color:var(--ink)]">{t('common.no_data')}</div>
         )}
         {prescriptions.map((p) => {
           const items = parseItems(p.items);
@@ -180,18 +180,18 @@ export default function Prescriptions() {
           return (
             <div
               key={p.id}
-              className={`card p-4 ${cancelled ? 'opacity-90' : ''}`}
+              className={`card p-4 ${cancelled ? 'opacity-95' : ''}`}
               data-testid={`rx-card-${p.id}`}
               data-status={p.status || 'active'}
             >
               <div className="flex items-center justify-between mb-2 gap-2">
                 <div className="min-w-0">
-                  <div className="font-semibold text-[color:var(--ink)]">{p.patient_name}</div>
-                  <div className="text-xs text-[color:var(--ink-muted)]">
+                  <div className="font-semibold text-[color:var(--ink)] text-base">{p.patient_name}</div>
+                  <div className="text-sm text-[color:var(--ink)]/80">
                     {p.practitioner_name} • {fmtWhen(p.created_at, locale)}
                   </div>
                   {cancelled && (
-                    <div className="text-[11px] text-[#8b3a2a] mt-1">
+                    <div className="text-xs text-[#8b3a2a] mt-1 font-medium">
                       {t('prescriptions.cancelled_meta', {
                         when: fmtWhen(p.cancelled_at, locale),
                         by: p.cancelled_by_name || '—',
@@ -235,15 +235,15 @@ export default function Prescriptions() {
                   )}
                 </div>
               </div>
-              <ul className={`space-y-1 text-sm ${cancelled ? 'line-through decoration-[rgba(90,40,30,0.35)]' : ''}`}>
+              <ul className={`space-y-1.5 text-sm text-[color:var(--ink)] ${cancelled ? 'line-through decoration-[rgba(90,40,30,0.45)]' : ''}`}>
                 {items.map((it, i) => (
-                  <li key={i} className="border-l-2 border-[color:var(--brass)] pl-3">
-                    <span className="font-medium">{it.medication}</span>
+                  <li key={i} className="border-l-2 border-[color:var(--brass-deep)] pl-3">
+                    <span className="font-semibold">{it.medication}</span>
                     {(it.dosage || it.frequency || it.duration) ? (
                       <> — {[it.dosage, it.frequency, it.duration].filter(Boolean).join(', ')}</>
                     ) : null}
                     {it.inventory_item_id && it.quantity ? (
-                      <span className="ml-2 text-xs text-[color:var(--ink-muted)]">
+                      <span className="ml-2 text-xs font-medium text-[color:var(--ink)]/75">
                         {t('prescriptions.stock_qty', { qty: String(it.quantity) })}
                       </span>
                     ) : null}

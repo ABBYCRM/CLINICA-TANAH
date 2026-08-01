@@ -248,8 +248,8 @@ export default function Layout() {
             </svg>
           </button>
           <div className="min-w-0 flex-1">
-            <div className="font-display text-[15px] font-semibold text-[#3a342c] truncate leading-tight" data-testid="active-clinic">{tenantLabel}</div>
-            <div className="text-xs text-[#4a453c]/90 truncate hidden sm:block leading-tight mt-0.5">{t('app.address')}</div>
+            <div className="font-display text-[15px] font-semibold text-[#2c2118] truncate leading-tight" data-testid="active-clinic">{tenantLabel}</div>
+            <div className="text-xs text-[#3a342c] truncate hidden sm:block leading-tight mt-0.5">{t('app.address')}</div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5 animate-fade-in">

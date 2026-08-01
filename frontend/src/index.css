@@ -449,6 +449,26 @@ h1, h2, .font-display {
   }
   .crm-feed-tab.is-active { color: var(--ink); border-color: var(--brass-deep); }
 
+  /* Page-level tabs / copy on the wood desk (not inside paper cards) */
+  .desk-feed-tabs .crm-feed-tab {
+    color: var(--leather-muted);
+  }
+  .desk-feed-tabs .crm-feed-tab:hover {
+    color: var(--leather-text);
+  }
+  .desk-feed-tabs .crm-feed-tab.is-active {
+    color: var(--leather-text);
+    border-color: var(--brass);
+  }
+  .desk-copy {
+    color: var(--leather-muted);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+  .desk-copy-strong {
+    color: var(--leather-text);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
   /* Flat inset surface inside an already-raised card — kills card-in-card noise */
   .crm-inset-panel {
     position: relative;
