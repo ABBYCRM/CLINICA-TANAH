@@ -2,7 +2,7 @@
  * Body Composition Image Simulator — BodyPath parity, Clínica Tanah desk UI.
  * Interventions · adherence · if/then envelope · illustrative generation · inspector
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 
@@ -382,9 +382,23 @@ export default function ScenarioSimulator({
   const providersOrder = data?.image_providers?.order;
   const simulationsAllowed = !!data?.simulations_allowed;
   const generateDisabled = busy === 'generate' || !simulationsAllowed || !stepPassword;
+  const generatePanelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = generatePanelRef.current;
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [patientId]);
 
   const generatePanel = (
-    <section className="sim-generate-panel space-y-3" data-testid="sim-generate-panel">
+    <section
+      ref={generatePanelRef}
+      className="sim-generate-panel space-y-3"
+      data-testid="sim-generate-panel"
+    >
       <div className="space-y-1">
         <h4 className="font-display text-lg sm:text-xl text-[color:var(--ink)]">
           {t('body.sim_generate_panel_title')}
@@ -452,13 +466,11 @@ export default function ScenarioSimulator({
   );
 
   return (
-    <div className="space-y-4 sim-scenarios-root pb-20 md:pb-0" data-testid="body-scenarios-full">
-      <header className="space-y-2">
+    <div className="space-y-4 sim-scenarios-root pb-24" data-testid="body-scenarios-full">
+      <header className="space-y-1.5">
         <h3 className="crm-record-panel-title !mb-0">{t('body.sim_title')}</h3>
-        <p className="text-sm text-[color:var(--ink)] leading-relaxed">{t('body.sim_intro')}</p>
-        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed hidden sm:block">{t('body.sim_audience')}</p>
+        <p className="text-sm text-[color:var(--ink)] leading-relaxed line-clamp-2 sm:line-clamp-none">{t('body.sim_intro')}</p>
         <p className="text-xs text-[#8b3a2a] leading-relaxed">{t('body.sim_disclaimer')}</p>
-        <p className="text-[11px] text-[color:var(--ink-muted)] hidden sm:block">{t('body.sim_flow')}</p>
       </header>
 
       <nav className="flex flex-wrap gap-1 text-xs text-[color:var(--ink-muted)]">
@@ -471,6 +483,8 @@ export default function ScenarioSimulator({
           </span>
         ))}
       </nav>
+
+      {generatePanel}
 
       <section className="crm-inset-panel space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -485,22 +499,22 @@ export default function ScenarioSimulator({
             <span className="badge-slate text-[10px]" data-testid="sim-photos-missing">{t('body.sim_photos_missing')}</span>
           )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">Weight</div>
-            <div className="font-display text-xl tabular-nums">{summary.weight_kg ?? latest?.weight_kg ?? '—'} <span className="text-sm">kg</span></div>
+            <div className="font-display text-lg sm:text-xl tabular-nums">{summary.weight_kg ?? latest?.weight_kg ?? '—'} <span className="text-sm">kg</span></div>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">Body fat</div>
-            <div className="font-display text-xl tabular-nums">{summary.body_fat_pct ?? latest?.body_fat_pct ?? '—'}{summary.body_fat_pct != null || latest?.body_fat_pct != null ? '%' : ''}</div>
+            <div className="font-display text-lg sm:text-xl tabular-nums">{summary.body_fat_pct ?? latest?.body_fat_pct ?? '—'}{summary.body_fat_pct != null || latest?.body_fat_pct != null ? '%' : ''}</div>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">Waist</div>
-            <div className="font-display text-xl tabular-nums">{summary.waist_cm ?? latest?.waist_cm ?? '—'} <span className="text-sm">cm</span></div>
+            <div className="font-display text-lg sm:text-xl tabular-nums">{summary.waist_cm ?? latest?.waist_cm ?? '—'} <span className="text-sm">cm</span></div>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">BMI</div>
-            <div className="font-display text-xl tabular-nums">{summary.bmi ?? latest?.bmi ?? '—'}</div>
+            <div className="font-display text-lg sm:text-xl tabular-nums">{summary.bmi ?? latest?.bmi ?? '—'}</div>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-2 max-w-md">
@@ -517,8 +531,6 @@ export default function ScenarioSimulator({
           ))}
         </div>
       </section>
-
-      {generatePanel}
 
       <section className="crm-inset-panel space-y-3" data-testid="sim-ba-inspector">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1053,7 +1065,7 @@ export default function ScenarioSimulator({
         </aside>
       </div>
 
-      <div className="sim-sticky-generate md:hidden" data-testid="sim-sticky-generate">
+      <div className="sim-sticky-generate" data-testid="sim-sticky-generate">
         <input
           className="input sim-sticky-password"
           type="password"

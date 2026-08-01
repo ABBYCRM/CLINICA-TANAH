@@ -929,11 +929,23 @@ h1, h2, .font-display {
   align-items: center;
   margin-left: -0.25rem;
   margin-right: -0.25rem;
-  padding: 0.65rem 0.5rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.65rem 0.75rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(180deg, rgba(247, 240, 228, 0.72), rgba(239, 228, 210, 0.96));
   border-top: 1px solid rgba(139, 115, 85, 0.35);
+  border-radius: 0.75rem 0.75rem 0 0;
   backdrop-filter: blur(8px);
   box-shadow: 0 -6px 18px rgba(54, 38, 22, 0.1);
+}
+@media (min-width: 768px) {
+  .sim-sticky-generate {
+    margin-left: 0;
+    margin-right: 0;
+    max-width: 36rem;
+    margin-inline: auto;
+    border-radius: 0.85rem;
+    border: 1px solid rgba(139, 115, 85, 0.35);
+    margin-bottom: 0.5rem;
+  }
 }
 .sim-sticky-password {
   flex: 1;
