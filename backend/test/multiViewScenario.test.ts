@@ -33,9 +33,14 @@ describe('multi-view after prompts', () => {
     const env = enrichEnvelopeWithAnatomy({
       envelope: base,
       medications: [{ name: 'Semaglutida', visual_profile: 'glp1_metabolic' }],
-      nutritionPlans: [{ title: 'Dieta' }],
-      exercisePlans: [{ title: 'Treino' }],
-      plan_config: base as any,
+      hasNutrition: true,
+      hasExercise: true,
+      nutritionAdherence: 'high',
+      exerciseAdherence: 'moderate',
+      medicationAdherence: 'high',
+      resistanceDays: 3,
+      cardioDays: 2,
+      proteinEmphasis: true,
       assumptions: { change_magnitude: 'conservative' },
       sex: 'F',
     });

@@ -46,10 +46,17 @@ export function buildScenarioPrompt(opts: {
   weeks?: number | null;
   goal?: string | null;
   hasReferencePhoto?: boolean;
+  view?: 'front' | 'left' | 'right' | 'back';
 }): string {
   const weeks = opts.weeks || 12;
   const goal = (opts.goal || 'diet+exercise illustrative simulation').trim();
   const sex = opts.sex === 'M' || opts.sex === 'male' ? 'male' : 'female';
+  const view = opts.view || 'front';
+  const viewLabel =
+    view === 'front' ? 'front'
+      : view === 'back' ? 'back'
+        : view === 'left' ? 'left profile / ¾'
+          : 'right profile / ¾';
   const metrics = [
     opts.heightCm != null ? `height ${opts.heightCm} cm` : null,
     opts.weightKg != null ? `weight ${opts.weightKg} kg` : null,
@@ -58,8 +65,8 @@ export function buildScenarioPrompt(opts: {
   ].filter(Boolean).join(', ');
 
   const identity = opts.hasReferencePhoto
-    ? 'Edit this clinical front-view photograph of the SAME adult patient. Preserve absolute identity, facial features, skin tone, clothing style/color, pose, camera framing, and studio background.'
-    : `Create a photorealistic clinical full-body front-view photograph of an adult ${sex} patient for body-composition educational visualization. Neutral studio lighting, accurate anatomy, natural skin texture, professional medical photography.`;
+    ? `Edit this clinical ${viewLabel}-view photograph of the SAME adult patient. Preserve absolute identity, facial features, skin tone, clothing style/color, pose, camera framing, and studio background. Keep the ${view} viewing angle unchanged.`
+    : `Create a photorealistic clinical full-body ${viewLabel}-view photograph of an adult ${sex} patient for body-composition educational visualization. Neutral studio lighting, accurate anatomy, natural skin texture, professional medical photography.`;
 
   return [
     identity,
@@ -387,13 +394,22 @@ export async function generateBodyScenarioImage(opts: {
     && !/localhost|127\.0\.0\.1/i.test(opts.referencePublicUrl)
     ? opts.referencePublicUrl
     : null;
+  const hasLocalRef = !!(opts.referencePath && fs.existsSync(opts.referencePath));
 
   let last: ImageGenResult | null = null;
   const errors: string[] = [];
   for (const provider of order) {
     try {
       if (provider === 'a2e') {
-        const attempts: Array<string[] | undefined> = publicRef ? [[publicRef], undefined] : [undefined];
+        // Never fall back to text-only A2E when a capture reference exists — that hallucinates
+        // a generic front-like body and breaks multi-view (left/right/back) identity/angle.
+        if (hasLocalRef && !publicRef) {
+          errors.push('a2e:skipped_no_public_ref_for_img2img');
+          continue;
+        }
+        const attempts: Array<string[] | undefined> = publicRef
+          ? [[publicRef]]
+          : [undefined];
         for (const inputImages of attempts) {
           last = await startA2e({ name: opts.name, prompt: opts.prompt, inputImages });
           if (last.status !== 'failed') return last;

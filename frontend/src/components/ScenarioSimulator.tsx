@@ -114,6 +114,13 @@ function ScenarioCard({
         <div className="text-[11px] text-[color:var(--ink-muted)]">
           {scenario.review_status || 'pending_review'} · {scenario.status}
           {scenario.horizon_weeks || scenario.weeks ? ` · ${scenario.horizon_weeks || scenario.weeks}w` : ''}
+          {(() => {
+            const n = scenario.output_view_count
+              ?? (scenario.output_views
+                ? Object.values(scenario.output_views).filter((v: any) => v?.has_image).length
+                : (scenario.has_image ? 1 : 0));
+            return n > 0 ? ` · ${n}/4` : '';
+          })()}
         </div>
         {scenario.prompt_version && (
           <div className="text-[10px] text-[color:var(--ink-muted)] truncate" data-testid={`body-scenario-prompt-${scenario.id}`}>
@@ -204,6 +211,15 @@ export default function ScenarioSimulator({
     [scenarios, selectedId],
   );
 
+  const afterViewCount = selected?.output_view_count
+    ?? (selected?.output_views
+      ? Object.values(selected.output_views).filter((v: any) => v?.has_image).length
+      : (selected?.has_image ? 1 : 0));
+
+  useEffect(() => {
+    if (afterViewCount > 1) setInspectorMode('contact');
+  }, [selected?.id, afterViewCount]);
+
   const toggle = (list: string[], id: string, setter: (v: string[]) => void) => {
     setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   };
@@ -256,7 +272,7 @@ export default function ScenarioSimulator({
     try {
       const step = await api.post('/api/auth/step-up', { password: stepPassword });
       const frontId = session?.assets?.front?.id || null;
-      await api.post(`/api/clinical/body/${patientId}/scenarios`, {
+      const res = await api.post(`/api/clinical/body/${patientId}/scenarios`, {
         title: t('body.scenario_default_title'),
         goal: t('body.scenario_default_goal'),
         weeks: horizon,
@@ -275,6 +291,8 @@ export default function ScenarioSimulator({
         change_magnitude: magnitude,
       });
       setStepPassword('');
+      if (res?.id || res?.scenario?.id) setSelectedId(res.id || res.scenario.id);
+      if ((res?.scenario?.output_view_count || 0) > 1) setInspectorMode('contact');
       onRefresh();
     } catch (e: any) {
       setError(e?.body?.message || e?.message || t('body.simulations_blocked'));
@@ -323,6 +341,8 @@ export default function ScenarioSimulator({
 
   const qualityFront = session?.assets?.front?.quality || session?.quality_summary?.front || null;
   const views = ['front', 'left', 'right', 'back'] as const;
+  const captureReadyCount = views.filter((v) => !!session?.assets?.[v]).length;
+  const captureComplete = captureReadyCount === 4;
   const activeEnvelope = envelope || pinned;
   const anatomy = activeEnvelope?.anatomicalEnvelope;
   const narrative = activeEnvelope?.narrativePt || [];
@@ -334,6 +354,7 @@ export default function ScenarioSimulator({
       ['completed', 'ready'].includes(selected.status)
       || !!selected.has_image
       || !!selected.image_url
+      || (selected.output_view_count || 0) > 0
     );
 
   const canReport = selected?.review_status === 'approved';
@@ -375,10 +396,14 @@ export default function ScenarioSimulator({
       <section className="crm-inset-panel space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.sim_baseline')}</h4>
-          {session?.assets?.front ? (
-            <span className="badge-green text-[10px]">{t('body.sim_photos_ready')}</span>
+          {captureComplete ? (
+            <span className="badge-green text-[10px]" data-testid="sim-photos-ready">{t('body.sim_photos_ready')}</span>
+          ) : captureReadyCount > 0 ? (
+            <span className="badge-slate text-[10px]" data-testid="sim-photos-partial">
+              {t('body.sim_photos_partial', { count: captureReadyCount })}
+            </span>
           ) : (
-            <span className="badge-slate text-[10px]">{t('body.sim_photos_missing')}</span>
+            <span className="badge-slate text-[10px]" data-testid="sim-photos-missing">{t('body.sim_photos_missing')}</span>
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -929,7 +954,7 @@ export default function ScenarioSimulator({
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.sim_provenance')}</div>
             <p className="text-xs text-[color:var(--ink-muted)]">
               {selected?.provider
-                ? `${selected.provider} · ${selected.status}`
+                ? `${selected.provider} · ${selected.status}${afterViewCount ? ` · ${afterViewCount}/4` : ''}`
                 : scenarios[0]?.provider
                   ? `${scenarios[0].provider} · ${scenarios[0].status}`
                   : t('body.sim_awaiting_gen')}

@@ -205,6 +205,44 @@ type OutputViewEntry = {
   error?: string | null;
 };
 
+/** API-safe output_views (no filesystem paths). */
+function publicOutputViews(raw: unknown): Record<string, {
+  has_image: boolean;
+  provider: string | null;
+  view: string;
+  error: string | null;
+}> | null {
+  if (!raw) return null;
+  let parsed: any = raw;
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw); } catch { return null; }
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const out: Record<string, { has_image: boolean; provider: string | null; view: string; error: string | null }> = {};
+  for (const key of CAPTURE_VIEWS) {
+    const entry = parsed[key];
+    if (!entry) continue;
+    out[key] = {
+      has_image: !!entry.has_image,
+      provider: entry.provider || null,
+      view: key,
+      error: entry.error || null,
+    };
+  }
+  // Include any unexpected keys without path
+  for (const [key, entry] of Object.entries(parsed)) {
+    if (out[key] || !entry || typeof entry !== 'object') continue;
+    const e = entry as any;
+    out[key] = {
+      has_image: !!e.has_image,
+      provider: e.provider || null,
+      view: key,
+      error: e.error || null,
+    };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function writeOutputViews(scenarioId: string, views: Record<string, OutputViewEntry>) {
   db.prepare(`
     UPDATE body_scenarios
@@ -219,6 +257,24 @@ function markScenarioOutputViews(scenarioId: string, views?: Record<string, Outp
     return;
   }
   writeOutputViews(scenarioId, { front: { has_image: true, view: 'front' } });
+}
+
+function loadScenarioForApi(scenarioId: string) {
+  const scenario = db.prepare(`
+    SELECT id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, status, provider, image_url,
+           CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
+           error, review_status, execution_plan, output_views, prompt_version, watermark,
+           created_at, updated_at
+    FROM body_scenarios WHERE id = ?
+  `).get(scenarioId) as any;
+  if (!scenario) return null;
+  if (scenario.execution_plan) {
+    try { scenario.execution_plan = JSON.parse(scenario.execution_plan); } catch { /* */ }
+  }
+  scenario.output_views = publicOutputViews(scenario.output_views);
+  const views = scenario.output_views || {};
+  scenario.output_view_count = Object.values(views).filter((v: any) => v?.has_image).length;
+  return scenario;
 }
 
 async function resolvePublicRef(assetId: string | null | undefined, imagePath: string | null | undefined): Promise<string | null> {
@@ -368,7 +424,8 @@ async function runGenerate(
   let anyOk = false;
   const errors: string[] = [];
 
-  for (const view of viewsToGenerate) {
+  // Generate all capture views in parallel (each uses its own reference photo).
+  await Promise.all(viewsToGenerate.map(async (view) => {
     const asset = assetsByView[view];
     const viewPrompt = envelope
       ? buildPhotorealScenarioPrompt({
@@ -402,7 +459,7 @@ async function runGenerate(
       output[view] = { view, has_image: false, error: e?.message || String(e) };
       errors.push(`${view}:${e?.message || e}`);
     }
-  }
+  }));
 
   writeOutputViews(scenarioId, output);
 
@@ -489,10 +546,25 @@ router.get('/settings/integrations', requireRole('admin', 'doctor'), (_req: Requ
     providers: {
       a2e: { configured: status.a2e, model: status.a2e_model },
       gemini: { configured: status.gemini, model: status.gemini_model },
-      bitdeer: { configured: status.bitdeer, model: status.bitdeer_model },
-      local_morph: { configured: status.local_morph, note: 'identity-preserving noop when LOCAL_MORPH_FALLBACK=1' },
+      bitdeer: {
+        configured: status.bitdeer,
+        model: status.bitdeer_model,
+        note: status.bitdeer
+          ? 'active'
+          : 'inactive until BITDEER_API_KEY + BITDEER_BASE_URL are set (optional third cloud)',
+      },
+      local_morph: {
+        configured: status.local_morph,
+        note: status.local_morph
+          ? 'identity-preserving per-view fallback (default ON; set LOCAL_MORPH_FALLBACK=0 to disable)'
+          : 'disabled via LOCAL_MORPH_FALLBACK=0',
+      },
     },
     order: status.order,
+    multi_view: {
+      after_images: 'front,left,right,back — each view uses its capture reference',
+      a2e_img2img: 'requires public HTTPS asset URL; otherwise gemini/bitdeer/local_morph',
+    },
   });
 });
 
@@ -549,6 +621,23 @@ router.post('/reports', requireRole('doctor', 'nurse', 'admin'), (req: Request, 
 
   const patient = patientInTenant(scenario.patient_id, req.tenantId!);
   const plan = scenario.execution_plan ? JSON.parse(scenario.execution_plan) : null;
+  let views: Record<string, OutputViewEntry> = {};
+  try { views = scenario.output_views ? JSON.parse(scenario.output_views) : {}; } catch { views = {}; }
+
+  const viewBlocks = CAPTURE_VIEWS.map((v) => {
+    const entry = views[v];
+    let imgTag = '<div class="ph">—</div>';
+    if (entry?.path && fs.existsSync(entry.path)) {
+      const buf = fs.readFileSync(entry.path);
+      const mime = entry.path.endsWith('.png') ? 'image/png' : 'image/jpeg';
+      imgTag = `<img src="data:${mime};base64,${buf.toString('base64')}" alt="${v}"/>`;
+    } else if (v === 'front' && scenario.image_path && fs.existsSync(scenario.image_path)) {
+      const buf = fs.readFileSync(scenario.image_path);
+      imgTag = `<img src="data:image/jpeg;base64,${buf.toString('base64')}" alt="front"/>`;
+    }
+    return `<figure><figcaption>${v}</figcaption>${imgTag}</figure>`;
+  }).join('\n');
+
   const id = uuid();
   const dir = path.join(uploadsRoot(), req.tenantId!, 'body', scenario.patient_id, 'reports');
   fs.mkdirSync(dir, { recursive: true });
@@ -556,16 +645,22 @@ router.post('/reports', requireRole('doctor', 'nurse', 'admin'), (req: Request, 
   const html = `<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8"/><title>Relatório de cenário — Clínica Tanah</title>
 <style>
-  body{font-family:Georgia,serif;max-width:720px;margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#faf8f5}
+  body{font-family:Georgia,serif;max-width:880px;margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#faf8f5}
   h1{font-size:1.4rem;margin-bottom:.25rem} .meta{color:#555;font-size:.9rem}
   .wm{margin-top:1.5rem;padding:.75rem;border:1px solid #c9a227;background:#fff8e7;font-size:.85rem}
-  .regions td{padding:.25rem .5rem;border-bottom:1px solid #eee}
+  .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin:1.25rem 0}
+  figure{margin:0} figcaption{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:#555;margin-bottom:.35rem}
+  img{width:100%;aspect-ratio:3/4;object-fit:cover;border:1px solid #ddd;background:#efe6d8}
+  .ph{width:100%;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;background:#efe6d8;border:1px solid #ddd;color:#888;font-size:.8rem}
+  @media (max-width:720px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style></head><body>
   <h1>Relatório ilustrativo de cenário corporal</h1>
   <p class="meta">Paciente: ${patient?.full_name || scenario.patient_id} · Cenário: ${scenario.title || scenario.id}</p>
   <p class="meta">Assinado por: ${parsed.data.signature_name} · Gerado em ${new Date().toISOString()}</p>
   ${parsed.data.next_follow_up_date ? `<p class="meta">Próximo retorno: ${parsed.data.next_follow_up_date}</p>` : ''}
   <p>${(plan?.summary || scenario.goal || '').replace(/</g, '&lt;')}</p>
+  <h2 style="font-size:1.05rem;margin-top:1.5rem">Depois (simulação) — 4 vistas</h2>
+  <div class="grid">${viewBlocks}</div>
   <p class="wm">${scenario.watermark || SCENARIO_WATERMARK}</p>
   <p class="meta">prompt_version: ${scenario.prompt_version || PROMPT_VERSION}</p>
 </body></html>`;
@@ -1071,13 +1166,19 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   const consents = consentMap(req.tenantId!, patient.id);
   const bmi = latest?.bmi ?? calcBmi(latest?.height_cm, latest?.weight_kg);
 
-  const parsedScenarios = scenarios.map((s) => ({
-    ...s,
-    execution_plan: s.execution_plan ? JSON.parse(s.execution_plan) : null,
-    plan_config: s.plan_config ? JSON.parse(s.plan_config) : null,
-    assumptions: s.assumptions ? JSON.parse(s.assumptions) : null,
-    output_views: s.output_views ? JSON.parse(s.output_views) : null,
-  }));
+  const parsedScenarios = scenarios.map((s) => {
+    const output_views = publicOutputViews(s.output_views);
+    return {
+      ...s,
+      execution_plan: s.execution_plan ? JSON.parse(s.execution_plan) : null,
+      plan_config: s.plan_config ? JSON.parse(s.plan_config) : null,
+      assumptions: s.assumptions ? JSON.parse(s.assumptions) : null,
+      output_views,
+      output_view_count: output_views
+        ? Object.values(output_views).filter((v) => v.has_image).length
+        : (s.has_image ? 1 : 0),
+    };
+  });
   const latestPlan = parsedScenarios.find((s) => s.execution_plan)?.execution_plan || null;
 
   const includeLibrary = String(req.query.include_library || '') === '1'
@@ -1663,13 +1764,7 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
       .run(String(e?.message || e).slice(0, 500), id);
   }
 
-  const scenario = db.prepare(`
-    SELECT id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, status, provider, image_url,
-           CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
-           error, review_status, execution_plan, created_at, updated_at
-    FROM body_scenarios WHERE id = ?
-  `).get(id) as any;
-  if (scenario?.execution_plan) scenario.execution_plan = JSON.parse(scenario.execution_plan);
+  const scenario = loadScenarioForApi(id);
 
   res.status(201).json({ id, scenario, execution_plan });
 });
@@ -1732,17 +1827,13 @@ router.post('/:patientId/scenarios/:scenarioId/generate', requireRole('doctor', 
       captureSessionId: row.capture_session_id,
       envelope,
       weeks: row.horizon_weeks || row.weeks || 12,
+      sex: patientInTenant(row.patient_id, req.tenantId!)?.gender,
     });
   } catch (e: any) {
     db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
       .run(String(e?.message || e).slice(0, 500), row.id);
   }
-  const scenario = db.prepare(`
-    SELECT id, capture_id, title, goal, weeks, status, provider, image_url,
-           CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
-           error, created_at, updated_at
-    FROM body_scenarios WHERE id = ?
-  `).get(row.id);
+  const scenario = loadScenarioForApi(row.id);
   res.json({ scenario });
 });
 
@@ -1765,23 +1856,8 @@ router.get('/:patientId/scenarios/:scenarioId', requireRole(...CLINICAL_ROLES), 
     }
   }
 
-  res.json({
-    scenario: {
-      id: row.id,
-      capture_id: row.capture_id,
-      title: row.title,
-      goal: row.goal,
-      weeks: row.weeks,
-      status: row.status,
-      provider: row.provider,
-      image_url: row.image_url,
-      has_image: !!(row.image_path || row.image_url),
-      error: row.error,
-      measurement_snapshot: row.measurement_snapshot ? JSON.parse(row.measurement_snapshot) : null,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    },
-  });
+  const scenario = loadScenarioForApi(row.id);
+  res.json({ scenario });
 });
 
 router.get('/:patientId/scenarios/:scenarioId/image', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {

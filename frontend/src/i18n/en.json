@@ -1542,6 +1542,7 @@
     "sim_flow": "Front/side/back capture → configure interventions and adherence → compute if/then envelope → generate illustrative simulation → clinical review.",
     "sim_baseline": "Patient baseline",
     "sim_photos_ready": "Standardized photos ready",
+    "sim_photos_partial": "{{count}}/4 views captured",
     "sim_photos_missing": "Capture incomplete",
     "sim_interventions": "Intervention plans",
     "sim_meds": "Medications (e.g. GLP-1 / HRT)",

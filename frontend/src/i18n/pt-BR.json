@@ -1542,6 +1542,7 @@
     "sim_flow": "Captura frente/lado/costas → configure intervenções e adesão → calcule o envelope if/then → gere simulação ilustrativa → revise clinicamente.",
     "sim_baseline": "Baseline do paciente",
     "sim_photos_ready": "Fotos padronizadas prontas",
+    "sim_photos_partial": "{{count}}/4 vistas capturadas",
     "sim_photos_missing": "Captura incompleta",
     "sim_interventions": "Planos de intervenção",
     "sim_meds": "Medicamentos (ex.: GLP-1 / TRH)",

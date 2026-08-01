@@ -1,9 +1,6 @@
 node_modules/
 dist/
 build/
-data/
-!backend/src/data/
-!backend/src/data/**
 *.db
 *.db-journal
 *.log
@@ -15,10 +12,10 @@ backend/data-test*/
 playwright-report/
 test-results/
 e2e/.data/
-data/
-node_modules/
-dist/
-
 uploads/
 backend/data/
+# Runtime/local data dirs — keep curated seed catalogs under backend/src/data
+data/
+!backend/src/data/
+!backend/src/data/**
 **/.env
