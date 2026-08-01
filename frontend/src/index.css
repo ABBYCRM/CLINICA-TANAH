@@ -2,33 +2,900 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /*
+   * Harmonized skeuomorphism — one warm desk language.
+   * Wood + leather share the same brown family; paper is one cream;
+   * metal is warm silver; brass is the only accent.
+   */
+  --desk: #3a2a1c;
+  --desk-deep: #2a1c12;
+  --desk-warm: #4a3424;
+  --leather: #3d2a1e;
+  --leather-deep: #2c1c14;
+  --leather-text: #f5ecde;
+  --leather-muted: #e0d2bc;
+  --paper: #f2e6cc;
+  --paper-mid: #ead9b8;
+  --paper-deep: #dfcba0;
+  --ink: #2c2118;
+  --ink-muted: #4a382c;
+  --edge: #8b7355;
+  --edge-soft: rgba(139, 115, 85, 0.45);
+  --metal-hi: #ece8e2;
+  --metal-mid: #c8c0b4;
+  --metal-lo: #9a9084;
+  --brass: #c9a25a;
+  --brass-deep: #9a7a3a;
+  --gold: var(--brass);
+  --gold-deep: var(--brass-deep);
+  --clay: #9a6548;
+  --moss: #4a5c42;
+  --shade: rgba(30, 18, 10, 0.18);
+  --shade-deep: rgba(20, 10, 4, 0.32);
+  --lift: rgba(255, 245, 220, 0.55);
+
+  /* Compat aliases used across the app */
+  --wood-deep: var(--desk-deep);
+  --wood-mid: var(--desk);
+  --wood-warm: var(--desk-warm);
+  --leather-stitch: var(--brass);
+  --paper-line: rgba(130, 150, 170, 0.22);
+  --metal-edge: #6e665c;
+  --metal-hi: #ece8e2;
+  --ink-muted: #4a382c;
+  --earth-ink: var(--ink);
+  --earth-muted: var(--ink-muted);
+  --earth-panel: var(--paper);
+  --earth-panel-deep: var(--paper-mid);
+  --earth-parchment: var(--paper);
+  --earth-groove: #2a1c14;
+  --earth-aluminum: var(--metal-lo);
+  --earth-aluminum-edge: var(--metal-edge);
+  --earth-moss: var(--moss);
+  --earth-moss-deep: #354034;
+  --earth-clay: var(--clay);
+  --earth-highlight: var(--lift);
+  --earth-shade: var(--shade);
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+
+  /*
+   * Harmonized desk shadows — one light from above-left.
+   * raised = buttons / chips / cards
+   * field  = inputs / selects (softly recessed)
+   * pressed = active / clicked
+   */
+  --shadow-raised:
+    inset 0 1px 0 var(--lift),
+    0 1px 2px rgba(30, 18, 10, 0.16),
+    0 3px 8px rgba(20, 10, 4, 0.1);
+  --shadow-raised-brass:
+    inset 0 1px 0 rgba(255, 245, 200, 0.55),
+    0 1px 0 #6e5528,
+    0 1px 2px rgba(30, 18, 10, 0.16),
+    0 3px 8px rgba(20, 10, 4, 0.1);
+  --shadow-field:
+    inset 0 1px 2px rgba(30, 18, 10, 0.2),
+    inset 0 -1px 0 rgba(255, 245, 220, 0.28);
+  --shadow-pressed:
+    inset 0 2px 4px rgba(30, 18, 10, 0.28);
+  --shadow-card:
+    inset 0 1px 0 var(--lift),
+    0 2px 4px rgba(30, 18, 10, 0.14),
+    0 8px 18px rgba(20, 10, 4, 0.14);
+  --shadow-menu:
+    inset 0 1px 0 var(--lift),
+    0 4px 14px rgba(20, 10, 4, 0.2);
+
+  --elev-1: 0 1px 2px rgba(30, 18, 10, 0.16), 0 3px 8px rgba(20, 10, 4, 0.1);
+  --elev-2: 0 2px 4px rgba(30, 18, 10, 0.14), 0 8px 18px rgba(20, 10, 4, 0.14);
+  --elev-3: 0 3px 6px rgba(30, 18, 10, 0.16), 0 12px 24px rgba(20, 10, 4, 0.18);
+
+  /* Desk — warm walnut, restrained grain */
+  --tex-wood:
+    radial-gradient(ellipse 70% 50% at 20% 10%, rgba(255, 220, 170, 0.12), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 85% 80%, rgba(0, 0, 0, 0.28), transparent 50%),
+    repeating-linear-gradient(
+      93deg,
+      transparent 0 7px,
+      rgba(0, 0, 0, 0.035) 7px 8px,
+      transparent 8px 15px,
+      rgba(255, 220, 170, 0.03) 15px 16px
+    ),
+    linear-gradient(160deg, #4a3424 0%, #3a2a1c 35%, #2a1c12 70%, #352418 100%);
+
+  /* Leather — same brown family as desk, slightly darker */
+  --tex-leather:
+    radial-gradient(ellipse at 25% 15%, rgba(255, 220, 170, 0.08), transparent 42%),
+    radial-gradient(ellipse at 80% 85%, rgba(0, 0, 0, 0.3), transparent 48%),
+    repeating-radial-gradient(
+      circle at 1.5px 1.5px,
+      rgba(0, 0, 0, 0.07) 0 0.8px,
+      transparent 1.2px 3.5px
+    ),
+    linear-gradient(165deg, #463022 0%, #342218 45%, #261810 100%);
+
+  /* One cream paper family */
+  --tex-paper:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 40%),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 25px,
+      var(--paper-line) 25px 26px
+    ),
+    linear-gradient(180deg, #f4ead2 0%, #ead9b8 100%);
+
+  --tex-cardstock:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 30%),
+    linear-gradient(180deg, #f4ead2 0%, #e6d4b0 100%);
+
+  /* Warm silver — bridges wood and brass */
+  --tex-metal:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.22) 0 1px,
+      transparent 1px 3px,
+      rgba(0, 0, 0, 0.05) 3px 4px
+    ),
+    linear-gradient(135deg, #f2efe9 0%, #d2cbc0 48%, #a89f92 78%, #c4bcb0 100%);
+
+  --tex-brass:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 240, 190, 0.28) 0 1px,
+      transparent 1px 3px,
+      rgba(80, 50, 10, 0.1) 3px 4px
+    ),
+    linear-gradient(165deg, #e2c47a 0%, #c9a25a 42%, #9a7a3a 78%, #b89248 100%);
+}
+
 html, body, #root { height: 100%; }
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: #f8fafc;
-  color: #0f172a;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background-color: var(--desk-deep);
+  background-image: var(--tex-wood);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 * { box-sizing: border-box; }
 
-@layer components {
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition; }
-  .btn-primary { @apply btn bg-clinic-600 text-white hover:bg-clinic-700 disabled:opacity-50; }
-  .btn-secondary { @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50; }
-  .btn-danger { @apply btn bg-rose-600 text-white hover:bg-rose-700; }
-  .input { @apply w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-clinic-500 focus:outline-none focus:ring-1 focus:ring-clinic-500; }
-  .label { @apply block text-sm font-medium text-slate-700 mb-1; }
-  .card { @apply bg-white rounded-lg border border-slate-200 shadow-sm; }
-  .badge { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium; }
-  .badge-green { @apply badge bg-emerald-100 text-emerald-700; }
-  .badge-yellow { @apply badge bg-amber-100 text-amber-700; }
-  .badge-red { @apply badge bg-rose-100 text-rose-700; }
-  .badge-blue { @apply badge bg-sky-100 text-sky-700; }
-  .badge-slate { @apply badge bg-slate-100 text-slate-700; }
-  .table-th { @apply px-4 py-2 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider; }
-  .table-td { @apply px-4 py-2 text-sm text-slate-800; }
+h1, h2, .font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+.font-body {
+  font-family: var(--font-body);
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold tracking-wide transition-all duration-150 disabled:pointer-events-none disabled:opacity-50;
+    min-height: 2.5rem;
+  }
+  .btn-primary {
+    @apply btn text-[#2c2118];
+    background: var(--tex-brass);
+    border: 1px solid var(--brass-deep);
+    box-shadow: var(--shadow-raised-brass);
+  }
+  .btn-primary:hover { filter: brightness(1.05); }
+  .btn-primary:active {
+    transform: translateY(1px);
+    box-shadow: var(--shadow-pressed), 0 1px 0 #6e5528;
+  }
+  .btn-secondary {
+    @apply btn text-[color:var(--ink)];
+    background: var(--tex-cardstock);
+    border: 1px solid var(--edge);
+    box-shadow: var(--shadow-raised);
+  }
+  .btn-secondary:hover { filter: brightness(1.03); }
+  .btn-secondary:active {
+    transform: translateY(1px);
+    box-shadow: var(--shadow-pressed);
+  }
+  .btn-danger {
+    @apply btn text-[#fff8f0];
+    background: linear-gradient(180deg, #a85a48 0%, #6e382c 100%);
+    border: 1px solid #4a281f;
+    box-shadow: inset 0 1px 0 rgba(255, 200, 180, 0.28), var(--elev-1);
+  }
+  .btn-danger:active {
+    transform: translateY(1px);
+    box-shadow: var(--shadow-pressed);
+  }
+
+  .input {
+    @apply w-full rounded-xl px-3 py-2.5 text-sm transition-all duration-150 placeholder:text-[#6e5848];
+    color: var(--ink);
+    background: linear-gradient(180deg, #d4c4a4 0%, #efe4cc 40%, #f4ead2 100%);
+    border: 1px solid var(--edge);
+    box-shadow: var(--shadow-field);
+  }
+  .input:hover { border-color: #6e5840; }
+  .input:focus {
+    outline: none;
+    border-color: var(--brass-deep);
+    box-shadow: var(--shadow-field), 0 0 0 3px rgba(201, 162, 90, 0.28);
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-semibold tracking-wide;
+    color: var(--ink-muted);
+  }
+
+  .card {
+    @apply rounded-panel transition-shadow duration-200 relative;
+    background: var(--tex-cardstock);
+    border: 1px solid var(--edge-soft);
+    box-shadow: var(--shadow-card);
+  }
+  .card::after {
+    content: '';
+    pointer-events: none;
+    position: absolute;
+    right: 8px;
+    bottom: 5px;
+    width: 22px;
+    height: 14px;
+    background: linear-gradient(135deg, transparent 48%, rgba(30, 18, 10, 0.1) 58%);
+    border-radius: 0 0 10px 0;
+    opacity: 0.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold tracking-wide;
+    box-shadow: var(--shadow-raised);
+  }
+  .badge-green { @apply badge text-[#1e301c]; background: linear-gradient(180deg, #c8dbc4, #9fbf98); }
+  .badge-yellow { @apply badge text-[#4a3818]; background: linear-gradient(180deg, #f0dca0, #d4b86a); }
+  .badge-red { @apply badge text-[#5a281c]; background: linear-gradient(180deg, #e8b8a8, #d09080); }
+  .badge-blue { @apply badge text-[#243830]; background: linear-gradient(180deg, #c4d8ce, #9ebcb0); }
+  .badge-slate { @apply badge text-[color:var(--ink)]; background: linear-gradient(180deg, #e2d8c4, #c8bca8); }
+
+  .table-th {
+    @apply px-4 py-3 text-left text-[11px] font-bold uppercase tracking-[0.08em];
+    color: var(--ink-muted);
+    background: linear-gradient(180deg, rgba(255,255,255,0.35), transparent), linear-gradient(180deg, #ead9b8, #dfcba0);
+    border-bottom: 1px solid var(--edge-soft);
+    text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+  }
+  .table-td {
+    @apply px-4 py-2.5 text-sm;
+    color: var(--ink);
+    border-bottom: 1px solid rgba(139, 115, 85, 0.22);
+  }
+
+  .skeuo-sidebar,
+  .shell-wood {
+    color: var(--leather-text);
+    background-color: var(--leather-deep);
+    background-image: var(--tex-leather);
+    border-right: 2px solid var(--desk-deep);
+    box-shadow:
+      inset -6px 0 18px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 220, 170, 0.06),
+      4px 0 20px rgba(0, 0, 0, 0.28);
+    position: relative;
+  }
+  .skeuo-sidebar::before,
+  .shell-wood::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    right: 7px;
+    bottom: 12px;
+    width: 2px;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 9px,
+        var(--brass) 9px 11px,
+        transparent 11px 20px
+      );
+    opacity: 0.45;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .aluminum-header,
+  .shell-header {
+    background: var(--tex-metal);
+    border-bottom: 1px solid var(--metal-edge);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      inset 0 -1px 4px rgba(0, 0, 0, 0.12),
+      0 2px 8px rgba(0, 0, 0, 0.16);
+    color: var(--ink);
+  }
+
+  /* Keep sidebar brand and main topbar on one shared aluminum baseline */
+  .shell-brand,
+  .shell-topbar {
+    height: 3.75rem;
+    min-height: 3.75rem;
+    box-sizing: border-box;
+  }
+
+  .menu-item-active,
+  .nav-chip-active {
+    background: linear-gradient(180deg, #1e140e 0%, #322218 50%, #241810 100%);
+    box-shadow:
+      inset 0 2px 5px rgba(0, 0, 0, 0.45),
+      inset 0 -1px 0 rgba(201, 162, 90, 0.18);
+    border-radius: 10px;
+    border: 1px solid #1a120c;
+    color: var(--brass) !important;
+  }
+  .menu-item-active svg,
+  .nav-chip-active svg {
+    color: var(--brass);
+    filter: drop-shadow(0 0 2px rgba(201, 162, 90, 0.35));
+  }
+  .nav-chip {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150;
+  }
+  .nav-chip-idle {
+    color: var(--leather-text);
+    border: 1px solid transparent;
+    opacity: 0.88;
+  }
+  .nav-chip-idle svg {
+    color: var(--brass);
+    opacity: 0.9;
+  }
+  .nav-chip-idle:hover {
+    color: var(--leather-text);
+    opacity: 1;
+    background: rgba(255, 220, 170, 0.07);
+    border-color: rgba(201, 162, 90, 0.25);
+  }
+  .nav-chip-idle:hover svg { opacity: 1; }
+
+  .brand-medallion {
+    @apply flex items-center justify-center rounded-2xl;
+    color: var(--ink);
+    background: var(--tex-brass);
+    border: 1px solid var(--brass-deep);
+    box-shadow: var(--shadow-raised-brass);
+  }
+
+  .crm-views {
+    background: var(--tex-cardstock);
+    border: 1px solid var(--edge-soft);
+    border-radius: 0.85rem;
+    padding: 0.2rem;
+    box-shadow: var(--shadow-field);
+  }
+  .crm-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--edge-soft);
+    background: linear-gradient(180deg, rgba(236, 232, 224, 0.95), rgba(214, 210, 202, 0.9));
+    box-shadow: var(--shadow-field);
+  }
+  .crm-filter-bar .crm-filter {
+    max-width: 100%;
+  }
+  .crm-view-tab {
+    @apply px-3 py-2.5 text-sm font-semibold border-b-2 border-transparent transition-all duration-150;
+    color: var(--ink-muted);
+    border-radius: 0.65rem;
+  }
+  .crm-view-tab:hover { color: var(--ink); }
+  .crm-view-tab.is-active {
+    color: var(--ink);
+    border-color: transparent;
+    background: var(--tex-cardstock);
+    box-shadow: var(--shadow-raised);
+    border: 1px solid var(--edge);
+  }
+  .crm-filter {
+    @apply rounded-lg px-2.5 py-1.5 text-sm;
+    color: var(--ink);
+    background: linear-gradient(180deg, #d4c4a4 0%, #efe4cc 40%, #f4ead2 100%);
+    border: 1px solid var(--edge);
+    box-shadow: var(--shadow-field);
+  }
+  .crm-avatar {
+    @apply inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold;
+    color: var(--ink);
+    background: var(--tex-brass);
+    box-shadow: var(--shadow-raised-brass);
+  }
+  .crm-avatar-lg {
+    @apply inline-flex items-center justify-center w-20 h-20 rounded-full text-2xl font-bold;
+    color: var(--ink);
+    background: var(--tex-brass);
+    box-shadow: var(--shadow-raised-brass);
+  }
+  .crm-quick-btn {
+    @apply inline-flex items-center justify-center w-9 h-9 rounded-full transition-all;
+    color: var(--ink);
+    background: var(--tex-metal);
+    border: 1px solid var(--metal-lo);
+    box-shadow: var(--shadow-raised);
+  }
+  .crm-quick-btn:hover {
+    box-shadow: var(--shadow-raised);
+    filter: brightness(1.04);
+  }
+  .crm-prop {
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid rgba(176, 183, 192, 0.28);
+  }
+  .crm-prop:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+  .crm-prop dt {
+    @apply text-[10px] font-semibold uppercase tracking-[0.06em];
+    color: var(--ink-muted);
+  }
+  .crm-prop dd {
+    @apply text-sm mt-0.5 break-words leading-snug;
+    color: var(--ink);
+  }
+  .crm-feed-tab {
+    @apply px-3 py-2 text-sm font-semibold border-b-2 border-transparent -mb-px whitespace-nowrap;
+    color: var(--ink-muted);
+  }
+  .crm-feed-tab.is-active { color: var(--ink); border-color: var(--brass-deep); }
+
+  /* Flat inset surface inside an already-raised card — kills card-in-card noise */
+  .crm-inset-panel {
+    position: relative;
+    padding: 0.875rem 1rem;
+    border-radius: 0.85rem;
+    border: 1px solid rgba(139, 115, 85, 0.28);
+    background: linear-gradient(180deg, rgba(255, 252, 245, 0.72), rgba(239, 230, 216, 0.55));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+  .crm-inset-panel::after { content: none; display: none; }
+  .crm-inset-panel .crm-record-panel-title {
+    margin-bottom: 0.5rem;
+  }
+
+  .crm-record-shell {
+    @apply rounded-panel overflow-hidden relative min-w-0 flex flex-col;
+    background: var(--tex-cardstock);
+    border: 1px solid var(--edge-soft);
+    box-shadow: var(--shadow-card);
+  }
+
+  .crm-rail-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .crm-rail-actions > a,
+  .crm-rail-actions > button {
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 0.7rem;
+    min-height: 2.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 0.45rem 0.75rem;
+    /* Flatter than default btn — matches inset clinical surfaces */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 1px 2px rgba(40, 24, 12, 0.12);
+  }
+  .crm-rail-actions > a:active,
+  .crm-rail-actions > button:active {
+    transform: translateY(0.5px);
+    box-shadow: inset 0 1px 2px rgba(40, 24, 12, 0.18);
+  }
+
+  .crm-rail-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .crm-rail-stack > .crm-record-panel {
+    padding: 0.8rem 0.9rem;
+  }
+  .crm-rail-stack .btn-primary,
+  .crm-rail-stack .btn-secondary {
+    min-height: 2.25rem;
+    border-radius: 0.7rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 1px 2px rgba(40, 24, 12, 0.12);
+  }
+
+  .crm-timeline-card {
+    @apply rounded-xl px-3 py-2.5 transition-colors relative;
+    background: var(--tex-paper);
+    border: 1px solid var(--edge-soft);
+    box-shadow: var(--shadow-raised);
+  }
+  button.crm-timeline-card {
+    appearance: none;
+    font: inherit;
+    color: inherit;
+  }
+  .crm-timeline-card.is-selected {
+    border-color: var(--brass-deep);
+    box-shadow: var(--shadow-raised), 0 0 0 1px rgba(139, 115, 85, 0.35);
+    background: linear-gradient(180deg, #fbf7f0, #f3ebe0);
+  }
+  .crm-timeline-icon {
+    @apply inline-flex items-center justify-center w-8 h-8 rounded-full shrink-0;
+    color: var(--ink);
+    background: var(--tex-metal);
+    box-shadow: var(--shadow-raised);
+  }
+  .crm-record-grid {
+    display: grid;
+    gap: 1rem;
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+  .crm-record-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .crm-record-panel {
+    @apply card;
+    padding: 1rem;
+  }
+  .crm-record-panel-title {
+    @apply font-display text-base font-semibold text-[#3a342c] leading-tight;
+    margin: 0 0 0.75rem;
+  }
+  .crm-record-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .crm-record-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  /* Appointment detail drawer — sits under shell topbar so chrome stays continuous */
+  .appt-drawer {
+    top: 3.75rem;
+    bottom: 0;
+    margin-top: 0 !important; /* parent space-y must not offset fixed panels */
+    background: var(--tex-cardstock);
+    border-left: 1px solid var(--edge);
+    box-shadow: -8px 0 28px rgba(20, 10, 4, 0.28);
+  }
+  .appt-drawer-backdrop {
+    top: 3.75rem;
+  }
+  .appt-drawer-header {
+    background: var(--tex-metal);
+    border-bottom: 1px solid var(--metal-edge);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  }
+  .appt-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    border-radius: 0.75rem;
+    color: var(--ink);
+    background: linear-gradient(135deg, #E5E7EB, #D1D5DB);
+    border: 1px solid #9CA3AF;
+    box-shadow: var(--shadow-raised);
+    transition: filter 0.15s ease;
+  }
+  .appt-drawer-close:hover { filter: brightness(1.05); }
+  .appt-drawer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .appt-drawer-actions > * {
+    width: 100%;
+    min-height: 2.5rem;
+  }
+  .appt-drawer-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+  }
+  .appt-drawer-facts dt {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .appt-drawer-facts dd {
+    margin-top: 0.15rem;
+    font-size: 0.875rem;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  .stat-tile {
+    @apply card p-5 relative overflow-hidden;
+  }
+  .stat-tile::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--tex-brass);
+    box-shadow: inset 0 1px 0 rgba(255,245,200,0.35);
+  }
+  .stat-tile.tone-moss::before {
+    background: linear-gradient(180deg, #6a8a62, #4a5c42);
+  }
+  .stat-tile.tone-clay::before {
+    background: linear-gradient(180deg, #c48868, #9a6548);
+  }
+  .stat-tile.tone-stone::before {
+    background: var(--tex-metal);
+  }
+
+  .panel-inset {
+    @apply rounded-panel;
+    background: var(--tex-cardstock);
+    border: 1px solid var(--edge-soft);
+    box-shadow: var(--shadow-card);
+  }
+
+  .login-desk {
+    background-color: var(--desk-deep);
+    background-image: var(--tex-wood);
+    background-attachment: fixed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition-all duration-150;
+    color: var(--ink-muted);
+  }
+  .btn-ghost:hover {
+    color: var(--ink);
+    background: rgba(242, 230, 204, 0.45);
+  }
+
+  .seg-track {
+    @apply inline-flex items-center gap-0.5 p-1 rounded-xl overflow-x-auto max-w-full;
+    background: linear-gradient(180deg, #b89868 0%, #dfcba0 100%);
+    border: 1px solid var(--edge);
+    box-shadow: var(--shadow-field);
+  }
+  .seg-item {
+    @apply shrink-0 px-3 py-2 text-sm font-semibold rounded-lg whitespace-nowrap transition-all duration-150;
+    color: var(--ink);
+    border: 1px solid transparent;
+  }
+  .seg-item:hover { filter: brightness(1.03); }
+  .seg-item.is-active {
+    color: var(--ink);
+    background: var(--tex-cardstock);
+    border-color: var(--edge);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .page-title {
+    @apply font-display font-semibold tracking-tight;
+    color: var(--leather-text);
+    font-size: clamp(1.55rem, 2.2vw, 2.05rem);
+    line-height: 1.15;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+  .page-subtitle {
+    @apply text-sm mt-1;
+    color: var(--leather-muted);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
+  .well {
+    @apply rounded-panel overflow-hidden;
+    background:
+      linear-gradient(180deg, rgba(30,18,10,0.06), transparent 35%),
+      var(--tex-cardstock);
+    border: 1px solid var(--edge-soft);
+    box-shadow: var(--shadow-field);
+  }
+
+  .appt-block {
+    @apply w-full text-left rounded-lg px-1.5 py-1 text-[11px] leading-snug transition-all;
+    background: var(--tex-paper);
+    border: 1px solid var(--edge-soft);
+    box-shadow: var(--shadow-raised);
+    color: var(--ink);
+  }
+  .appt-block:hover {
+    filter: brightness(1.02);
+    border-color: var(--edge);
+  }
+  .appt-block.is-selected {
+    border-color: var(--brass-deep);
+    box-shadow: var(--shadow-raised), 0 0 0 2px rgba(201, 162, 90, 0.28);
+  }
+
+  .mat-leather {
+    background-image: var(--tex-leather);
+    color: var(--leather-text);
+    border: 1px solid var(--desk-deep);
+    box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.08), var(--elev-2);
+  }
+  .mat-paper {
+    background: var(--tex-paper);
+    border: 1px solid var(--edge-soft);
+  }
+  .mat-metal {
+    background: var(--tex-metal);
+    border: 1px solid var(--metal-lo);
+  }
+}
+
+@media (min-width: 1024px) {
+  .crm-record-grid {
+    /* Equal side rails + even gutters so the three columns share one baseline */
+    grid-template-columns: 16rem minmax(0, 1fr) 16rem;
+    gap: 0.85rem;
+    align-items: start;
+  }
+  /* Clinical / Body needs more center room — keep rails equal, tighten width */
+  .crm-record-grid.is-clinical {
+    grid-template-columns: 14.5rem minmax(0, 1fr) 14.5rem;
+    gap: 0.75rem;
+  }
+}
+
+/* Mobile clinical: chart first — rails bury "Abrir prontuário" below the fold */
+@media (max-width: 1023px) {
+  .crm-record-grid.is-clinical {
+    display: flex;
+    flex-direction: column;
+  }
+  .crm-record-grid.is-clinical > .crm-record-col:nth-child(2) {
+    order: -1;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(28px, -20px) scale(1.06); }
+  66% { transform: translate(-18px, 18px) scale(0.96); }
+}
+@keyframes drift-alt {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-30px, -24px) scale(1.1); }
+}
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes leaf-sway {
+  0%, 100% { transform: rotate(-2deg) translateY(0); }
+  50% { transform: rotate(2deg) translateY(-6px); }
+}
+
+@layer utilities {
+  .animate-fade-in { animation: fade-in 0.5s ease-out both; }
+  .animate-fade-in-up { animation: fade-in-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-fade-in-down { animation: fade-in-down 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-scale-in { animation: scale-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+  .animate-drift { animation: drift 16s ease-in-out infinite; }
+  .animate-drift-alt { animation: drift-alt 20s ease-in-out infinite; }
+  .animate-slide-in-left { animation: slide-in-left 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .animate-leaf { animation: leaf-sway 7s ease-in-out infinite; }
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-200 { animation-delay: 0.2s; }
+  .delay-300 { animation-delay: 0.3s; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #3a2a1c, #2a1c12);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--tex-brass);
+  border-radius: 8px;
+  border: 2px solid #2a1c12;
+}
+::-webkit-scrollbar-thumb:hover { filter: brightness(1.08); }
+
+@media (max-width: 767px) {
+  .btn {
+    min-height: 2.75rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .btn-primary.text-xs,
+  .btn-secondary.text-xs {
+    min-height: 2.5rem;
+    font-size: 0.8125rem;
+  }
+  main {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  .crm-page,
+  .page-title {
+    max-width: 100%;
+  }
+  .page-title {
+    font-size: 1.35rem;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .card {
+    max-width: 100%;
+  }
+  /* Desktop tables stay in a touch-scroll tray when shown */
+  .card > .overflow-x-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  /* Page headers: always wrap CTA under title on phones */
+  .page-header {
+    @apply flex flex-wrap items-start justify-between gap-3;
+  }
+}
+
+/* Shared mobile stack list (Team / Folha pattern) */
+.mobile-stack-list {
+  @apply divide-y divide-[rgba(63,92,66,0.1)];
+}
+.mobile-stack-item {
+  @apply p-4 space-y-2;
+}
+.mobile-stack-title {
+  @apply font-semibold text-[#3a342c] break-words;
+}
+.mobile-stack-meta {
+  @apply text-xs text-[color:var(--ink-muted)] break-words;
+}
+.mobile-stack-grid {
+  @apply grid grid-cols-2 gap-2 text-sm;
+}
+.mobile-stack-label {
+  @apply text-[11px] uppercase tracking-wide text-[color:var(--ink-muted)];
+}
