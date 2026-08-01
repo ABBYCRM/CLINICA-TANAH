@@ -197,12 +197,228 @@ function requireStepUp(req: Request, res: Response): boolean {
   return true;
 }
 
-function markScenarioOutputViews(scenarioId: string) {
+type OutputViewEntry = {
+  has_image: boolean;
+  path?: string;
+  provider?: string;
+  view: string;
+  error?: string | null;
+};
+
+function writeOutputViews(scenarioId: string, views: Record<string, OutputViewEntry>) {
   db.prepare(`
     UPDATE body_scenarios
        SET output_views = ?, updated_at = datetime('now')
      WHERE id = ?
-  `).run(JSON.stringify({ front: { has_image: true } }), scenarioId);
+  `).run(JSON.stringify(views), scenarioId);
+}
+
+function markScenarioOutputViews(scenarioId: string, views?: Record<string, OutputViewEntry>) {
+  if (views) {
+    writeOutputViews(scenarioId, views);
+    return;
+  }
+  writeOutputViews(scenarioId, { front: { has_image: true, view: 'front' } });
+}
+
+async function resolvePublicRef(assetId: string | null | undefined, imagePath: string | null | undefined): Promise<string | null> {
+  const origin = (process.env.APP_ORIGIN || '').replace(/\/$/, '');
+  if (!assetId || !imagePath || !fs.existsSync(imagePath) || !/^https:\/\//i.test(origin)) return null;
+  const candidate = `${origin}/api/public/body-asset/${signBodyAssetToken(assetId)}`;
+  try {
+    const head = await fetch(candidate, { method: 'GET' });
+    if (head.ok) return candidate;
+  } catch { /* */ }
+  return null;
+}
+
+async function generateAndPersistOneView(opts: {
+  tenantId: string;
+  patientId: string;
+  scenarioId: string;
+  view: CaptureView;
+  prompt: string;
+  referencePath: string | null;
+  assetId?: string | null;
+}): Promise<OutputViewEntry> {
+  const referencePublicUrl = await resolvePublicRef(opts.assetId, opts.referencePath);
+  let result = await generateBodyScenarioImage({
+    name: `clinica-tanah-${opts.scenarioId.slice(0, 8)}-${opts.view}`,
+    prompt: opts.prompt,
+    referencePath: opts.referencePath,
+    referencePublicUrl,
+  });
+
+  // Poll A2E if pending
+  if (result.status === 'pending' && result.taskId) {
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const polled = await pollA2e(result.taskId!);
+      if (polled.status === 'completed' && polled.imageUrl) {
+        result = polled;
+        break;
+      }
+      if (polled.status === 'failed') {
+        // Retry text-only once, then local morph via generateBodyScenarioImage order
+        result = await generateBodyScenarioImage({
+          name: `clinica-tanah-${opts.scenarioId.slice(0, 8)}-${opts.view}-retry`,
+          prompt: opts.prompt,
+          referencePath: opts.referencePath,
+          referencePublicUrl: null,
+        });
+        if (result.status === 'pending' && result.taskId) {
+          for (let j = 0; j < 12; j++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            const p2 = await pollA2e(result.taskId!);
+            if (p2.status === 'completed') { result = p2; break; }
+            if (p2.status === 'failed') { result = p2; break; }
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  const dir = bodyUploadsDir(opts.tenantId, opts.patientId);
+  let imageBytes = result.imageBytes;
+  if (!imageBytes && result.imageUrl) {
+    try {
+      const res = await fetch(result.imageUrl);
+      if (res.ok) imageBytes = Buffer.from(await res.arrayBuffer());
+    } catch { /* */ }
+  }
+
+  if (!imageBytes || result.status === 'failed') {
+    return {
+      view: opts.view,
+      has_image: false,
+      provider: result.provider,
+      error: result.error || 'generation_failed',
+    };
+  }
+
+  const ext = (result.contentType || '').includes('png') ? 'png' : 'jpg';
+  const imagePath = path.join(dir, `scenario-${opts.scenarioId}-${opts.view}.${ext}`);
+  fs.writeFileSync(imagePath, imageBytes);
+
+  // Keep legacy image_path as front for older UI
+  if (opts.view === 'front') {
+    const legacy = path.join(dir, `scenario-${opts.scenarioId}.${ext}`);
+    fs.writeFileSync(legacy, imageBytes);
+    db.prepare(`
+      UPDATE body_scenarios
+         SET provider = ?, image_path = ?, image_url = COALESCE(?, image_url),
+             provider_task_id = COALESCE(?, provider_task_id),
+             error = NULL, updated_at = datetime('now')
+       WHERE id = ?
+    `).run(result.provider, legacy, result.imageUrl || null, result.taskId || null, opts.scenarioId);
+  }
+
+  return {
+    view: opts.view,
+    has_image: true,
+    path: imagePath,
+    provider: result.provider,
+    error: null,
+  };
+}
+
+async function runGenerate(
+  req: Request,
+  scenarioId: string,
+  patientId: string,
+  capture: any,
+  prompt: string,
+  opts?: { captureSessionId?: string | null; envelope?: any; sex?: string | null; interventions?: string[]; weeks?: number },
+) {
+  db.prepare(`UPDATE body_scenarios SET status = 'generating', updated_at = datetime('now') WHERE id = ?`).run(scenarioId);
+
+  const sessionId = opts?.captureSessionId
+    || capture?.session_id
+    || (db.prepare(`SELECT capture_session_id FROM body_scenarios WHERE id = ?`).get(scenarioId) as any)?.capture_session_id
+    || null;
+
+  const assetsByView: Partial<Record<CaptureView, any>> = {};
+  if (sessionId) {
+    const assets = db.prepare(`
+      SELECT * FROM body_capture_assets WHERE session_id = ? AND tenant_id = ?
+    `).all(sessionId, req.tenantId) as any[];
+    for (const a of assets) {
+      if (CAPTURE_VIEWS.includes(a.view) && a.image_path && fs.existsSync(a.image_path)) {
+        assetsByView[a.view as CaptureView] = a;
+      }
+    }
+  }
+
+  // Legacy single capture → front only
+  if (!assetsByView.front && capture?.image_path && fs.existsSync(capture.image_path)) {
+    assetsByView.front = capture;
+  }
+
+  const viewsToGenerate = CAPTURE_VIEWS.filter((v) => !!assetsByView[v]);
+  if (!viewsToGenerate.length) {
+    // Text-only front generation when no reference photos
+    viewsToGenerate.push('front');
+  }
+
+  const output: Record<string, OutputViewEntry> = {};
+  const envelope = opts?.envelope;
+  const weeks = opts?.weeks || 12;
+  let lastProvider: string | null = null;
+  let anyOk = false;
+  const errors: string[] = [];
+
+  for (const view of viewsToGenerate) {
+    const asset = assetsByView[view];
+    const viewPrompt = envelope
+      ? buildPhotorealScenarioPrompt({
+          weeks,
+          envelope,
+          sex: opts?.sex,
+          hasReferencePhoto: !!(asset?.image_path && fs.existsSync(asset.image_path)),
+          interventions: opts?.interventions,
+          view,
+        })
+      : `${prompt} Clinical camera view: ${view}. Preserve the ${view} viewing angle.`;
+
+    try {
+      const entry = await generateAndPersistOneView({
+        tenantId: req.tenantId!,
+        patientId,
+        scenarioId,
+        view,
+        prompt: viewPrompt,
+        referencePath: asset?.image_path || null,
+        assetId: asset?.id || null,
+      });
+      output[view] = entry;
+      if (entry.has_image) {
+        anyOk = true;
+        lastProvider = entry.provider || lastProvider;
+      } else if (entry.error) {
+        errors.push(`${view}:${entry.error}`);
+      }
+    } catch (e: any) {
+      output[view] = { view, has_image: false, error: e?.message || String(e) };
+      errors.push(`${view}:${e?.message || e}`);
+    }
+  }
+
+  writeOutputViews(scenarioId, output);
+
+  if (anyOk) {
+    db.prepare(`
+      UPDATE body_scenarios
+         SET status = 'completed', provider = COALESCE(?, provider), error = NULL, updated_at = datetime('now')
+       WHERE id = ?
+    `).run(lastProvider, scenarioId);
+  } else {
+    db.prepare(`
+      UPDATE body_scenarios
+         SET status = 'failed', error = ?, updated_at = datetime('now')
+       WHERE id = ?
+    `).run((errors.join(' | ') || 'generation_failed').slice(0, 500), scenarioId);
+  }
 }
 
 function enrichFromContext(opts: {
@@ -1435,7 +1651,13 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   }
 
   try {
-    await runGenerate(req, id, patient.id, capture, prompt);
+    await runGenerate(req, id, patient.id, capture, prompt, {
+      captureSessionId,
+      envelope: execution_plan,
+      sex: patient.gender,
+      interventions,
+      weeks,
+    });
   } catch (e: any) {
     db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
       .run(String(e?.message || e).slice(0, 500), id);
@@ -1451,122 +1673,6 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
 
   res.status(201).json({ id, scenario, execution_plan });
 });
-
-async function runGenerate(req: Request, scenarioId: string, patientId: string, capture: any, prompt: string) {
-  db.prepare(`UPDATE body_scenarios SET status = 'generating', updated_at = datetime('now') WHERE id = ?`).run(scenarioId);
-
-  let referencePublicUrl: string | null = null;
-  const origin = (process.env.APP_ORIGIN || '').replace(/\/$/, '');
-  if (capture?.id && capture?.image_path && fs.existsSync(capture.image_path) && /^https:\/\//i.test(origin)) {
-    const candidate = `${origin}/api/public/body-asset/${signBodyAssetToken(capture.id)}`;
-    try {
-      const head = await fetch(candidate, { method: 'GET' });
-      if (head.ok) referencePublicUrl = candidate;
-    } catch {
-      referencePublicUrl = null;
-    }
-  }
-
-  const result = await generateBodyScenarioImage({
-    name: `clinica-tanah-${scenarioId.slice(0, 8)}`,
-    prompt,
-    referencePath: capture?.image_path || null,
-    referencePublicUrl,
-  });
-
-  if (result.status === 'failed') {
-    db.prepare(`
-      UPDATE body_scenarios SET status = 'failed', provider = ?, error = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(result.provider, (result.error || 'failed').slice(0, 500), scenarioId);
-    return;
-  }
-
-  if (result.status === 'pending' && result.taskId) {
-    db.prepare(`
-      UPDATE body_scenarios SET status = 'pending', provider = ?, provider_task_id = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(result.provider, result.taskId, scenarioId);
-    for (let i = 0; i < 12; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      const polled = await pollA2e(result.taskId!);
-      if (polled.status === 'completed' && polled.imageUrl) {
-        await persistScenarioImage(req.tenantId!, patientId, scenarioId, polled.provider, polled.imageUrl, result.taskId);
-        return;
-      }
-      if (polled.status === 'failed') {
-        // Reference download failures → retry once as text-only photoreal generation
-        const err = String(polled.error || '');
-        if (/download|fetch|url|image/i.test(err) && referencePublicUrl) {
-          const retry = await generateBodyScenarioImage({
-            name: `clinica-tanah-${scenarioId.slice(0, 8)}-txt`,
-            prompt,
-            referencePath: null,
-            referencePublicUrl: null,
-          });
-          if (retry.status === 'pending' && retry.taskId) {
-            db.prepare(`
-              UPDATE body_scenarios SET status = 'pending', provider = ?, provider_task_id = ?, error = NULL, updated_at = datetime('now')
-              WHERE id = ?
-            `).run(retry.provider, retry.taskId, scenarioId);
-            for (let j = 0; j < 12; j++) {
-              await new Promise((r) => setTimeout(r, 5000));
-              const p2 = await pollA2e(retry.taskId!);
-              if (p2.status === 'completed' && p2.imageUrl) {
-                await persistScenarioImage(req.tenantId!, patientId, scenarioId, p2.provider, p2.imageUrl, retry.taskId);
-                return;
-              }
-              if (p2.status === 'failed') {
-                db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
-                  .run((p2.error || 'failed').slice(0, 500), scenarioId);
-                return;
-              }
-            }
-            return;
-          }
-          if (retry.status === 'completed' && (retry.imageUrl || retry.imageBytes)) {
-            if (retry.imageBytes) {
-              const dir = bodyUploadsDir(req.tenantId!, patientId);
-              const imagePath = path.join(dir, `scenario-${scenarioId}.jpg`);
-              fs.writeFileSync(imagePath, retry.imageBytes);
-              db.prepare(`
-                UPDATE body_scenarios SET status = 'completed', provider = ?, image_path = ?, error = NULL, updated_at = datetime('now')
-                WHERE id = ?
-              `).run(retry.provider, imagePath, scenarioId);
-              markScenarioOutputViews(scenarioId);
-              return;
-            }
-            if (retry.imageUrl) {
-              await persistScenarioImage(req.tenantId!, patientId, scenarioId, retry.provider, retry.imageUrl, retry.taskId);
-              return;
-            }
-          }
-        }
-        db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
-          .run((polled.error || 'failed').slice(0, 500), scenarioId);
-        return;
-      }
-    }
-    return;
-  }
-
-  if (result.imageBytes) {
-    const dir = bodyUploadsDir(req.tenantId!, patientId);
-    const ext = (result.contentType || '').includes('png') ? 'png' : 'jpg';
-    const imagePath = path.join(dir, `scenario-${scenarioId}.${ext}`);
-    fs.writeFileSync(imagePath, result.imageBytes);
-    db.prepare(`
-      UPDATE body_scenarios SET status = 'completed', provider = ?, image_path = ?, error = NULL, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(result.provider, imagePath, scenarioId);
-    markScenarioOutputViews(scenarioId);
-    return;
-  }
-
-  if (result.imageUrl) {
-    await persistScenarioImage(req.tenantId!, patientId, scenarioId, result.provider, result.imageUrl, result.taskId);
-  }
-}
 
 async function persistScenarioImage(
   tenantId: string,
@@ -1613,12 +1719,20 @@ router.post('/:patientId/scenarios/:scenarioId/generate', requireRole('doctor', 
   `).get(req.params.scenarioId, req.params.patientId, req.tenantId) as any;
   if (!row) { res.status(404).json({ error: 'not_found' }); return; }
 
-  const capture = row.capture_id
-    ? db.prepare(`SELECT * FROM body_captures WHERE id = ?`).get(row.capture_id)
-    : null;
+  let capture: any = null;
+  if (row.capture_id) {
+    capture = db.prepare(`SELECT * FROM body_capture_assets WHERE id = ?`).get(row.capture_id)
+      || db.prepare(`SELECT * FROM body_captures WHERE id = ?`).get(row.capture_id);
+  }
   const prompt = open(row.prompt) || row.prompt;
+  let envelope: any = null;
+  try { envelope = row.execution_plan ? JSON.parse(row.execution_plan) : null; } catch { envelope = null; }
   try {
-    await runGenerate(req, row.id, row.patient_id, capture, prompt);
+    await runGenerate(req, row.id, row.patient_id, capture, prompt, {
+      captureSessionId: row.capture_session_id,
+      envelope,
+      weeks: row.horizon_weeks || row.weeks || 12,
+    });
   } catch (e: any) {
     db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
       .run(String(e?.message || e).slice(0, 500), row.id);
@@ -1675,17 +1789,33 @@ router.get('/:patientId/scenarios/:scenarioId/image', requireRole(...CLINICAL_RO
   const row = db.prepare(`
     SELECT * FROM body_scenarios WHERE id = ? AND patient_id = ? AND tenant_id = ?
   `).get(req.params.scenarioId, req.params.patientId, req.tenantId) as any;
-  if (row?.image_path && fs.existsSync(row.image_path)) {
+  if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const view = String(req.query.view || 'front').toLowerCase();
+  let views: any = {};
+  try { views = row.output_views ? JSON.parse(row.output_views) : {}; } catch { views = {}; }
+  const entry = views[view];
+  if (entry?.path && fs.existsSync(entry.path)) {
+    res.setHeader('Content-Type', entry.path.endsWith('.png') ? 'image/png' : 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('X-Body-View', view);
+    fs.createReadStream(entry.path).pipe(res);
+    return;
+  }
+
+  // Legacy front path
+  if ((view === 'front' || !entry) && row.image_path && fs.existsSync(row.image_path)) {
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('X-Body-View', 'front');
     fs.createReadStream(row.image_path).pipe(res);
     return;
   }
-  if (row?.image_url) {
+  if (view === 'front' && row.image_url) {
     res.redirect(row.image_url);
     return;
   }
-  res.status(404).json({ error: 'not_found' });
+  res.status(404).json({ error: 'not_found', view });
 });
 
 export default router;

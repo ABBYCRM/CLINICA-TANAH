@@ -149,15 +149,23 @@ export function buildPhotorealScenarioPrompt(opts: {
   sex?: string | null;
   hasReferencePhoto?: boolean;
   interventions?: string[];
+  /** Clinical capture view for multi-view after images */
+  view?: 'front' | 'left' | 'right' | 'back';
 }): string {
   const sex = opts.sex === 'M' || opts.sex === 'male' ? 'male' : 'female';
+  const view = opts.view || 'front';
+  const viewLabel =
+    view === 'front' ? 'front'
+      : view === 'back' ? 'back'
+        : view === 'left' ? 'left profile / ¾'
+          : 'right profile / ¾';
   const vg = opts.envelope.visual_guidance;
   const p = opts.envelope.projected;
   const d = opts.envelope.deltas;
   const e = opts.envelope.energy;
   const identity = opts.hasReferencePhoto
-    ? 'Edit this clinical front-view photograph of the SAME adult patient. Preserve absolute identity, facial features, skin tone, clothing style/color, pose, camera framing, and studio background.'
-    : `Create a photorealistic clinical full-body front-view photograph of an adult ${sex} patient for body-composition educational visualization. Neutral studio lighting, accurate anatomy, natural skin texture, professional medical photography.`;
+    ? `Edit this clinical ${viewLabel}-view photograph of the SAME adult patient. Preserve absolute identity, facial features, skin tone, clothing style/color, pose, camera framing, and studio background. Keep the ${view} viewing angle unchanged.`
+    : `Create a photorealistic clinical full-body ${viewLabel}-view photograph of an adult ${sex} patient for body-composition educational visualization. Neutral studio lighting, accurate anatomy, natural skin texture, professional medical photography.`;
 
   const ae = opts.envelope.anatomicalEnvelope;
   const regional = ae?.regions?.length

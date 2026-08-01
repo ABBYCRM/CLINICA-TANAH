@@ -1608,7 +1608,9 @@
     "library_pick": "Selecionar medicamento da biblioteca",
     "anatomy_regions": "Regiões anatômicas",
     "narrative": "Narrativa",
-    "providers_order": "Ordem dos provedores"
+    "providers_order": "Ordem dos provedores",
+    "inspector_before": "Antes",
+    "inspector_after": "Depois (simulação)"
   },
   "chart": {
     "allergy_alert": "Alerta de alergia:",

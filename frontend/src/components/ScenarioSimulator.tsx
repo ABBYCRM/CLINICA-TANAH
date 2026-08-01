@@ -176,6 +176,7 @@ export default function ScenarioSimulator({
   const [stepPassword, setStepPassword] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectorMode, setInspectorMode] = useState<'single' | 'contact'>('single');
+  const [inspectView, setInspectView] = useState<'front' | 'left' | 'right' | 'back'>('front');
   const [checklist, setChecklist] = useState<Record<ReviewKey, boolean>>(emptyChecklist);
   const [reviewSignature, setReviewSignature] = useState('');
   const [reviewComment, setReviewComment] = useState('');
@@ -337,11 +338,15 @@ export default function ScenarioSimulator({
 
   const canReport = selected?.review_status === 'approved';
 
-  const beforeUrl = session?.assets?.front?.preview_url || (session?.id
-    ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/front/image`
+  const beforeUrl = session?.assets?.[inspectView]?.preview_url || (session?.id
+    ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/${inspectView}/image`
     : null);
-  const afterUrl = selected && (selected.has_image || selected.image_url)
-    ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image`
+  const afterHasView = !!(
+    selected?.output_views?.[inspectView]?.has_image
+    || (inspectView === 'front' && (selected?.has_image || selected?.image_url))
+  );
+  const afterUrl = selected && afterHasView
+    ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image?view=${inspectView}`
     : null;
 
   const providersOrder = data?.image_providers?.order;
@@ -706,29 +711,61 @@ export default function ScenarioSimulator({
         </div>
         <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.inspector_sync_note')}</p>
         {inspectorMode === 'single' ? (
-          <div className="grid grid-cols-2 gap-3 max-w-lg">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.views.front')}</div>
-              <Thumb url={beforeUrl} label={t('body.views.front')} />
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1">
+              {views.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`crm-feed-tab ${inspectView === v ? 'is-active' : ''}`}
+                  onClick={() => setInspectView(v)}
+                >
+                  {t(`body.views.${v}`)}
+                </button>
+              ))}
             </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.tabs.scenarios')}</div>
-              <Thumb url={afterUrl} label={selected?.title || t('body.tabs.scenarios')} />
+            <div className="grid grid-cols-2 gap-3 max-w-lg">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_before')}</div>
+                <Thumb url={beforeUrl} label={t(`body.views.${inspectView}`)} />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_after')}</div>
+                <Thumb url={afterUrl} label={selected?.title || t('body.tabs.scenarios')} />
+              </div>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-2xl">
-            {views.map((v) => (
-              <div key={v}>
-                <Thumb
-                  url={session?.assets?.[v]?.preview_url || (session?.id
-                    ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/${v}/image`
-                    : null)}
-                  label={t(`body.views.${v}`)}
-                />
-                <div className="text-[10px] text-center text-[color:var(--ink-muted)] mt-1">{t(`body.views.${v}`)}</div>
-              </div>
-            ))}
+          <div className="space-y-3 max-w-3xl">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {views.map((v) => (
+                <div key={`before-${v}`}>
+                  <div className="text-[10px] text-center text-[color:var(--ink-muted)] mb-1">{t('body.inspector_before')} · {t(`body.views.${v}`)}</div>
+                  <Thumb
+                    url={session?.assets?.[v]?.preview_url || (session?.id
+                      ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/${v}/image`
+                      : null)}
+                    label={t(`body.views.${v}`)}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {views.map((v) => {
+                const has = !!(selected?.output_views?.[v]?.has_image || (v === 'front' && selected?.has_image));
+                return (
+                  <div key={`after-${v}`}>
+                    <div className="text-[10px] text-center text-[color:var(--ink-muted)] mb-1">{t('body.inspector_after')} · {t(`body.views.${v}`)}</div>
+                    <Thumb
+                      url={selected && has
+                        ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image?view=${v}`
+                        : null}
+                      label={has ? t(`body.views.${v}`) : '—'}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </section>

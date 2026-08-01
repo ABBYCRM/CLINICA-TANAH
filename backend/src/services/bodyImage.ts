@@ -24,7 +24,7 @@ export type ImageGenResult = {
 const A2E_BASE = process.env.A2E_BASE_URL || 'https://video.a2e.ai';
 const A2E_MODEL = process.env.A2E_MODEL || 'nano-banana-pro';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
-const BITDEER_MODEL = process.env.BITDEER_MODEL || 'flux-schnell';
+const BITDEER_MODEL = process.env.BITDEER_MODEL || process.env.BITDEER_IMAGE_MODEL || 'google/flash-image-2.5';
 
 export function bodyUploadsDir(tenantId: string, patientId: string): string {
   const dir = path.join(uploadsRoot(), tenantId, 'body', patientId);
@@ -95,7 +95,9 @@ function bitdeerEnabled(): boolean {
 }
 
 function localMorphEnabled(): boolean {
-  return process.env.LOCAL_MORPH_FALLBACK === '1' || process.env.LOCAL_MORPH_FALLBACK === 'true';
+  // Default ON as ultimate identity-preserving fallback unless explicitly disabled
+  if (process.env.LOCAL_MORPH_FALLBACK === '0' || process.env.LOCAL_MORPH_FALLBACK === 'false') return false;
+  return true;
 }
 
 function providerOrder(): ImageProvider[] {
@@ -113,12 +115,8 @@ function providerOrder(): ImageProvider[] {
     if (p === 'bitdeer' && bitdeerEnabled()) push('bitdeer');
     if ((p === 'local_morph' || p === 'local') && localMorphEnabled()) push('local_morph');
   }
-  if (!out.length) {
-    if (a2eEnabled()) push('a2e');
-    if (geminiEnabled()) push('gemini');
-    if (bitdeerEnabled()) push('bitdeer');
-    if (localMorphEnabled()) push('local_morph');
-  }
+  // Always append local_morph last when enabled and not already listed
+  if (localMorphEnabled()) push('local_morph');
   return out;
 }
 
@@ -241,7 +239,7 @@ async function generateGemini(opts: {
   return { provider: 'gemini', status: 'failed', error: 'gemini_no_image', raw: json };
 }
 
-/** Bitdeer / OpenAI-compatible image generate — skipped when not configured. */
+/** Bitdeer / OpenAI-compatible image generate — also supports Gemini-style proxy. */
 async function generateBitdeer(opts: {
   prompt: string;
   referencePath?: string | null;
@@ -252,8 +250,60 @@ async function generateBitdeer(opts: {
     return { provider: 'bitdeer', status: 'failed', error: 'bitdeer_not_configured' };
   }
 
-  const endpoint = process.env.BITDEER_GENERATE_PATH
-    || '/v1/images/generations';
+  const style = (process.env.BITDEER_API_STYLE || 'openai').toLowerCase();
+
+  // Gemini-compatible proxy (BodyPath often uses google/flash-image via Bitdeer)
+  if (style === 'gemini' || /generativelanguage|gemini/i.test(base) || /flash-image|gemini/i.test(BITDEER_MODEL)) {
+    const model = process.env.BITDEER_MODEL || 'google/flash-image-2.5';
+    const url = `${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const parts: any[] = [{ text: opts.prompt }];
+    if (opts.referencePath && fs.existsSync(opts.referencePath)) {
+      parts.unshift({
+        inline_data: {
+          mime_type: opts.referencePath.endsWith('.png') ? 'image/png' : 'image/jpeg',
+          data: fs.readFileSync(opts.referencePath).toString('base64'),
+        },
+      });
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'x-goog-api-key': key,
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      }),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        provider: 'bitdeer',
+        status: 'failed',
+        error: json?.error?.message || json?.message || `bitdeer_gemini_http_${res.status}`,
+        raw: json,
+      };
+    }
+    for (const c of json?.candidates || []) {
+      for (const p of c?.content?.parts || []) {
+        const inline = p.inlineData || p.inline_data;
+        if (inline?.data) {
+          return {
+            provider: 'bitdeer',
+            status: 'completed',
+            imageBytes: Buffer.from(inline.data, 'base64'),
+            contentType: inline.mimeType || inline.mime_type || 'image/png',
+            raw: { model, style: 'gemini' },
+          };
+        }
+      }
+    }
+    return { provider: 'bitdeer', status: 'failed', error: 'bitdeer_gemini_no_image', raw: json };
+  }
+
+  const endpoint = process.env.BITDEER_GENERATE_PATH || '/v1/images/generations';
   const url = `${base}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const body: Record<string, unknown> = {
