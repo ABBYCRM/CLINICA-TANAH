@@ -155,6 +155,10 @@ export default function CaptureStudio({
     () => CAPTURE_VIEWS.every((v) => !!session?.assets?.[v]),
     [session],
   );
+  const captureReadyCount = useMemo(
+    () => CAPTURE_VIEWS.filter((v) => !!session?.assets?.[v]).length,
+    [session],
+  );
 
   const asset = session?.assets?.[view] || null;
   const previewSrc = useAuthBlob(
@@ -413,25 +417,34 @@ export default function CaptureStudio({
               <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">
                 {t('body.public_export_blocked')}
               </p>
-              {viewsComplete && (
+              {captureReadyCount > 0 && (
                 <div className="mt-3 space-y-2">
-                  <button
-                    type="button"
-                    className="btn-secondary w-full text-sm"
-                    disabled={busy || locked}
-                    onClick={validateSet}
-                    data-testid="capture-validate-set"
-                  >
-                    {t('body.validate_set')}
-                  </button>
+                  {viewsComplete && (
+                    <button
+                      type="button"
+                      className="btn-secondary w-full text-sm"
+                      disabled={busy || locked}
+                      onClick={validateSet}
+                      data-testid="capture-validate-set"
+                    >
+                      {t('body.validate_set')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn-primary w-full text-sm"
                     onClick={onGoScenarios}
                     data-testid="capture-go-scenarios"
                   >
-                    {t('body.tabs.scenarios')}
+                    {viewsComplete
+                      ? t('body.tabs.scenarios')
+                      : t('body.continue_partial_scenarios', { count: captureReadyCount })}
                   </button>
+                  {!viewsComplete && (
+                    <p className="text-[11px] text-[color:var(--ink-muted)] leading-relaxed">
+                      {t('body.partial_gen_hint')}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

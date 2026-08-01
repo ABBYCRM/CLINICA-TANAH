@@ -1236,9 +1236,18 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     plans,
     captures,
     capture_sessions,
-    active_capture_session: capture_sessions.find((s: any) => s.status === 'complete')
-      || capture_sessions[0]
-      || null,
+    active_capture_session: (() => {
+      // Prefer the session with the most assets (newest open with photos beats a stale empty complete).
+      const ranked = [...capture_sessions].sort((a: any, b: any) => {
+        const ac = Object.keys(a.assets || {}).length;
+        const bc = Object.keys(b.assets || {}).length;
+        if (bc !== ac) return bc - ac;
+        const at = Date.parse(a.updated_at || a.created_at || 0);
+        const bt = Date.parse(b.updated_at || b.created_at || 0);
+        return bt - at;
+      });
+      return ranked[0] || null;
+    })(),
     scenarios: parsedScenarios,
     anatomical: latestPlan ? {
       anatomicalEnvelope: latestPlan.anatomicalEnvelope || null,

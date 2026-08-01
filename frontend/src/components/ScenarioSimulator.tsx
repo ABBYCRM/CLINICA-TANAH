@@ -216,10 +216,6 @@ export default function ScenarioSimulator({
       ? Object.values(selected.output_views).filter((v: any) => v?.has_image).length
       : (selected?.has_image ? 1 : 0));
 
-  useEffect(() => {
-    if (afterViewCount > 1) setInspectorMode('contact');
-  }, [selected?.id, afterViewCount]);
-
   const toggle = (list: string[], id: string, setter: (v: string[]) => void) => {
     setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   };
@@ -343,10 +339,23 @@ export default function ScenarioSimulator({
   const views = ['front', 'left', 'right', 'back'] as const;
   const captureReadyCount = views.filter((v) => !!session?.assets?.[v]).length;
   const captureComplete = captureReadyCount === 4;
+  const availableViews = views.filter((v) => !!session?.assets?.[v]);
   const activeEnvelope = envelope || pinned;
   const anatomy = activeEnvelope?.anatomicalEnvelope;
   const narrative = activeEnvelope?.narrativePt || [];
   const visualProfiles = activeEnvelope?.visualProfiles || [];
+
+  useEffect(() => {
+    if (!availableViews.length) return;
+    if (!availableViews.includes(inspectView)) {
+      setInspectView(availableViews[0]);
+    }
+  }, [session?.id, availableViews.join('|'), inspectView]);
+
+  // Default to contact sheet whenever we have any scenario or multi-view capture
+  useEffect(() => {
+    if (afterViewCount > 1 || captureReadyCount > 1) setInspectorMode('contact');
+  }, [selected?.id, afterViewCount, captureReadyCount]);
 
   const needsReview = selected
     && (selected.review_status === 'pending_review' || !selected.review_status)
@@ -603,6 +612,11 @@ export default function ScenarioSimulator({
           >
             {busy === 'generate' ? t('body.generating') : t('body.sim_generate')}
           </button>
+          {captureReadyCount > 0 && captureReadyCount < 4 && (
+            <span className="text-xs text-[color:var(--ink-muted)] self-center" data-testid="sim-partial-gen-note">
+              {t('body.partial_gen_hint')}
+            </span>
+          )}
         </div>
         {error && <p className="text-sm text-[#8b3a2a]" data-testid="sim-error">{error}</p>}
         {!data?.simulations_allowed && (
@@ -738,16 +752,20 @@ export default function ScenarioSimulator({
         {inspectorMode === 'single' ? (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-1">
-              {views.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`crm-feed-tab ${inspectView === v ? 'is-active' : ''}`}
-                  onClick={() => setInspectView(v)}
-                >
-                  {t(`body.views.${v}`)}
-                </button>
-              ))}
+              {views.map((v) => {
+                const hasBefore = !!session?.assets?.[v];
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`crm-feed-tab ${inspectView === v ? 'is-active' : ''} ${!hasBefore ? 'opacity-50' : ''}`}
+                    onClick={() => setInspectView(v)}
+                    data-testid={`sim-inspect-view-${v}`}
+                  >
+                    {t(`body.views.${v}`)}{hasBefore ? '' : ' · —'}
+                  </button>
+                );
+              })}
             </div>
             <div className="grid grid-cols-2 gap-3 max-w-lg">
               <div>

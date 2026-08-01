@@ -1613,7 +1613,9 @@
     "narrative": "Narrative",
     "providers_order": "Providers order",
     "inspector_before": "Before",
-    "inspector_after": "After (simulation)"
+    "inspector_after": "After (simulation)",
+    "continue_partial_scenarios": "Continue with {{count}} view(s) → Scenarios",
+    "partial_gen_hint": "Generation works with 1–4 photos: after-images are created only for captured views. A full set improves the contact sheet."
   },
   "chart": {
     "allergy_alert": "Allergy alert:",

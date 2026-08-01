@@ -1613,7 +1613,9 @@
     "narrative": "Narrativa",
     "providers_order": "Orden de proveedores",
     "inspector_before": "Antes",
-    "inspector_after": "Después (simulación)"
+    "inspector_after": "Después (simulación)",
+    "continue_partial_scenarios": "Continuar con {{count}} vista(s) → Escenarios",
+    "partial_gen_hint": "La generación funciona con 1–4 fotos: crea el después solo para las vistas capturadas. Completar el conjunto mejora la hoja de contacto."
   },
   "chart": {
     "allergy_alert": "Alerta de alergia:",
