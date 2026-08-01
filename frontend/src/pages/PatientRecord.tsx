@@ -447,12 +447,12 @@ export default function PatientRecord() {
         </div>
       </header>
 
-      <div className="crm-record-grid">
+      <div className={`crm-record-grid ${tab === 'clinical' ? 'is-clinical' : ''}`}>
         {/* LEFT — summary */}
         <aside className="crm-record-col">
-          <div className="crm-record-panel space-y-3">
+          <div className="crm-record-panel">
             <h2 className="crm-record-panel-title">{t('patients.workspace.summary')}</h2>
-            <dl className="space-y-3">
+            <dl className="space-y-0">
               {prop(t('patients.email'), patient.email)}
               {prop(t('patients.phone'), patient.phone)}
               {prop(t('patients.phone_secondary'), patient.phone_secondary)}
@@ -508,12 +508,14 @@ export default function PatientRecord() {
 
         {/* CENTER — timeline / tab bodies */}
         <section className="crm-record-col min-w-0">
-          <div className="card overflow-hidden min-w-0 flex flex-col">
-            <div className="px-4 pt-4 pb-3 border-b border-[rgba(176,183,192,0.45)]">
-              <h2 className="crm-record-panel-title !mb-0">
-                {tabs.find((x) => x.id === tab)?.label || t('patients.workspace.tab_overview')}
-              </h2>
-            </div>
+          <div className="crm-record-shell">
+            {tab !== 'clinical' && (
+              <div className="px-4 pt-4 pb-3 border-b border-[rgba(176,183,192,0.45)]">
+                <h2 className="crm-record-panel-title !mb-0">
+                  {tabs.find((x) => x.id === tab)?.label || t('patients.workspace.tab_overview')}
+                </h2>
+              </div>
+            )}
           {tab === 'overview' && upcoming.length > 0 && (
             <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)]" style={{ background: 'linear-gradient(180deg,#E5E7EB,#D1D5DB)' }}>
               <div className="text-xs font-semibold uppercase tracking-wide text-[#4a453c] mb-2">{t('patients.workspace.upcoming')}</div>
@@ -691,26 +693,28 @@ export default function PatientRecord() {
         </section>
 
         {/* RIGHT — quick actions */}
-        <aside className="crm-record-col">
-          <div className="crm-record-panel space-y-2">
+        <aside className="crm-record-col crm-rail-stack">
+          <div className="crm-record-panel">
             <h2 className="crm-record-panel-title">{t('patients.workspace.quick_actions')}</h2>
-            <Link to="/whatsapp" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_whatsapp')}</Link>
-            <Link to="/appointments" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_schedule')}</Link>
-            <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('tasks')}>
-              {t('patients.workspace.action_task')}
-            </button>
-            <button type="button" className="btn-secondary w-full justify-start text-sm" disabled={ticketBusy} onClick={createTicket}>
-              {ticketBusy ? '…' : t('patients.workspace.action_ticket')}
-            </button>
-            <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('privacy')}>
-              {t('patients.workspace.action_consent')}
-            </button>
-            {clinicalOk && (
-              <button type="button" className="btn-secondary w-full justify-start text-sm" onClick={() => setTab('clinical')}>
-                {t('patients.workspace.action_clinical')}
+            <div className="crm-rail-actions">
+              <Link to="/whatsapp" className="btn-secondary">{t('patients.workspace.action_whatsapp')}</Link>
+              <Link to="/appointments" className="btn-secondary">{t('patients.workspace.action_schedule')}</Link>
+              <button type="button" className="btn-secondary" onClick={() => setTab('tasks')}>
+                {t('patients.workspace.action_task')}
               </button>
-            )}
-            <Link to="/invoices" className="btn-secondary w-full justify-start text-sm">{t('patients.workspace.action_billing')}</Link>
+              <button type="button" className="btn-secondary" disabled={ticketBusy} onClick={createTicket}>
+                {ticketBusy ? '…' : t('patients.workspace.action_ticket')}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setTab('privacy')}>
+                {t('patients.workspace.action_consent')}
+              </button>
+              {clinicalOk && (
+                <button type="button" className="btn-secondary" onClick={() => setTab('clinical')}>
+                  {t('patients.workspace.action_clinical')}
+                </button>
+              )}
+              <Link to="/invoices" className="btn-secondary">{t('patients.workspace.action_billing')}</Link>
+            </div>
           </div>
 
           <div className="crm-record-panel space-y-2">
@@ -750,7 +754,7 @@ export default function PatientRecord() {
             </button>
           </div>
 
-          <div className="crm-record-panel !py-3 space-y-1">
+          <div className="crm-record-panel !py-3 space-y-0.5">
             {[
               ['appointments', t('patients.assoc.appointments'), associations.appointments],
               ['whatsapp', t('patients.assoc.whatsapp'), associations.whatsapp],

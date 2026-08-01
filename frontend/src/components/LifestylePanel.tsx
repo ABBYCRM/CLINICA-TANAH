@@ -71,7 +71,7 @@ export default function LifestylePanel({
         )}
       </ul>
 
-      <section className="crm-record-panel space-y-3">
+      <section className="crm-inset-panel space-y-3">
         <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.life_submit')}</h4>
         <div className="grid sm:grid-cols-2 gap-2">
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_type')}
