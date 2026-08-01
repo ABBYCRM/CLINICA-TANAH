@@ -5,6 +5,7 @@ import { useI18n } from '../hooks/useI18n';
 import { useAuth } from '../hooks/useAuth';
 import { ConfirmDialog, FormError } from '../components/crud';
 import { PatientForm } from '../components/PatientForm';
+import BodyProntuario from '../components/BodyProntuario';
 
 type WorkspaceTab =
   | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'whatsapp'
@@ -516,6 +517,15 @@ export default function PatientRecord() {
             <div className="p-4 text-sm text-[color:var(--ink-muted)]">{t('patients.workspace.clinical_restricted')}</div>
           )}
 
+          {tab === 'clinical' && clinicalOk && patient && (
+            <BodyProntuario
+              patientId={patient.id}
+              patientName={patient.full_name}
+              birthDate={patient.birth_date}
+              gender={patient.gender}
+            />
+          )}
+
           {tab === 'surveys' && (
             <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2">
               <h3 className="font-semibold text-sm">{t('patients.workspace.survey_history')}</h3>
@@ -606,7 +616,7 @@ export default function PatientRecord() {
             </div>
           )}
 
-          {tab !== 'audit' && (
+          {tab !== 'audit' && tab !== 'clinical' && (
           <div className="p-4 space-y-5">
             {grouped.length === 0 && (
               <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>

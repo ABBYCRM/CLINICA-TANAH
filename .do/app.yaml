@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
     github:
       repo: ABBYCRM/CLINICA-TANAH
-      branch: cursor/frontend-apps-convenio-live-531c
+      branch: cursor/prontuario-body-image-531c
       deploy_on_push: true
     http_port: 10000
     instance_count: 1
@@ -44,6 +44,24 @@ services:
       - key: JWT_SECRET
         type: SECRET
         scope: RUN_AND_BUILD_TIME
+      - key: A2E_ENABLED
+        value: "true"
+      - key: A2E_MODEL
+        value: "nano-banana-pro"
+      - key: A2E_IMAGE_SIZE
+        value: "4K"
+      - key: A2E_API_KEY
+        type: SECRET
+        scope: RUN_TIME
+      - key: GEMINI_ENABLED
+        value: "true"
+      - key: GEMINI_MODEL
+        value: "gemini-2.5-flash-image"
+      - key: GEMINI_API_KEY
+        type: SECRET
+        scope: RUN_TIME
+      - key: IMAGE_PROVIDER_ORDER
+        value: "a2e,gemini"
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED

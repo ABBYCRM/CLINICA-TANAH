@@ -60,7 +60,8 @@
     "today": "Hoje",
     "no_data": "Sem dados",
     "language": "Idioma",
-    "retry": "Tentar novamente"
+    "retry": "Tentar novamente",
+    "add": "Adicionar"
   },
   "auth": {
     "login": "Entrar",
@@ -1206,5 +1207,56 @@
     "staff_placeholder": "Buscar profissional…",
     "required_patient_staff": "Selecione o paciente e o profissional.",
     "required_patient": "Selecione o paciente."
+  },
+  "body": {
+    "dob": "DN",
+    "purpose": "Finalidade clínica: prontuário de cuidado e visualização de cenário mediada por profissional — não é diagnóstico autônomo.",
+    "clinical_summary": "Resumo clínico",
+    "height": "Altura",
+    "weight": "Peso",
+    "waist": "Cintura",
+    "bmi": "IMC*",
+    "bmi_note": "*O IMC é contextual; não use como único critério de elegibilidade.",
+    "urgent": "Procure atendimento médico imediato ou serviços de emergência. Este app não faz triagem de urgências.",
+    "granular_consents": "Consentimentos granulares",
+    "marketing_off": "desligado por padrão",
+    "register_consents": "Registrar consentimentos",
+    "revoke_optional": "Revogar IA / opcionais",
+    "simulations_blocked": "Novas simulações foram bloqueadas. Registros que devem ser retidos por obrigação legal ou de cuidado podem permanecer protegidos.",
+    "meds_disclaimer": "Registre apenas medicamentos em uso ou prescritos. O app não recomenda iniciar, trocar ou ajustar doses.",
+    "med_name": "Medicamento",
+    "med_dose": "Dose",
+    "records": "registro(s)",
+    "plans_count": "plano(s)",
+    "plan_title": "Plano de estilo de vida",
+    "weeks": "semanas",
+    "capture_hint": "Fotografia clínica padronizada (frente) para composição corporal e cenários ilustrativos. Requer consentimento de processamento de imagem.",
+    "upload_photo": "Enviar foto clínica",
+    "scenario_default_title": "Cenário ilustrativo",
+    "scenario_default_goal": "dieta + exercício (simulação ilustrativa)",
+    "scenario_title": "Título do cenário",
+    "scenario_goal": "Premissa (ex.: 12 semanas dieta+exercício)",
+    "generate_scenario": "Gerar cenário 4K",
+    "generating": "Gerando…",
+    "failed": "Falha na geração",
+    "scenario_notice": "Esta imagem ilustra um possível cenário com base em premissas registradas. Não é previsão nem garantia de resultado.",
+    "consent_required": "Consentimentos de prontuário e processamento de imagem são obrigatórios.",
+    "captures_scenarios": "Capturas e cenários",
+    "tabs": {
+      "capture": "Captura",
+      "measurements": "Medidas",
+      "medications": "Medicamentos",
+      "lifestyle": "Estilo de vida",
+      "scenarios": "Cenários",
+      "reports": "Relatórios"
+    },
+    "consent": {
+      "clinical_record": "Prontuário clínico",
+      "image_processing": "Processamento de imagem",
+      "generative_ai": "IA generativa",
+      "cross_border_transfer": "Transferência internacional",
+      "research": "Pesquisa",
+      "marketing": "Marketing"
+    }
   }
 }

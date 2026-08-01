@@ -1063,4 +1063,99 @@ export function seedMarketingDefaults(tenantId: string): void {
     }
   }
   ensureRecallAutomation(tenantId);
+
+  // ---- BodyPath clinical module (prontuário corporal / image scenarios) ----
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS body_measurements (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      height_cm REAL,
+      weight_kg REAL,
+      waist_cm REAL,
+      notes TEXT,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      recorded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_meas_patient ON body_measurements(tenant_id, patient_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS body_medications (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      dosage TEXT,
+      frequency TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      notes TEXT,
+      started_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_meds_patient ON body_medications(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_lifestyle_plans (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      weeks INTEGER,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_plans_patient ON body_lifestyle_plans(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_consents (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      granted INTEGER NOT NULL DEFAULT 0,
+      granted_at TEXT,
+      revoked_at TEXT,
+      notice_version TEXT NOT NULL DEFAULT 'body.consent.pt-BR.v1',
+      evidence_channel TEXT NOT NULL DEFAULT 'in_app',
+      UNIQUE(tenant_id, patient_id, purpose)
+    );
+
+    CREATE TABLE IF NOT EXISTS body_captures (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      view_angle TEXT NOT NULL DEFAULT 'front',
+      status TEXT NOT NULL DEFAULT 'uploaded',
+      image_path TEXT,
+      content_type TEXT DEFAULT 'image/jpeg',
+      notes TEXT,
+      created_by TEXT,
+      validated_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_cap_patient ON body_captures(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_scenarios (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      capture_id TEXT,
+      title TEXT NOT NULL,
+      goal TEXT,
+      weeks INTEGER,
+      prompt TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      provider TEXT,
+      provider_task_id TEXT,
+      image_url TEXT,
+      image_path TEXT,
+      measurement_snapshot TEXT,
+      error TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_scen_patient ON body_scenarios(tenant_id, patient_id);
+  `);
 }

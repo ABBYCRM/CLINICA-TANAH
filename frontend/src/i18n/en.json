@@ -60,7 +60,8 @@
     "today": "Today",
     "no_data": "No data",
     "language": "Language",
-    "retry": "Try again"
+    "retry": "Try again",
+    "add": "Add"
   },
   "auth": {
     "login": "Sign in",
@@ -1206,5 +1207,56 @@
     "staff_placeholder": "Search practitioner…",
     "required_patient_staff": "Select the patient and the practitioner.",
     "required_patient": "Select the patient."
+  },
+  "body": {
+    "dob": "DOB",
+    "purpose": "Clinical purpose: care record and professionally mediated scenario visualization — not autonomous diagnosis.",
+    "clinical_summary": "Clinical summary",
+    "height": "Height",
+    "weight": "Weight",
+    "waist": "Waist",
+    "bmi": "BMI*",
+    "bmi_note": "*BMI is contextual; do not use it as the sole eligibility gate.",
+    "urgent": "Seek immediate medical care or emergency services. This app does not triage emergencies.",
+    "granular_consents": "Granular consents",
+    "marketing_off": "off by default",
+    "register_consents": "Register consents",
+    "revoke_optional": "Revoke AI / optional",
+    "simulations_blocked": "New simulations were blocked. Records that must be retained for legal or care obligations may remain protected.",
+    "meds_disclaimer": "Record only medications in use or prescribed. The app does not recommend starting, switching, or adjusting doses.",
+    "med_name": "Medication",
+    "med_dose": "Dose",
+    "records": "record(s)",
+    "plans_count": "plan(s)",
+    "plan_title": "Lifestyle plan",
+    "weeks": "weeks",
+    "capture_hint": "Standardized clinical front photo for body composition and illustrative scenarios. Requires image-processing consent.",
+    "upload_photo": "Upload clinical photo",
+    "scenario_default_title": "Illustrative scenario",
+    "scenario_default_goal": "diet + exercise (illustrative simulation)",
+    "scenario_title": "Scenario title",
+    "scenario_goal": "Assumption (e.g. 12-week diet+exercise)",
+    "generate_scenario": "Generate 4K scenario",
+    "generating": "Generating…",
+    "failed": "Generation failed",
+    "scenario_notice": "This image illustrates a possible scenario based on recorded assumptions. Not a prediction or outcome guarantee.",
+    "consent_required": "Clinical record and image-processing consents are required.",
+    "captures_scenarios": "Captures & scenarios",
+    "tabs": {
+      "capture": "Capture",
+      "measurements": "Measurements",
+      "medications": "Medications",
+      "lifestyle": "Lifestyle",
+      "scenarios": "Scenarios",
+      "reports": "Reports"
+    },
+    "consent": {
+      "clinical_record": "Clinical record",
+      "image_processing": "Image processing",
+      "generative_ai": "Generative AI",
+      "cross_border_transfer": "Cross-border transfer",
+      "research": "Research",
+      "marketing": "Marketing"
+    }
   }
 }
