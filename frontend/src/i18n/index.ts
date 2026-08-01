@@ -39,6 +39,21 @@ export function t(key: string, vars: Record<string, string | number> = {}): stri
   return s;
 }
 
+/**
+ * Resolve a key to its raw value (string | array | object), or null when
+ * missing. Useful for structured content such as step-by-step lists.
+ */
+export function tRaw(key: string): any {
+  const dict = dictionaries[currentLocale] || dictionaries[DEFAULT];
+  const parts = key.split('.');
+  let cur: any = dict;
+  for (const part of parts) {
+    if (cur && typeof cur === 'object' && part in cur) cur = cur[part];
+    else return null;
+  }
+  return cur;
+}
+
 export const LOCALES: Locale[] = ['pt-BR', 'es', 'en'];
 export const LOCALE_LABELS: Record<Locale, string> = {
   'pt-BR': 'Português',
