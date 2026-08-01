@@ -28,8 +28,8 @@ function run(cmd, args, opts = {}) {
   }
 }
 
-if (!existsSync(path.join(frontendDist, 'index.html'))) {
-  console.log('▸ frontend/dist missing — building frontend…');
+if (!existsSync(path.join(frontendDist, 'index.html')) || process.env.E2E_REBUILD_FE === '1') {
+  console.log('▸ Building frontend…');
   run('npm', ['run', 'build'], { cwd: path.join(root, 'frontend') });
 }
 
@@ -38,10 +38,12 @@ rmSync(dataDir, { recursive: true, force: true });
 run('npx', ['tsx', 'src/db/seed.ts'], { cwd: backendDir });
 
 console.log(`▸ Starting Clínica Tanah on http://127.0.0.1:${port} …`);
+// Prefer the fresh Vite build over a stale backend/public copy.
+const serverEnv = { ...env, FRONTEND_DIST: frontendDist };
 // Keep the server in the same process group so Playwright can tear it down.
 const server = spawn('npx', ['tsx', 'src/server.ts'], {
   cwd: backendDir,
-  env,
+  env: serverEnv,
   stdio: 'inherit',
   detached: false,
 });
