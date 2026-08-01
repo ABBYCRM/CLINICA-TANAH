@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, apiErrorKey } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
-import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../components/crud';
+import { Modal, RowActions, FormError, FormActions } from '../components/crud';
 import { PatientPicker } from '../components/PatientPicker';
 
 interface InvLine { description: string; quantity: string; unit_price: string; tax_rate: string; }
@@ -24,6 +24,7 @@ export default function Invoices() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [deleting, setDeleting] = useState<any | null>(null);
+  const [deletePassword, setDeletePassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -58,15 +59,26 @@ export default function Invoices() {
 
   const remove = async () => {
     if (!deleting) return;
+    if (!deletePassword.trim()) {
+      setError(t('invoices.delete_password_required'));
+      return;
+    }
     setBusy(true);
     setError('');
     try {
-      await api.del(`/api/accounting/invoices/${deleting.id}`);
+      await api.del(`/api/accounting/invoices/${deleting.id}`, { password: deletePassword });
       setDeleting(null);
+      setDeletePassword('');
+      if (detail?.invoice?.id === deleting.id) setDetail(null);
       load();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
-      setDeleting(null);
+      const key = apiErrorKey(e);
+      setError(key === 'errors.generic' ? (e.message || t('errors.generic')) : t(key));
+      // keep dialog open on wrong password so user can retry
+      if (e?.body?.error !== 'invalid_delete_password' && e?.status !== 403) {
+        setDeleting(null);
+        setDeletePassword('');
+      }
     } finally {
       setBusy(false);
     }
@@ -249,12 +261,37 @@ export default function Invoices() {
         />
       )}
       {deleting && (
-        <ConfirmDialog
-          name={deleting.invoice_number}
-          busy={busy}
-          onCancel={() => setDeleting(null)}
-          onConfirm={remove}
-        />
+        <Modal title={t('invoices.delete_title')} onClose={() => { setDeleting(null); setDeletePassword(''); }}>
+          <div className="space-y-4" data-testid="invoice-delete-dialog">
+            <p className="text-sm text-[color:var(--ink-muted)]">
+              <span className="font-semibold text-[color:var(--ink)] block mb-1">{deleting.invoice_number}</span>
+              {t('invoices.delete_body')}
+            </p>
+            <label className="block text-sm">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
+                {t('invoices.delete_password')}
+              </span>
+              <input
+                type="password"
+                className="input mt-1"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder={t('invoices.delete_password_placeholder')}
+                autoFocus
+                data-testid="invoice-delete-password"
+                onKeyDown={(e) => { if (e.key === 'Enter') remove(); }}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => { setDeleting(null); setDeletePassword(''); }}>
+                {t('common.cancel')}
+              </button>
+              <button type="button" className="btn-danger" disabled={busy} onClick={remove} data-testid="confirm-delete">
+                {busy ? t('common.loading') : t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

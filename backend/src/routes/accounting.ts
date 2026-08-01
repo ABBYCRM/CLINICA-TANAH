@@ -18,6 +18,7 @@ import {
   incomeStatement as ledgerIncomeStatement,
   ensureChart as ledgerEnsureChart,
 } from '../services/ledger';
+import { logAudit } from '../services/audit';
 import { ensureDispenseAccounts } from '../services/prescriptionDispense';
 
 const router = Router();
@@ -819,8 +820,20 @@ router.put('/invoices/:id', requireRole('admin','accountant','receptionist'), (r
   res.json({ ok: true });
 });
 
-// Delete/cancel an invoice — paid invoices are kept for fiscal retention (CTN 5 years)
+/** Temporary PIN for invoice delete (override with INVOICE_DELETE_PASSWORD). Default: 1234 */
+function invoiceDeletePasswordOk(provided: unknown): boolean {
+  const expected = String(process.env.INVOICE_DELETE_PASSWORD || '1234').trim();
+  const got = String(provided ?? '').trim();
+  return !!expected && got === expected;
+}
+
+// Delete/cancel an invoice — paid invoices are kept for fiscal retention (CTN 5 years).
+// Requires confirm password (default PIN 1234) in JSON body: { password: "1234" }
 router.delete('/invoices/:id', requireRole('admin','accountant'), (req: Request, res: Response) => {
+  if (!invoiceDeletePasswordOk(req.body?.password ?? req.headers['x-delete-password'])) {
+    res.status(403).json({ error: 'invalid_delete_password', message: 'Password required to delete invoice.' });
+    return;
+  }
   const inv = db.prepare(`SELECT id, invoice_number, status FROM invoices WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!inv) { res.status(404).json({ error: 'not_found' }); return; }
   if (inv.status === 'paid') { res.status(409).json({ error: 'already_paid', message: 'Paid invoices are fiscal records and cannot be deleted.' }); return; }
@@ -830,6 +843,16 @@ router.delete('/invoices/:id', requireRole('admin','accountant'), (req: Request,
   }
   db.prepare(`DELETE FROM invoice_documents WHERE invoice_id = ?`).run(req.params.id);
   db.prepare(`DELETE FROM invoices WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId); // lines cascade
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'delete_invoice',
+    resourceType: 'invoice',
+    resourceId: req.params.id,
+    legalBasis: 'legal_obligation_art7_II',
+    afterValue: { invoice_number: inv.invoice_number, status: inv.status },
+  });
   res.json({ ok: true, deleted_id: req.params.id });
 });
 

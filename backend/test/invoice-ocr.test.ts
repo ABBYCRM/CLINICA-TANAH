@@ -65,15 +65,16 @@ beforeAll(async () => {
 
   await import('../src/server');
   await waitForServer();
-  db.prepare(`DELETE FROM users`).run();
+  const email = `admin-ocr-${Date.now()}@test.com`;
+  const id = uuid();
   db.prepare(`
     INSERT INTO users (id, email, password_hash, full_name, role)
-    VALUES (?, 'admin@test.com', ?, 'Test Admin', 'admin')
-  `).run(uuid(), bcrypt.hashSync('adminpass123', 10));
+    VALUES (?, ?, ?, 'Test Admin', 'admin')
+  `).run(id, email, bcrypt.hashSync('adminpass123', 10));
   const login = await fetch(`${BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@test.com', password: 'adminpass123' }),
+    body: JSON.stringify({ email, password: 'adminpass123' }),
   });
   token = ((await login.json()) as any).token;
 }, 30_000);
@@ -127,5 +128,32 @@ describe('invoice OCR', () => {
     expect(detail.status).toBe(200);
     expect(detail.body.documents.length).toBe(1);
     expect(fs.existsSync(path.join(TEST_DB_DIR, 'uploads'))).toBe(true);
+  });
+
+  it('requires password 1234 to delete an unpaid invoice', async () => {
+    process.env.INVOICE_DELETE_PASSWORD = '1234';
+    const created = await api('POST', '/accounting/invoices', {
+      issue_date: '2026-08-01',
+      total: 50,
+      status: 'issued',
+      invoice_number_override: 'NF-DEL-1',
+      lines: [{ description: 'Consulta', quantity: 1, unit_price: 50, tax_rate: 0 }],
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+
+    const denied = await api('DELETE', `/accounting/invoices/${id}`, { password: 'wrong' });
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toBe('invalid_delete_password');
+
+    const missing = await api('DELETE', `/accounting/invoices/${id}`, {});
+    expect(missing.status).toBe(403);
+
+    const ok = await api('DELETE', `/accounting/invoices/${id}`, { password: '1234' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.deleted_id).toBe(id);
+
+    const gone = await api('GET', `/accounting/invoices/${id}`);
+    expect(gone.status).toBe(404);
   });
 });

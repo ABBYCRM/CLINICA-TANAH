@@ -704,7 +704,7 @@
     "lines": "Ítems",
     "search_placeholder": "Buscar número, paciente, valor…",
     "upload_title": "Upload + OCR (NVIDIA)",
-    "upload_hint": "Suba foto/PDF de la factura. Las imágenes se leen con el modelo gratuito NVIDIA Nemotron VL.",
+    "upload_hint": "Suba una foto de factura/recibo. Las imágenes se leen con NVIDIA Nemotron Nano 12B VL (OCR médico/fiscal).",
     "upload_cta": "Subir documento",
     "ocr_ready": "OCR NVIDIA listo",
     "ocr_not_configured": "OCR NVIDIA: configure NVIDIA_API_KEYS en el servidor",
@@ -713,7 +713,14 @@
     "ocr_raw": "Texto OCR",
     "ocr_line_fallback": "Ítem extraído del documento",
     "file_too_large": "Archivo mayor a 8 MB",
-    "view_file": "Ver archivo"
+    "view_file": "Ver archivo",
+    "delete_title": "Eliminar factura",
+    "delete_body": "Esta acción no se puede deshacer. Ingrese la contraseña de confirmación para eliminar.",
+    "delete_password": "Contraseña de confirmación",
+    "delete_password_placeholder": "Contraseña",
+    "delete_password_required": "Ingrese la contraseña para eliminar la factura.",
+    "delete_password_wrong": "Contraseña incorrecta. La factura no fue eliminada.",
+    "delete_paid_blocked": "Las facturas pagadas son registros fiscales y no se pueden eliminar."
   },
   "payroll": {
     "title": "Nómina",

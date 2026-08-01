@@ -70,6 +70,8 @@ export function apiErrorKey(err: unknown): string {
   if (code === 'server_error') return 'errors.server_error';
   if (code === 'nvidia_api_key_missing') return 'invoices.ocr_not_configured';
   if (code === 'nvidia_ocr_failed' || code === 'nvidia_rate_limited' || code === 'ocr_unsupported_type') return 'invoices.ocr_failed';
+  if (code === 'invalid_delete_password') return 'invoices.delete_password_wrong';
+  if (code === 'already_paid') return 'invoices.delete_paid_blocked';
   if (code === 'file_too_large') return 'invoices.file_too_large';
   if (code === 'invalid_cpf') return 'errors.invalid_cpf';
   if (code === 'council_required' || code === 'council_state_required') return 'errors.council_required';
@@ -88,5 +90,8 @@ export const api = {
   post: (path: string, data: any) => request(path, { method: 'POST', body: JSON.stringify(data) }),
   put: (path: string, data: any) => request(path, { method: 'PUT', body: JSON.stringify(data) }),
   patch: (path: string, data: any) => request(path, { method: 'PATCH', body: JSON.stringify(data) }),
-  del: (path: string) => request(path, { method: 'DELETE' }),
+  del: (path: string, data?: any) => request(path, {
+    method: 'DELETE',
+    body: data === undefined ? undefined : JSON.stringify(data),
+  }),
 };

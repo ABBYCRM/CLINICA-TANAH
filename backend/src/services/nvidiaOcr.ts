@@ -1,7 +1,7 @@
 /**
  * NVIDIA NIM free-tier vision OCR / invoice extraction.
  * Rotates across NVIDIA_API_KEYS (comma or newline separated).
- * Default model: nvidia/nemotron-nano-12b-v2-vl (free on build.nvidia.com).
+ * Primary model: nvidia/nemotron-nano-12b-v2-vl (strong DocVQA / invoice OCR on integrate.api.nvidia.com).
  */
 import fs from 'fs';
 import path from 'path';
@@ -11,8 +11,8 @@ const DEFAULT_MODEL = process.env.NVIDIA_OCR_MODEL || 'nvidia/nemotron-nano-12b-
 const FALLBACK_MODELS = [
   DEFAULT_MODEL,
   'nvidia/nemotron-nano-12b-v2-vl',
-  'meta/llama-3.2-11b-vision-instruct',
   'nvidia/llama-3.1-nemotron-nano-vl-8b-v1',
+  'meta/llama-3.2-11b-vision-instruct',
 ].filter((v, i, a) => a.indexOf(v) === i);
 
 let keyCursor = 0;
@@ -64,8 +64,9 @@ export type OcrInvoiceResult = {
   confidence?: string | null;
 };
 
-const SYSTEM_PROMPT = `You are an OCR + invoice extractor for a Brazilian medical clinic (Clínica Tanah).
-Read the document image carefully and extract structured invoice / NF-e / receipt fields.
+const SYSTEM_PROMPT = `/no_think
+You are an OCR + invoice extractor for a Brazilian medical clinic (Clínica Tanah).
+Read the document image carefully (NF-e, NFS-e, recibo, boleto, fatura clínica) and extract structured fields.
 Return ONLY a single JSON object (no markdown) with this schema:
 {
   "invoice_number": string|null,
@@ -85,6 +86,7 @@ Rules:
 - Numbers use dot decimal (250.00 not 250,00).
 - If a field is missing, use null.
 - Prefer Portuguese descriptions when present.
+- Capture CNPJ/CPF mentions inside raw_text when visible.
 - raw_text should contain the readable OCR text of the document.`;
 
 function mimeFromName(filename: string, fallback = 'image/jpeg'): string {
@@ -155,7 +157,8 @@ async function callVision(model: string, dataUrl: string, apiKey: string): Promi
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_tokens: 1800,
+      top_p: 0.1,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
@@ -206,7 +209,8 @@ export async function extractInvoiceFromImage(opts: {
   }
 
   let lastErr: any = null;
-  for (let attempt = 0; attempt < Math.min(keys.length, 4); attempt++) {
+  const maxKeyAttempts = Math.min(keys.length, 8);
+  for (let attempt = 0; attempt < maxKeyAttempts; attempt++) {
     const apiKey = nextKey();
     for (const model of FALLBACK_MODELS) {
       try {
