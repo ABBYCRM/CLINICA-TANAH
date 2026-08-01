@@ -65,6 +65,9 @@ export default function BodyProntuario({ patientId }: {
   const [libraryId, setLibraryId] = useState('');
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryItems, setLibraryItems] = useState<any[]>([]);
+  const [libraryTotal, setLibraryTotal] = useState(0);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
   const [reports, setReports] = useState<any[]>([]);
   const [flags, setFlags] = useState<any | null>(null);
   const [activeSession, setActiveSession] = useState<any | null>(null);
@@ -86,19 +89,30 @@ export default function BodyProntuario({ patientId }: {
   useEffect(() => {
     if (tab !== 'medications') return;
     let cancelled = false;
-    const q = libraryQuery.trim();
-    const path = q
-      ? `/api/clinical/body/library/medications?q=${encodeURIComponent(q)}`
-      : '/api/clinical/body/library/medications';
-    api.get(path)
-      .then((res) => {
-        if (!cancelled) setLibraryItems(res.items || []);
-      })
-      .catch(() => {
-        if (!cancelled) setLibraryItems([]);
-      });
-    return () => { cancelled = true; };
-  }, [tab, libraryQuery]);
+    const handle = window.setTimeout(() => {
+      const q = libraryQuery.trim();
+      const path = q
+        ? `/api/clinical/body/library/medications?q=${encodeURIComponent(q)}&limit=120`
+        : '/api/clinical/body/library/medications?limit=500';
+      api.get(path)
+        .then((res) => {
+          if (cancelled) return;
+          setLibraryItems(res.items || []);
+          setLibraryTotal(Number(res.total || res.count || 0));
+          setLibraryError('');
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setLibraryItems([]);
+          setLibraryTotal(0);
+          setLibraryError(e?.message || t('body.library_load_failed'));
+        });
+    }, libraryQuery.trim() ? 220 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [tab, libraryQuery, t]);
 
   useEffect(() => {
     if (tab !== 'reports') return;
@@ -133,7 +147,16 @@ export default function BodyProntuario({ patientId }: {
     if (item) {
       setMedName(item.brand_name || item.active_ingredient || '');
       setMedClass(item.visual_profile || item.pharmacologic_class || '');
+      if (item.concentration) setMedDose(item.concentration);
     }
+    setLibraryOpen(false);
+  };
+
+  const libraryLabel = (item: any) => {
+    const brand = item.brand_name || item.active_ingredient || item.id;
+    const ing = item.active_ingredient && item.brand_name ? item.active_ingredient : '';
+    const form = [item.concentration, item.dosage_form].filter(Boolean).join(' · ');
+    return { brand, ing, form, klass: item.pharmacologic_class || item.therapeutic_category || '' };
   };
 
   const grantConsents = async (purposes: string[]) => {
@@ -245,17 +268,74 @@ export default function BodyProntuario({ patientId }: {
             <h3 className="crm-record-panel-title">{t('body.tabs.medications')}</h3>
             <p className="text-xs text-[color:var(--ink-muted)]">{t('body.meds_disclaimer')}</p>
 
-            <div className="space-y-2">
-              <label className="text-xs text-[color:var(--ink-muted)] block">
-                {t('body.library_search')}
+            <div className="space-y-2" data-testid="body-med-library">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
+                  {t('body.library_title')}
+                </label>
+                <span className="text-[11px] text-[color:var(--ink-muted)]" data-testid="body-med-library-count">
+                  {t('body.library_count', { shown: libraryItems.length, total: libraryTotal || libraryItems.length })}
+                </span>
+              </div>
+
+              <div className="relative">
                 <input
-                  className="input mt-1 w-full"
-                  placeholder={t('body.library_pick')}
+                  className="input w-full"
+                  placeholder={t('body.library_search_ph')}
                   value={libraryQuery}
-                  onChange={(e) => setLibraryQuery(e.target.value)}
+                  onChange={(e) => {
+                    setLibraryQuery(e.target.value);
+                    setLibraryOpen(true);
+                  }}
+                  onFocus={() => setLibraryOpen(true)}
                   data-testid="body-med-library-search"
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={libraryOpen}
                 />
-              </label>
+                {libraryOpen && (
+                  <div
+                    className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-[rgba(139,115,85,0.35)] bg-[#faf6ef] shadow-lg"
+                    data-testid="body-med-library-results"
+                    role="listbox"
+                  >
+                    {libraryError && (
+                      <p className="px-3 py-2 text-sm text-[#8b3a2a]">{libraryError}</p>
+                    )}
+                    {!libraryError && !libraryItems.length && (
+                      <p className="px-3 py-2 text-sm text-[color:var(--ink-muted)]">{t('body.library_empty')}</p>
+                    )}
+                    {libraryItems.map((item) => {
+                      const lab = libraryLabel(item);
+                      const selected = libraryId === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          className={`w-full text-left px-3 py-2.5 border-b border-[rgba(176,183,192,0.28)] last:border-0 hover:bg-[#f3eadc] ${
+                            selected ? 'bg-[#efe4d2]' : ''
+                          }`}
+                          onClick={() => pickLibrary(item.id)}
+                          data-testid={`body-med-library-option-${item.id}`}
+                        >
+                          <span className="block text-sm font-semibold text-[color:var(--ink)]">{lab.brand}</span>
+                          {lab.ing && (
+                            <span className="block text-xs text-[color:var(--ink-muted)]">{lab.ing}</span>
+                          )}
+                          {(lab.form || lab.klass) && (
+                            <span className="block text-[11px] text-[color:var(--ink-muted)] mt-0.5">
+                              {[lab.form, lab.klass].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <label className="text-xs text-[color:var(--ink-muted)] block">
                 {t('body.library_pick')}
                 <select
@@ -263,22 +343,27 @@ export default function BodyProntuario({ patientId }: {
                   value={libraryId}
                   onChange={(e) => {
                     if (e.target.value) pickLibrary(e.target.value);
-                    else {
-                      setLibraryId('');
-                    }
+                    else setLibraryId('');
                   }}
+                  onFocus={() => setLibraryOpen(false)}
                   data-testid="body-med-library-select"
                 >
-                  <option value="">—</option>
+                  <option value="">{t('body.library_select_placeholder')}</option>
                   {libraryItems.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.brand_name || item.active_ingredient}
                       {item.active_ingredient && item.brand_name ? ` — ${item.active_ingredient}` : ''}
-                      {item.visual_profile ? ` (${item.visual_profile})` : ''}
+                      {item.concentration ? ` · ${item.concentration}` : ''}
                     </option>
                   ))}
                 </select>
               </label>
+
+              {libraryId && (
+                <p className="text-[11px] text-[#2f6b45]" data-testid="body-med-library-selected">
+                  {t('body.library_selected')}: {medName || libraryId}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -294,7 +379,7 @@ export default function BodyProntuario({ patientId }: {
                     <strong>{m.name}</strong>
                     {m.dosage ? ` · ${m.dosage}` : ''}
                     {m.class_tag ? ` · ${m.class_tag}` : ''}
-                    {m.library_id ? <span className="text-[11px] text-[color:var(--ink-muted)]"> · lib:{m.library_id}</span> : null}
+                    {m.library_id ? <span className="text-[11px] text-[color:var(--ink-muted)]"> · lib</span> : null}
                   </span>
                   <button
                     type="button"

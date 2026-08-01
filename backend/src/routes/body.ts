@@ -541,11 +541,15 @@ function enrichFromContext(opts: {
 router.get('/library/medications', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
   const q = String(req.query.q || req.query.search || '').trim();
-  const items = q ? searchLibrary(db, q) : listLibrary(db);
+  const limitRaw = Number(req.query.limit);
+  const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+  const items = q ? searchLibrary(db, q, { limit }) : listLibrary(db, { limit });
+  const total = (db.prepare(`SELECT COUNT(*) AS n FROM body_medication_library`).get() as any)?.n || 0;
   res.json({
     notice: 'Registre apenas medicamentos em uso ou prescritos. O aplicativo não recomenda início, troca ou ajuste de dose.',
     items,
     count: items.length,
+    total,
   });
 });
 

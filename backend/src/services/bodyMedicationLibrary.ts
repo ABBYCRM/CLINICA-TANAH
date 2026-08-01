@@ -120,7 +120,7 @@ export function ensureBodyMedicationLibrary(db: Database.Database): { inserted: 
 }
 
 export function listLibrary(db: Database.Database, opts?: { limit?: number; status?: string }): BodyMedicationLibraryRow[] {
-  const limit = Math.min(500, Math.max(1, opts?.limit ?? 200));
+  const limit = Math.min(1000, Math.max(1, opts?.limit ?? 500));
   if (opts?.status) {
     return db.prepare(`
       SELECT * FROM body_medication_library WHERE status = ? ORDER BY brand_name ASC LIMIT ?
@@ -137,7 +137,7 @@ export function getById(db: Database.Database, id: string): BodyMedicationLibrar
 }
 
 export function search(db: Database.Database, q: string, opts?: { limit?: number }): BodyMedicationLibraryRow[] {
-  const limit = Math.min(100, Math.max(1, opts?.limit ?? 40));
+  const limit = Math.min(200, Math.max(1, opts?.limit ?? 80));
   const term = (q || '').trim();
   if (!term) return listLibrary(db, { limit });
   const like = `%${term.replace(/%/g, '')}%`;
@@ -146,9 +146,14 @@ export function search(db: Database.Database, q: string, opts?: { limit?: number
     WHERE brand_name LIKE ? COLLATE NOCASE
        OR active_ingredient LIKE ? COLLATE NOCASE
        OR pharmacologic_class LIKE ? COLLATE NOCASE
+       OR therapeutic_category LIKE ? COLLATE NOCASE
        OR visual_profile LIKE ? COLLATE NOCASE
        OR anvisa_id LIKE ? COLLATE NOCASE
-    ORDER BY brand_name ASC
+    ORDER BY
+      CASE WHEN brand_name LIKE ? COLLATE NOCASE THEN 0
+           WHEN active_ingredient LIKE ? COLLATE NOCASE THEN 1
+           ELSE 2 END,
+      brand_name ASC
     LIMIT ?
-  `).all(like, like, like, like, like, limit) as BodyMedicationLibraryRow[];
+  `).all(like, like, like, like, like, like, `${term.replace(/%/g, '')}%`, `${term.replace(/%/g, '')}%`, limit) as BodyMedicationLibraryRow[];
 }

@@ -14,12 +14,12 @@ describe('bodyMedicationLibrary', () => {
 
   it('seeds ANVISA catalog idempotently', () => {
     const first = ensureBodyMedicationLibrary(db);
-    expect(first.total).toBeGreaterThanOrEqual(47);
+    expect(first.total).toBeGreaterThanOrEqual(180);
     const second = ensureBodyMedicationLibrary(db);
     expect(second.total).toBe(first.total);
 
     const items = listLibrary(db);
-    expect(items.length).toBeGreaterThanOrEqual(47);
+    expect(items.length).toBeGreaterThanOrEqual(180);
     expect(items.some((i) => i.visual_profile === 'glp1_metabolic')).toBe(true);
     expect(items.every((i) => !!i.id && !!i.brand_name)).toBe(true);
   });
@@ -32,6 +32,9 @@ describe('bodyMedicationLibrary', () => {
     const hits = search(db, 'semaglut');
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.some((h) => /semaglut/i.test(h.active_ingredient || ''))).toBe(true);
+
+    const losartan = search(db, 'losartan');
+    expect(losartan.length).toBeGreaterThan(0);
 
     const empty = search(db, 'zzzz-no-such-med-xyz');
     expect(empty.length).toBe(0);
