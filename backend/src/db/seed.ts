@@ -7,6 +7,7 @@ import { v4 as uuid } from 'uuid';
 import { db, initSchema, DEFAULT_TENANT_ID, PRIMARY_USER_ID, PRIMARY_USER_EMAIL, PRIMARY_USER_NAME, PRIMARY_USER_PASSWORD } from './schema';
 import { recordConsent } from '../services/audit';
 import { seedMariaBodyCaptures } from './seedBodyMaria';
+import { seedAnaBodyCaptures } from './seedBodyAna';
 
 initSchema();
 
@@ -133,6 +134,21 @@ console.log(`  ✓ ${patientData.length} patients with LGPD consent`);
     });
     if (seeded) {
       console.log(`  ✓ Maria body capture session (${seeded.views.join('/')})`);
+    }
+  }
+}
+
+// Ana Beatriz Lima — 4-view overweight baseline for image-gen testing
+{
+  const anaIdx = patientData.findIndex((p) => p.full_name === 'Ana Beatriz Lima');
+  if (anaIdx >= 0) {
+    const seeded = seedAnaBodyCaptures(db, {
+      tenantId: T,
+      patientId: patientIds[anaIdx],
+      createdBy: julianaId,
+    });
+    if (seeded) {
+      console.log(`  ✓ Ana body capture session (${seeded.views.join('/')})`);
     }
   }
 }
