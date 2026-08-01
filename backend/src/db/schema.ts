@@ -1230,7 +1230,211 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE encounters ADD COLUMN cancelled_at TEXT`,
     `ALTER TABLE encounters ADD COLUMN cancelled_by TEXT`,
     `ALTER TABLE encounters ADD COLUMN cancel_reason TEXT`,
+    // Professional stamp on SOAP (CFM 1.638 — identificação do profissional)
+    `ALTER TABLE encounters ADD COLUMN signer_name TEXT`,
+    `ALTER TABLE encounters ADD COLUMN signer_council TEXT`,
+    `ALTER TABLE encounters ADD COLUMN signer_council_state TEXT`,
+    `ALTER TABLE encounters ADD COLUMN signed_at TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN signer_name TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN signer_council TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN signer_council_state TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN signed_at TEXT`,
   ]) {
     try { openDb().exec(sql); } catch { /* exists */ }
   }
+
+  // ============================================================
+  // FULL PRONTUÁRIO — CFM 1.638/2002 mandatory chart sections
+  // Evoluções, sinais vitais, exames, procedimentos, problemas,
+  // alergias estruturadas, anamnese, anexos clínicos
+  // ============================================================
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS clinical_evolutions (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      encounter_id TEXT,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      note_type TEXT NOT NULL DEFAULT 'evolution', -- evolution | nursing | multiprofessional | emergency
+      content TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active', -- active | cancelled (CFM retention)
+      signer_name TEXT,
+      signer_council TEXT,
+      signer_council_state TEXT,
+      signed_at TEXT,
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      cancel_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_evol_patient ON clinical_evolutions(tenant_id, patient_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS clinical_vitals (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      encounter_id TEXT,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      systolic_mmhg REAL,
+      diastolic_mmhg REAL,
+      heart_rate_bpm REAL,
+      respiratory_rate REAL,
+      temperature_c REAL,
+      spo2_pct REAL,
+      pain_score INTEGER,
+      weight_kg REAL,
+      height_cm REAL,
+      glucose_mg_dl REAL,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      signer_name TEXT,
+      signer_council TEXT,
+      signer_council_state TEXT,
+      signed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_vitals_patient ON clinical_vitals(tenant_id, patient_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS clinical_exam_orders (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      ordered_by TEXT NOT NULL,
+      encounter_id TEXT,
+      ordered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      exam_name TEXT NOT NULL,
+      exam_code TEXT,
+      clinical_indication TEXT,
+      priority TEXT NOT NULL DEFAULT 'routine', -- routine | urgent | emergency
+      status TEXT NOT NULL DEFAULT 'ordered', -- ordered | collected | resulted | cancelled
+      notes TEXT,
+      signer_name TEXT,
+      signer_council TEXT,
+      signer_council_state TEXT,
+      signed_at TEXT,
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      cancel_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_exam_ord_patient ON clinical_exam_orders(tenant_id, patient_id, ordered_at);
+
+    CREATE TABLE IF NOT EXISTS clinical_exam_results (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      order_id TEXT,
+      recorded_by TEXT NOT NULL,
+      resulted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      exam_name TEXT NOT NULL,
+      result_summary TEXT,
+      result_values TEXT, -- JSON
+      abnormal INTEGER NOT NULL DEFAULT 0,
+      attachment_id TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      signer_name TEXT,
+      signer_council TEXT,
+      signer_council_state TEXT,
+      signed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_exam_res_patient ON clinical_exam_results(tenant_id, patient_id, resulted_at);
+
+    CREATE TABLE IF NOT EXISTS clinical_procedures (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      performed_by TEXT NOT NULL,
+      encounter_id TEXT,
+      performed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      procedure_name TEXT NOT NULL,
+      procedure_code TEXT, -- TUSS / CBHPM when available
+      description TEXT,
+      outcome TEXT,
+      complications TEXT,
+      materials_used TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      signer_name TEXT,
+      signer_council TEXT,
+      signer_council_state TEXT,
+      signed_at TEXT,
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      cancel_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_proc_patient ON clinical_procedures(tenant_id, patient_id, performed_at);
+
+    CREATE TABLE IF NOT EXISTS clinical_problems (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      recorded_by TEXT NOT NULL,
+      title TEXT NOT NULL,
+      cid10_code TEXT,
+      status TEXT NOT NULL DEFAULT 'active', -- active | resolved | inactive
+      onset_date TEXT,
+      resolved_date TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_prob_patient ON clinical_problems(tenant_id, patient_id, status);
+
+    CREATE TABLE IF NOT EXISTS clinical_allergies (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      recorded_by TEXT NOT NULL,
+      substance TEXT NOT NULL,
+      reaction TEXT,
+      severity TEXT NOT NULL DEFAULT 'moderate', -- mild | moderate | severe | life_threatening
+      status TEXT NOT NULL DEFAULT 'active', -- active | inactive
+      onset_date TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_allergy_patient ON clinical_allergies(tenant_id, patient_id, status);
+
+    CREATE TABLE IF NOT EXISTS clinical_anamnesis (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      chief_complaint TEXT,
+      hpi TEXT,              -- história da doença atual
+      past_history TEXT,     -- HPP
+      family_history TEXT,   -- HF
+      social_history TEXT,   -- HS / hábitos
+      review_of_systems TEXT,
+      current_medications TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      signer_name TEXT,
+      signer_council TEXT,
+      signer_council_state TEXT,
+      signed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_anam_patient ON clinical_anamnesis(tenant_id, patient_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS clinical_attachments (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      uploaded_by TEXT NOT NULL,
+      encounter_id TEXT,
+      title TEXT NOT NULL,
+      doc_type TEXT NOT NULL DEFAULT 'other', -- lab | imaging | consent | referral | other
+      mime TEXT,
+      file_path TEXT,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_attach_patient ON clinical_attachments(tenant_id, patient_id, created_at);
+  `);
 }

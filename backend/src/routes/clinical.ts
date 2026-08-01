@@ -11,6 +11,7 @@ import {
   sealEncounterRow,
   sealPrescriptionItems,
 } from '../services/phiCrypto';
+import { stampFromUser, formatStampLabel } from '../services/clinicalStamp';
 
 const router = Router();
 router.use(authenticate);
@@ -63,14 +64,22 @@ router.get('/encounters', requireRole('admin', 'doctor', 'nurse'), (req: Request
     args.push(statusFilter);
   }
   sql += ` ORDER BY e.started_at DESC LIMIT 200`;
-  const rows = (db.prepare(sql).all(...args) as any[]).map((e) => ({
-    ...revealEncounterRow(e)!,
-    status: e.status || 'active',
-    cancelled_at: e.cancelled_at || null,
-    cancelled_by: e.cancelled_by || null,
-    cancelled_by_name: e.cancelled_by_name || null,
-    cancel_reason: e.cancel_reason || null,
-  }));
+  const rows = (db.prepare(sql).all(...args) as any[]).map((e) => {
+    const revealed = revealEncounterRow(e)!;
+    return {
+      ...revealed,
+      status: e.status || 'active',
+      cancelled_at: e.cancelled_at || null,
+      cancelled_by: e.cancelled_by || null,
+      cancelled_by_name: e.cancelled_by_name || null,
+      cancel_reason: e.cancel_reason || null,
+      signer_name: e.signer_name || null,
+      signer_council: e.signer_council || null,
+      signer_council_state: e.signer_council_state || null,
+      signed_at: e.signed_at || null,
+      stamp_label: formatStampLabel(e),
+    };
+  });
   const counts = db.prepare(`
     SELECT
       SUM(CASE WHEN COALESCE(status, 'active') = 'active' THEN 1 ELSE 0 END) AS active,
@@ -106,20 +115,23 @@ router.post('/encounters', requireRole('admin', 'doctor', 'nurse'), (req: Reques
     plan: d.plan ?? null,
     notes: d.notes ?? null,
   });
+  const stamp = stampFromUser(req.user!.id, d.started_at);
   db.prepare(`
     INSERT INTO encounters (id, tenant_id, patient_id, practitioner_id, appointment_id, started_at, ended_at,
-                            subjective, objective, assessment, plan, icd10_codes, cid10_codes, notes, status)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active')
+                            subjective, objective, assessment, plan, icd10_codes, cid10_codes, notes, status,
+                            signer_name, signer_council, signer_council_state, signed_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active',?,?,?,?)
   `).run(id, req.tenantId, d.patient_id, d.practitioner_id, d.appointment_id ?? null, d.started_at, d.ended_at ?? null,
          sealed.subjective ?? null, sealed.objective ?? null, sealed.assessment ?? null, sealed.plan ?? null,
-         JSON.stringify(d.icd10_codes), JSON.stringify(d.cid10_codes), sealed.notes ?? null);
+         JSON.stringify(d.icd10_codes), JSON.stringify(d.cid10_codes), sealed.notes ?? null,
+         stamp.signer_name, stamp.signer_council, stamp.signer_council_state, stamp.signed_at);
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'create_encounter_phi', resourceType: 'encounter', resourceId: id,
     legalBasis: 'health_protection_art7_VIII',
   });
-  res.status(201).json({ id, status: 'active' });
+  res.status(201).json({ id, status: 'active', stamp_label: formatStampLabel(stamp) });
 });
 
 router.get('/encounters/:id', requireRole('admin', 'doctor', 'nurse'), (req: Request, res: Response) => {
@@ -251,6 +263,7 @@ router.get('/prescriptions', requireRole('admin', 'doctor', 'nurse', 'pharmacist
     ...pr,
     status: pr.status || 'active',
     items: revealPrescriptionItems(pr.items),
+    stamp_label: formatStampLabel(pr),
   }));
   const counts = db.prepare(`
     SELECT
@@ -273,17 +286,26 @@ router.post('/prescriptions', requireRole('admin', 'doctor'), (req: Request, res
   if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
   const id = uuid();
+  const stamp = stampFromUser(req.user!.id);
   db.prepare(`
-    INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp, status)
-    VALUES (?,?,?,?,?,?,?, 'active')
-  `).run(id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id, sealPrescriptionItems(d.items), d.send_via_whatsapp ? 1 : 0);
+    INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp, status,
+                               signer_name, signer_council, signer_council_state, signed_at)
+    VALUES (?,?,?,?,?,?,?, 'active',?,?,?,?)
+  `).run(
+    id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id,
+    sealPrescriptionItems(d.items), d.send_via_whatsapp ? 1 : 0,
+    stamp.signer_name, stamp.signer_council, stamp.signer_council_state, stamp.signed_at,
+  );
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'create_prescription', resourceType: 'prescription', resourceId: id,
     legalBasis: 'health_protection_art7_VIII',
   });
-  res.status(201).json({ id, sent_via_whatsapp: d.send_via_whatsapp, status: 'active' });
+  res.status(201).json({
+    id, sent_via_whatsapp: d.send_via_whatsapp, status: 'active',
+    stamp_label: formatStampLabel(stamp),
+  });
 });
 
 // Update prescription items (e.g. dosage correction) — doctor only; only while active

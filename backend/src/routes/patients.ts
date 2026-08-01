@@ -440,8 +440,26 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM body_medications WHERE patient_id = ? AND tenant_id = ?) +
-           (SELECT COUNT(*) FROM body_measurements WHERE patient_id = ? AND tenant_id = ?) AS c
+           (SELECT COUNT(*) FROM body_measurements WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_evolutions WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_vitals WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_exam_orders WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_exam_results WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_procedures WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_anamnesis WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_problems WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_allergies WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM clinical_attachments WHERE patient_id = ? AND tenant_id = ?) AS c
   `).get(
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
     req.params.id, req.tenantId,
     req.params.id, req.tenantId,
     req.params.id, req.tenantId,
@@ -641,6 +659,50 @@ router.get('/:id/record', (req: Request, res: Response) => {
       meta: { id: pr.id, sent_via_whatsapp: pr.sent_via_whatsapp, status: pr.status || 'active' },
     });
   }
+
+  if (clinicalOk) {
+    const evolutions = db.prepare(`
+      SELECT e.id, e.recorded_at, e.note_type, e.content, e.status, u.full_name AS author_name,
+             e.signer_name, e.signer_council, e.signer_council_state
+      FROM clinical_evolutions e LEFT JOIN users u ON u.id = e.author_id
+      WHERE e.tenant_id = ? AND e.patient_id = ? AND e.status = 'active'
+      ORDER BY e.recorded_at DESC LIMIT 40
+    `).all(req.tenantId, req.params.id) as any[];
+    for (const ev of evolutions) {
+      timeline.push({
+        id: `evol-${ev.id}`, kind: 'evolution', at: ev.recorded_at,
+        title: 'evolution',
+        subtitle: ev.author_name || ev.signer_name,
+        meta: { id: ev.id, note_type: ev.note_type, preview: String(ev.content || '').slice(0, 160) },
+      });
+    }
+    const procs = db.prepare(`
+      SELECT id, performed_at, procedure_name, status FROM clinical_procedures
+      WHERE tenant_id = ? AND patient_id = ? AND status = 'active'
+      ORDER BY performed_at DESC LIMIT 30
+    `).all(req.tenantId, req.params.id) as any[];
+    for (const proc of procs) {
+      timeline.push({
+        id: `proc-${proc.id}`, kind: 'procedure', at: proc.performed_at,
+        title: proc.procedure_name || 'procedure',
+        meta: { id: proc.id },
+      });
+    }
+    const examRes = db.prepare(`
+      SELECT id, resulted_at, exam_name, abnormal FROM clinical_exam_results
+      WHERE tenant_id = ? AND patient_id = ? AND status = 'active'
+      ORDER BY resulted_at DESC LIMIT 30
+    `).all(req.tenantId, req.params.id) as any[];
+    for (const er of examRes) {
+      timeline.push({
+        id: `examr-${er.id}`, kind: 'exam_result', at: er.resulted_at,
+        title: er.exam_name || 'exam_result',
+        status: er.abnormal ? 'abnormal' : 'normal',
+        meta: { id: er.id, abnormal: !!er.abnormal },
+      });
+    }
+  }
+
   for (const inv of invoices) {
     timeline.push({
       id: `inv-${inv.id}`, kind: 'invoice', at: inv.issue_date,

@@ -5,7 +5,7 @@ import { useI18n } from '../hooks/useI18n';
 import { useAuth } from '../hooks/useAuth';
 import { ConfirmDialog, FormError } from '../components/crud';
 import { PatientForm } from '../components/PatientForm';
-import BodyProntuario from '../components/BodyProntuario';
+import ProntuarioChart from '../components/prontuario/ProntuarioChart';
 import TimelineInspector from '../components/TimelineInspector';
 
 type WorkspaceTab =
@@ -56,7 +56,7 @@ function KindIcon({ kind }: { kind: string }) {
   if (kind === 'appointment') {
     return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg>;
   }
-  if (kind === 'encounter' || kind === 'clinical') {
+  if (kind === 'encounter' || kind === 'clinical' || kind === 'evolution' || kind === 'procedure' || kind === 'exam_result') {
     return <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth={1.8}><path d="M4.5 12.5 8 9l3 3 3.5-3.5L18 12" /><path d="M3 21h18" /></svg>;
   }
   if (kind === 'whatsapp' || kind === 'welcome') {
@@ -168,7 +168,9 @@ export default function PatientRecord() {
   const filteredTimeline = useMemo(() => {
     if (tab === 'timeline' || tab === 'overview') return timeline;
     if (tab === 'appointments') return timeline.filter((x: any) => x.kind === 'appointment' || x.kind === 'recall');
-    if (tab === 'clinical') return timeline.filter((x: any) => x.kind === 'encounter' || x.kind === 'prescription');
+    if (tab === 'clinical') return timeline.filter((x: any) =>
+      ['encounter', 'prescription', 'evolution', 'procedure', 'exam_result'].includes(x.kind)
+    );
     if (tab === 'whatsapp') return timeline.filter((x: any) => x.kind === 'whatsapp' || x.kind === 'welcome');
     if (tab === 'surveys') return timeline.filter((x: any) => x.kind === 'survey' || x.kind === 'survey_sent' || x.kind === 'complaint');
     if (tab === 'documents') return timeline.filter((x: any) => x.kind === 'document');
@@ -542,7 +544,7 @@ export default function PatientRecord() {
           )}
 
           {tab === 'clinical' && clinicalOk && patient && (
-            <BodyProntuario
+            <ProntuarioChart
               patientId={patient.id}
               patientName={patient.full_name}
               birthDate={patient.birth_date}
