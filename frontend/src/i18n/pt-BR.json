@@ -1588,8 +1588,8 @@
     "life_protein": "Proteína (g/dia)",
     "sim_calories_ph": "ex. 1800 (ou use o plano)",
     "sim_rag": "Fontes RAG (educacional)",
-    "step_up_password": "Senha (step-up)",
-    "step_up_hint": "Reautentique com sua senha antes de gerar imagens ilustrativas.",
+    "step_up_password": "Confirme sua senha",
+    "step_up_hint": "Reautenticação necessária para gerar imagens clínicas ilustrativas.",
     "review_title": "Revisão clínica",
     "review_approve": "Aprovar",
     "review_reject": "Rejeitar",
@@ -1615,7 +1615,12 @@
     "inspector_before": "Antes",
     "inspector_after": "Depois (simulação)",
     "continue_partial_scenarios": "Continuar com {{count}} vista(s) → Cenários",
-    "partial_gen_hint": "A geração funciona com 1–4 fotos: cria o depois só para as vistas capturadas. Completar o conjunto melhora o contato."
+    "partial_gen_hint": "A geração funciona com 1–4 fotos: cria o depois só para as vistas capturadas. Completar o conjunto melhora o contato.",
+    "sim_generate_image": "Gerar imagem",
+    "sim_generate_panel_title": "Gerar imagem do cenário",
+    "sim_generate_panel_hint": "Use as fotos capturadas (1–4 vistas). Informe sua senha e gere o antes/depois ilustrativo.",
+    "sim_configure_below": "Ajuste intervenções e horizonte abaixo (opcional antes de gerar).",
+    "sim_sticky_generate": "Gerar imagem"
   },
   "chart": {
     "allergy_alert": "Alerta de alergia:",

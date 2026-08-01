@@ -380,15 +380,85 @@ export default function ScenarioSimulator({
     : null;
 
   const providersOrder = data?.image_providers?.order;
+  const simulationsAllowed = !!data?.simulations_allowed;
+  const generateDisabled = busy === 'generate' || !simulationsAllowed || !stepPassword;
+
+  const generatePanel = (
+    <section className="sim-generate-panel space-y-3" data-testid="sim-generate-panel">
+      <div className="space-y-1">
+        <h4 className="font-display text-lg sm:text-xl text-[color:var(--ink)]">
+          {t('body.sim_generate_panel_title')}
+        </h4>
+        <p className="text-sm text-[color:var(--ink)] leading-relaxed">
+          {t('body.sim_generate_panel_hint')}
+        </p>
+        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.sim_configure_below')}</p>
+      </div>
+
+      {!simulationsAllowed && (
+        <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] rounded-xl px-3 py-2" data-testid="sim-blocked">
+          {t('body.simulations_blocked')}
+        </p>
+      )}
+
+      {captureReadyCount === 0 && (
+        <p className="text-sm text-[#8b3a2a]" data-testid="sim-need-photos">
+          {t('body.sim_photos_missing')}
+        </p>
+      )}
+
+      <div className="sim-generate-actions">
+        <label className="sim-generate-password text-xs text-[color:var(--ink-muted)] block">
+          {t('body.step_up_password')}
+          <input
+            className="input mt-1 w-full"
+            type="password"
+            autoComplete="current-password"
+            value={stepPassword}
+            onChange={(e) => setStepPassword(e.target.value)}
+            data-testid="sim-step-password"
+            disabled={!simulationsAllowed}
+          />
+        </label>
+        <p className="text-[11px] text-[color:var(--ink-muted)] sm:col-span-2">{t('body.step_up_hint')}</p>
+        <div className="sim-generate-buttons flex flex-col sm:flex-row flex-wrap gap-2 sm:items-center">
+          <button
+            type="button"
+            className="btn-primary text-base sm:text-sm w-full sm:w-auto min-h-[2.85rem] px-6"
+            disabled={generateDisabled}
+            onClick={generate}
+            data-testid="sim-generate"
+          >
+            {busy === 'generate' ? t('body.generating') : t('body.sim_generate_image')}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary text-sm w-full sm:w-auto"
+            disabled={busy === 'preview'}
+            onClick={calcEnvelope}
+            data-testid="sim-calc"
+          >
+            {busy === 'preview' ? '…' : t('body.sim_calc')}
+          </button>
+          {captureReadyCount > 0 && captureReadyCount < 4 && (
+            <span className="text-xs text-[color:var(--ink-muted)] sm:self-center" data-testid="sim-partial-gen-note">
+              {t('body.partial_gen_hint')}
+            </span>
+          )}
+        </div>
+      </div>
+      {error && <p className="text-sm text-[#8b3a2a]" data-testid="sim-error">{error}</p>}
+    </section>
+  );
 
   return (
-    <div className="space-y-4" data-testid="body-scenarios-full">
+    <div className="space-y-4 sim-scenarios-root pb-20 md:pb-0" data-testid="body-scenarios-full">
       <header className="space-y-2">
         <h3 className="crm-record-panel-title !mb-0">{t('body.sim_title')}</h3>
         <p className="text-sm text-[color:var(--ink)] leading-relaxed">{t('body.sim_intro')}</p>
-        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">{t('body.sim_audience')}</p>
+        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed hidden sm:block">{t('body.sim_audience')}</p>
         <p className="text-xs text-[#8b3a2a] leading-relaxed">{t('body.sim_disclaimer')}</p>
-        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.sim_flow')}</p>
+        <p className="text-[11px] text-[color:var(--ink-muted)] hidden sm:block">{t('body.sim_flow')}</p>
       </header>
 
       <nav className="flex flex-wrap gap-1 text-xs text-[color:var(--ink-muted)]">
@@ -446,6 +516,95 @@ export default function ScenarioSimulator({
             </div>
           ))}
         </div>
+      </section>
+
+      {generatePanel}
+
+      <section className="crm-inset-panel space-y-3" data-testid="sim-ba-inspector">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.inspector_title')}</h4>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className={`crm-feed-tab ${inspectorMode === 'single' ? 'is-active' : ''}`}
+              onClick={() => setInspectorMode('single')}
+              data-testid="sim-inspector-single"
+            >
+              {t('body.inspector_single')}
+            </button>
+            <button
+              type="button"
+              className={`crm-feed-tab ${inspectorMode === 'contact' ? 'is-active' : ''}`}
+              onClick={() => setInspectorMode('contact')}
+              data-testid="sim-inspector-contact"
+            >
+              {t('body.inspector_contact')}
+            </button>
+          </div>
+        </div>
+        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.inspector_sync_note')}</p>
+        {inspectorMode === 'single' ? (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1">
+              {views.map((v) => {
+                const hasBefore = !!session?.assets?.[v];
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`crm-feed-tab ${inspectView === v ? 'is-active' : ''} ${!hasBefore ? 'opacity-50' : ''}`}
+                    onClick={() => setInspectView(v)}
+                    data-testid={`sim-inspect-view-${v}`}
+                  >
+                    {t(`body.views.${v}`)}{hasBefore ? '' : ' · —'}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-3 max-w-lg">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_before')}</div>
+                <Thumb url={beforeUrl} label={t(`body.views.${inspectView}`)} />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_after')}</div>
+                <Thumb url={afterUrl} label={selected?.title || t('body.tabs.scenarios')} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3 max-w-3xl">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {views.map((v) => (
+                <div key={`before-${v}`}>
+                  <div className="text-[10px] text-center text-[color:var(--ink-muted)] mb-1">{t('body.inspector_before')} · {t(`body.views.${v}`)}</div>
+                  <Thumb
+                    url={session?.assets?.[v]?.preview_url || (session?.id
+                      ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/${v}/image`
+                      : null)}
+                    label={t(`body.views.${v}`)}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {views.map((v) => {
+                const has = !!(selected?.output_views?.[v]?.has_image || (v === 'front' && selected?.has_image));
+                return (
+                  <div key={`after-${v}`}>
+                    <div className="text-[10px] text-center text-[color:var(--ink-muted)] mb-1">{t('body.inspector_after')} · {t(`body.views.${v}`)}</div>
+                    <Thumb
+                      url={selected && has
+                        ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image?view=${v}`
+                        : null}
+                      label={has ? t(`body.views.${v}`) : '—'}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="crm-inset-panel space-y-3">
@@ -576,23 +735,8 @@ export default function ScenarioSimulator({
           ))}
         </div>
 
-        <div className="crm-inset-panel !p-3 space-y-2" data-testid="sim-step-up">
-          <label className="text-xs text-[color:var(--ink-muted)] block">
-            {t('body.step_up_password')}
-            <input
-              className="input mt-1 w-full max-w-sm"
-              type="password"
-              autoComplete="current-password"
-              value={stepPassword}
-              onChange={(e) => setStepPassword(e.target.value)}
-              data-testid="sim-step-password"
-            />
-          </label>
-          <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.step_up_hint')}</p>
-        </div>
-
         <div className="flex flex-wrap gap-2 pt-1">
-          <button type="button" className="btn-secondary text-sm" disabled={busy === 'preview'} onClick={calcEnvelope} data-testid="sim-calc">
+          <button type="button" className="btn-secondary text-sm" disabled={busy === 'preview'} onClick={calcEnvelope} data-testid="sim-calc-secondary">
             {busy === 'preview' ? '…' : t('body.sim_calc')}
           </button>
           <button
@@ -606,20 +750,14 @@ export default function ScenarioSimulator({
           <button
             type="button"
             className="btn-primary text-sm"
-            disabled={busy === 'generate' || !data?.simulations_allowed || !stepPassword}
+            disabled={generateDisabled}
             onClick={generate}
-            data-testid="sim-generate"
+            data-testid="sim-generate-secondary"
           >
-            {busy === 'generate' ? t('body.generating') : t('body.sim_generate')}
+            {busy === 'generate' ? t('body.generating') : t('body.sim_generate_image')}
           </button>
-          {captureReadyCount > 0 && captureReadyCount < 4 && (
-            <span className="text-xs text-[color:var(--ink-muted)] self-center" data-testid="sim-partial-gen-note">
-              {t('body.partial_gen_hint')}
-            </span>
-          )}
         </div>
-        {error && <p className="text-sm text-[#8b3a2a]" data-testid="sim-error">{error}</p>}
-        {!data?.simulations_allowed && (
+        {!simulationsAllowed && (
           <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] rounded-lg px-3 py-2">{t('body.simulations_blocked')}</p>
         )}
       </section>
@@ -725,93 +863,6 @@ export default function ScenarioSimulator({
           )}
         </section>
       )}
-
-      <section className="crm-inset-panel space-y-3" data-testid="sim-ba-inspector">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.inspector_title')}</h4>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              className={`crm-feed-tab ${inspectorMode === 'single' ? 'is-active' : ''}`}
-              onClick={() => setInspectorMode('single')}
-              data-testid="sim-inspector-single"
-            >
-              {t('body.inspector_single')}
-            </button>
-            <button
-              type="button"
-              className={`crm-feed-tab ${inspectorMode === 'contact' ? 'is-active' : ''}`}
-              onClick={() => setInspectorMode('contact')}
-              data-testid="sim-inspector-contact"
-            >
-              {t('body.inspector_contact')}
-            </button>
-          </div>
-        </div>
-        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.inspector_sync_note')}</p>
-        {inspectorMode === 'single' ? (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-1">
-              {views.map((v) => {
-                const hasBefore = !!session?.assets?.[v];
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`crm-feed-tab ${inspectView === v ? 'is-active' : ''} ${!hasBefore ? 'opacity-50' : ''}`}
-                    onClick={() => setInspectView(v)}
-                    data-testid={`sim-inspect-view-${v}`}
-                  >
-                    {t(`body.views.${v}`)}{hasBefore ? '' : ' · —'}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="grid grid-cols-2 gap-3 max-w-lg">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_before')}</div>
-                <Thumb url={beforeUrl} label={t(`body.views.${inspectView}`)} />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_after')}</div>
-                <Thumb url={afterUrl} label={selected?.title || t('body.tabs.scenarios')} />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3 max-w-3xl">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {views.map((v) => (
-                <div key={`before-${v}`}>
-                  <div className="text-[10px] text-center text-[color:var(--ink-muted)] mb-1">{t('body.inspector_before')} · {t(`body.views.${v}`)}</div>
-                  <Thumb
-                    url={session?.assets?.[v]?.preview_url || (session?.id
-                      ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/${v}/image`
-                      : null)}
-                    label={t(`body.views.${v}`)}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {views.map((v) => {
-                const has = !!(selected?.output_views?.[v]?.has_image || (v === 'front' && selected?.has_image));
-                return (
-                  <div key={`after-${v}`}>
-                    <div className="text-[10px] text-center text-[color:var(--ink-muted)] mb-1">{t('body.inspector_after')} · {t(`body.views.${v}`)}</div>
-                    <Thumb
-                      url={selected && has
-                        ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image?view=${v}`
-                        : null}
-                      label={has ? t(`body.views.${v}`) : '—'}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
 
       <div className="grid lg:grid-cols-[1fr_0.85fr] gap-4">
         <section className="space-y-3">
@@ -1000,6 +1051,29 @@ export default function ScenarioSimulator({
             </p>
           </div>
         </aside>
+      </div>
+
+      <div className="sim-sticky-generate md:hidden" data-testid="sim-sticky-generate">
+        <input
+          className="input sim-sticky-password"
+          type="password"
+          autoComplete="current-password"
+          placeholder={t('body.step_up_password')}
+          value={stepPassword}
+          onChange={(e) => setStepPassword(e.target.value)}
+          data-testid="sim-sticky-password"
+          disabled={!simulationsAllowed}
+          aria-label={t('body.step_up_password')}
+        />
+        <button
+          type="button"
+          className="btn-primary text-sm shrink-0"
+          disabled={generateDisabled}
+          onClick={generate}
+          data-testid="sim-sticky-generate-btn"
+        >
+          {busy === 'generate' ? t('body.generating') : t('body.sim_sticky_generate')}
+        </button>
       </div>
     </div>
   );

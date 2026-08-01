@@ -1588,8 +1588,8 @@
     "life_protein": "Protein (g/day)",
     "sim_calories_ph": "e.g. 1800 (or use plan)",
     "sim_rag": "RAG sources (educational)",
-    "step_up_password": "Password (step-up)",
-    "step_up_hint": "Re-authenticate with your password before generating illustrative images.",
+    "step_up_password": "Confirm your password",
+    "step_up_hint": "Re-authentication is required to generate illustrative clinical images.",
     "review_title": "Clinical review",
     "review_approve": "Approve",
     "review_reject": "Reject",
@@ -1615,7 +1615,12 @@
     "inspector_before": "Before",
     "inspector_after": "After (simulation)",
     "continue_partial_scenarios": "Continue with {{count}} view(s) → Scenarios",
-    "partial_gen_hint": "Generation works with 1–4 photos: after-images are created only for captured views. A full set improves the contact sheet."
+    "partial_gen_hint": "Generation works with 1–4 photos: after-images are created only for captured views. A full set improves the contact sheet.",
+    "sim_generate_image": "Generate image",
+    "sim_generate_panel_title": "Generate scenario image",
+    "sim_generate_panel_hint": "Uses captured photos (1–4 views). Confirm your password and generate the illustrative before/after.",
+    "sim_configure_below": "Tune interventions and horizon below (optional before generating).",
+    "sim_sticky_generate": "Generate image"
   },
   "chart": {
     "allergy_alert": "Allergy alert:",
