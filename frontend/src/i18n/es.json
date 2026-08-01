@@ -27,7 +27,8 @@
     "team": "Equipo",
     "settings": "Configuración",
     "clinics": "Clínicas",
-    "manual": "Manual"
+    "manual": "Manual",
+    "apps": "Apps"
   },
   "common": {
     "save": "Guardar",
@@ -107,6 +108,8 @@
     "address_city": "Ciudad",
     "address_state": "Estado",
     "health_insurance": "Seguro",
+    "filter_insurance_all": "Convenio: todos",
+    "filter_insurance_none": "Sin convenio",
     "blood_type": "Tipo sangre",
     "allergies": "Alergias",
     "chronic_conditions": "Condiciones crónicas",
@@ -834,6 +837,18 @@
     "ios_hint": "En Safari: toque Compartir y luego “Añadir a pantalla de inicio”.",
     "ios_share": "Compartir → Añadir a pantalla de inicio"
   },
+  "apps": {
+    "title": "Apps",
+    "subtitle": "Guarda enlaces a las herramientas y sitios que usas y ábrelos con un clic.",
+    "label": "Nombre",
+    "label_placeholder": "Ej.: Portal ANVISA",
+    "url": "URL",
+    "url_placeholder": "https://ejemplo.com",
+    "add": "Agregar",
+    "empty": "Aún no hay apps guardadas. Agrega un enlace arriba para empezar.",
+    "required": "Ingresa un nombre y una URL.",
+    "invalid_url": "URL no válida. Usa una dirección http(s) válida."
+  },
   "manual": {
     "title": "Manual de usuario",
     "subtitle": "Guía rápida del CRM de Clínica Tanah — módulos, roles y flujos principales.",
@@ -850,6 +865,7 @@
     "toc_lgpd": "LGPD",
     "toc_admin": "Equipo y clínicas",
     "toc_tips": "Consejos",
+    "toc_howto": "Paso a paso detallado",
     "col_module": "Módulo",
     "col_purpose": "Para qué sirve",
     "col_how": "Cómo usarlo",
@@ -976,7 +992,209 @@
     "tip2": "Los números WhatsApp necesitan DDI (+55…) para el bot y campañas.",
     "tip3": "El Panel destaca stock bajo, lotes por vencer y facturas pendientes.",
     "tip4": "Instale la PWA en el móvil o Windows desde el navegador.",
-    "tip5": "Vuelva a este Manual cuando lo necesite — el índice salta a cada sección."
+    "tip5": "Vuelva a este Manual cuando lo necesite — el índice salta a cada sección.",
+    "howto_title": "Paso a paso detallado",
+    "howto_intro": "Instrucciones completas, paso a paso, de cómo realizar cada tarea del sistema. Los nombres de los botones pueden variar según el idioma y el rol del usuario.",
+    "howto": [
+      {
+        "title": "Iniciar sesión (login)",
+        "steps": [
+          "Abra el navegador y acceda a la dirección del sistema (el enlace proporcionado por la clínica).",
+          "En la pantalla de inicio de sesión, haga clic en el campo \"Correo\" y escriba su correo electrónico.",
+          "Haga clic en el campo \"Contraseña\" y escríbala; use el ícono del ojo para verificarla si hace falta.",
+          "Haga clic en el botón \"Entrar\".",
+          "Si aparece \"correo o contraseña inválidos\", verifique los datos e intente de nuevo (tras muchos intentos el acceso se bloquea 15 minutos).",
+          "Al entrar, verifique en la parte superior cuál es la clínica activa y comience por el Panel."
+        ]
+      },
+      {
+        "title": "Elegir el idioma (PT / ES / EN)",
+        "steps": [
+          "Ubique los botones de idioma al pie del menú lateral izquierdo.",
+          "Haga clic en PT, ES o EN según el idioma deseado.",
+          "La interfaz cambia de inmediato y la preferencia queda guardada en el navegador."
+        ]
+      },
+      {
+        "title": "Cambiar la clínica activa (solo superadmin)",
+        "steps": [
+          "Abra \"Clínicas\" en el menú lateral.",
+          "Ubique en la lista la clínica con la que desea trabajar.",
+          "Selecciónela para definirla como clínica activa (o use el selector de la parte superior).",
+          "Confirme el nombre de la clínica activa en el encabezado antes de registrar o editar datos."
+        ]
+      },
+      {
+        "title": "Registrar un nuevo paciente",
+        "steps": [
+          "Abra \"Pacientes\" en el menú lateral.",
+          "Haga clic en \"+ Nuevo Paciente\" en la esquina superior derecha.",
+          "En Identificación, complete Nombre completo, Fecha de nacimiento y CPF.",
+          "En Contacto, complete el Teléfono en formato +55DDNÚMERO (obligatorio para WhatsApp) y el correo.",
+          "Complete la Dirección (código postal, calle, número, barrio, ciudad y estado) cuando esté disponible.",
+          "Complete los datos de salud y sociodemográficos (seguro, tipo de sangre, alergias, condiciones y medicamentos) según el caso.",
+          "Marque la casilla de Consentimiento LGPD — es obligatoria para guardar.",
+          "Haga clic en \"Guardar\". El paciente aparecerá en la lista."
+        ]
+      },
+      {
+        "title": "Buscar, editar o eliminar un paciente",
+        "steps": [
+          "Abra \"Pacientes\" y escriba nombre, teléfono, correo o CPF en el buscador.",
+          "Use el filtro \"Convenio\" para acotar por plan de salud, o elija \"Sin convenio\".",
+          "Para editar, haga clic en el ícono del lápiz en la fila del paciente, ajuste los campos y haga clic en \"Guardar\".",
+          "Para eliminar, haga clic en el ícono de la papelera y confirme en \"Eliminar\".",
+          "Nota: los pacientes con historia clínica no se pueden eliminar — use el flujo LGPD cuando sea necesario."
+        ]
+      },
+      {
+        "title": "Agendar una consulta",
+        "steps": [
+          "Abra \"Consultas\" en el menú lateral.",
+          "Haga clic en \"+ Nueva Consulta\".",
+          "En el campo \"Paciente\", haga clic y seleccione al paciente de la lista (o escriba para buscar).",
+          "En el campo \"Profesional\", seleccione al médico o profesional responsable.",
+          "En \"Fecha y hora\", elija la fecha y el horario; si aparecen horarios disponibles, haga clic en uno de los botones verdes.",
+          "Ajuste el tipo y la duración si es necesario (por defecto 30 minutos).",
+          "Haga clic en \"Guardar\". La consulta aparecerá en la agenda."
+        ]
+      },
+      {
+        "title": "Actualizar el estado de una consulta",
+        "steps": [
+          "Abra \"Consultas\" y ubique la consulta en la agenda.",
+          "Abra la consulta y cambie el estado según el flujo: confirmada, llegó, en curso o finalizada.",
+          "Use \"cancelada\" o \"no-show\" (no asistió) cuando el paciente no se presente.",
+          "Guarde. Los estados de inasistencia/cancelación alimentan las automatizaciones de seguimiento."
+        ]
+      },
+      {
+        "title": "Registrar una atención (historia SOAP)",
+        "steps": [
+          "Abra \"Atenciones\" en el menú lateral.",
+          "Cree una nueva atención y vincúlela al paciente (y a la consulta, si la hay).",
+          "Complete los campos S (subjetivo), O (objetivo), A (evaluación) y P (plan).",
+          "Agregue los códigos CIE-10 del diagnóstico cuando corresponda.",
+          "Guarde la atención. No elimine pacientes con historia clínica."
+        ]
+      },
+      {
+        "title": "Emitir una receta",
+        "steps": [
+          "Abra \"Recetas\" en el menú lateral.",
+          "Cree una nueva receta vinculada al paciente (y a la atención, si la hay).",
+          "Agregue cada medicamento con dosis, frecuencia, duración e instrucciones.",
+          "Guarde. Cuando esté disponible, la receta puede generarse en PDF y enviarse por WhatsApp."
+        ]
+      },
+      {
+        "title": "Registrar artículo, lote y movimiento de stock",
+        "steps": [
+          "Abra \"Stock\" en el menú lateral.",
+          "Registre el artículo indicando nombre, unidad, categoría y stock mínimo.",
+          "Ingrese un lote con número de lote, fecha de vencimiento y cantidad.",
+          "Registre las salidas/uso según el consumo del artículo.",
+          "Siga las alertas de stock bajo y de lotes por vencer desde el Panel."
+        ]
+      },
+      {
+        "title": "Registrar un proveedor",
+        "steps": [
+          "Abra \"Proveedores\" en el menú lateral.",
+          "Haga clic en \"+ Nuevo proveedor\".",
+          "Complete la razón social y el CNPJ (obligatorios), además de los datos de contacto.",
+          "Haga clic en \"Guardar\"."
+        ]
+      },
+      {
+        "title": "Emitir una factura",
+        "steps": [
+          "Abra \"Facturas\" en el menú lateral.",
+          "Cree una nueva factura y vincúlela al paciente cuando corresponda.",
+          "Agregue los ítems y valores y revise el total.",
+          "Haga clic en \"Guardar\". Marque la factura como pagada al recibir; los pendientes aparecen en el Panel."
+        ]
+      },
+      {
+        "title": "Ejecutar la nómina",
+        "steps": [
+          "Abra \"Nómina\" en el menú lateral.",
+          "Registre o actualice a los empleados.",
+          "Ejecute la nómina del período (mes) deseado.",
+          "Revise los valores de INSS, IRRF y FGTS, apruebe y registre el pago."
+        ]
+      },
+      {
+        "title": "Atender conversaciones y usar el simulador de WhatsApp",
+        "steps": [
+          "Abra \"Marketing\" (WhatsApp) en el menú lateral.",
+          "En \"Conversaciones\", seleccione un número para ver el historial y responder.",
+          "Sin las credenciales de Meta, el envío queda en modo simulación (dry-run) y nada sale del servidor.",
+          "Use el simulador para probar el flujo del bot como si fuera el paciente."
+        ]
+      },
+      {
+        "title": "Crear plantilla, campaña y automatización de marketing",
+        "steps": [
+          "En \"Plantillas\", cree o edite un mensaje usando {{name}} y defina la categoría (marketing o utilitaria).",
+          "En \"Campañas\", elija el segmento (consentidos, inactivos, cumpleañeros…) y dispare el envío.",
+          "En \"Automatizaciones\", active recordatorios 24h/2h, NPS, bienvenida y otras, y ejecútelas cuando quiera.",
+          "Respete el opt-out: quien responde SALIR/STOP deja de recibir campañas."
+        ]
+      },
+      {
+        "title": "Registrar consentimiento y atender solicitudes LGPD",
+        "steps": [
+          "Registre el consentimiento LGPD en la ficha del paciente al crearlo o editarlo.",
+          "Abra \"LGPD\" en el menú lateral para ver consentimientos, opt-outs y la traza de auditoría.",
+          "Al recibir una solicitud de acceso, corrección o eliminación, abra una solicitud del titular.",
+          "Atienda la solicitud y registre la respuesta; todo queda guardado en la auditoría."
+        ]
+      },
+      {
+        "title": "Crear un usuario del equipo (admin)",
+        "steps": [
+          "Abra \"Equipo\" en el menú lateral.",
+          "Haga clic en \"+ Nuevo usuario\".",
+          "Complete correo, una contraseña fuerte y elija el rol (médico, recepción, etc.).",
+          "Haga clic en \"Guardar\". Prefiera desactivar en vez de borrar cuando haya historial."
+        ]
+      },
+      {
+        "title": "Generar un token de API (admin)",
+        "steps": [
+          "Abra \"Configuración\" en el menú lateral.",
+          "En la sección de tokens de API, haga clic para generar un nuevo token.",
+          "Defina el nombre, el alcance (lectura o lectura/escritura) y la validez.",
+          "Copie el token mostrado — aparece una sola vez — y guárdelo en un lugar seguro."
+        ]
+      },
+      {
+        "title": "Crear y alternar clínicas (superadmin)",
+        "steps": [
+          "Abra \"Clínicas\" en el menú lateral.",
+          "Haga clic para crear una nueva clínica y defina el administrador inicial.",
+          "Use el selector superior para alternar el contexto de trabajo entre clínicas."
+        ]
+      },
+      {
+        "title": "Guardar un acceso directo en el módulo Apps",
+        "steps": [
+          "Abra \"Apps\" en el menú lateral.",
+          "Escriba un nombre en el campo \"Nombre\" y la dirección en el campo \"URL\" (el https:// se agrega automáticamente si falta).",
+          "Haga clic en \"+ Agregar\"; el acceso directo aparece como una tarjeta.",
+          "Haga clic en la tarjeta para abrir el sitio en una pestaña nueva; use el ícono de papelera y confirme en \"Eliminar\" para quitarlo."
+        ]
+      },
+      {
+        "title": "Instalar la aplicación (PWA)",
+        "steps": [
+          "En el navegador (móvil o Windows), abra el menú del navegador.",
+          "Elija \"Instalar app\" o \"Agregar a la pantalla de inicio\".",
+          "Confirme; la app se abrirá en su propia ventana para acceso rápido."
+        ]
+      }
+    ]
   },
   "picker": {
     "change": "Cambiar",

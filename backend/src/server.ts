@@ -33,6 +33,7 @@ import whatsappRouter from './routes/whatsapp';
 import lgpdRouter from './routes/lgpd';
 import tenantsRouter from './routes/tenants';
 import formsRouter, { publicFormsRouter } from './routes/forms';
+import appsRouter from './routes/apps';
 import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
 import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/security';
@@ -114,6 +115,7 @@ app.use('/api/lgpd', lgpdRouter);
 app.use('/api/tenants', tenantsRouter);
 app.use('/api/forms', formsRouter);
 app.use('/api/public/forms', publicFormsRouter);
+app.use('/api/apps', appsRouter);
 
 // Dashboard
 import { db } from './db/schema';

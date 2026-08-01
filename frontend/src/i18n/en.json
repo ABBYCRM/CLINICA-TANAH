@@ -27,7 +27,8 @@
     "team": "Team",
     "settings": "Settings",
     "clinics": "Clinics",
-    "manual": "Manual"
+    "manual": "Manual",
+    "apps": "Apps"
   },
   "common": {
     "save": "Save",
@@ -107,6 +108,8 @@
     "address_city": "City",
     "address_state": "State",
     "health_insurance": "Insurance",
+    "filter_insurance_all": "Insurance: all",
+    "filter_insurance_none": "No insurance",
     "blood_type": "Blood type",
     "allergies": "Allergies",
     "chronic_conditions": "Chronic conditions",
@@ -834,6 +837,18 @@
     "ios_hint": "In Safari: tap Share, then “Add to Home Screen”.",
     "ios_share": "Share → Add to Home Screen"
   },
+  "apps": {
+    "title": "Apps",
+    "subtitle": "Save links to the tools and sites you use, and open them in one click.",
+    "label": "Name",
+    "label_placeholder": "e.g. ANVISA Portal",
+    "url": "URL",
+    "url_placeholder": "https://example.com",
+    "add": "Add",
+    "empty": "No apps saved yet. Add a link above to get started.",
+    "required": "Enter a name and a URL.",
+    "invalid_url": "Invalid URL. Use a valid http(s) address."
+  },
   "manual": {
     "title": "User manual",
     "subtitle": "Quick guide to the Clínica Tanah CRM — modules, roles, and main workflows.",
@@ -850,6 +865,7 @@
     "toc_lgpd": "LGPD",
     "toc_admin": "Team & clinics",
     "toc_tips": "Tips",
+    "toc_howto": "Detailed step-by-step",
     "col_module": "Module",
     "col_purpose": "Purpose",
     "col_how": "How to use",
@@ -976,7 +992,209 @@
     "tip2": "WhatsApp numbers need the country code (+55…) for the bot and campaigns.",
     "tip3": "The Dashboard highlights low stock, expiring batches, and pending invoices.",
     "tip4": "Install the PWA on phone or Windows from the browser for quick access.",
-    "tip5": "Come back to this Manual anytime — the contents jump to each section."
+    "tip5": "Come back to this Manual anytime — the contents jump to each section.",
+    "howto_title": "Detailed step-by-step",
+    "howto_intro": "Complete, step-by-step instructions for how to perform every task in the system. Button names may vary by language and by the user's role.",
+    "howto": [
+      {
+        "title": "Sign in (login)",
+        "steps": [
+          "Open the browser and go to the system address (the link provided by the clinic).",
+          "On the login screen, click the \"Email\" field and type your email.",
+          "Click the \"Password\" field and type your password; use the eye icon to reveal it if needed.",
+          "Click the \"Sign in\" button.",
+          "If you see \"invalid email or password\", check the details and try again (after many attempts access is locked for 15 minutes).",
+          "Once in, check the active clinic at the top and start from the Dashboard."
+        ]
+      },
+      {
+        "title": "Choose the language (PT / ES / EN)",
+        "steps": [
+          "Find the language buttons at the bottom of the left sidebar.",
+          "Click PT, ES or EN for the language you want.",
+          "The interface changes instantly and the preference is saved in the browser for next time."
+        ]
+      },
+      {
+        "title": "Switch the active clinic (superadmin only)",
+        "steps": [
+          "Open \"Clinics\" in the sidebar.",
+          "Find the clinic you want to work with in the list.",
+          "Select it to make it the active clinic (or use the selector at the top of the screen).",
+          "Confirm the active clinic name in the header before creating or editing data."
+        ]
+      },
+      {
+        "title": "Register a new patient",
+        "steps": [
+          "Open \"Patients\" in the sidebar.",
+          "Click \"+ New Patient\" in the top-right corner.",
+          "Under Identification, fill in Full name, Date of birth and CPF.",
+          "Under Contact, fill in the Phone in +55AREA-NUMBER format (required for WhatsApp) and the email.",
+          "Fill in the Address (ZIP code, street, number, neighborhood, city and state) when available.",
+          "Fill in health and sociodemographic data (insurance, blood type, allergies, conditions and medications) as applicable.",
+          "Tick the LGPD Consent checkbox — it is required to save.",
+          "Click \"Save\". The patient now appears in the list."
+        ]
+      },
+      {
+        "title": "Search, edit or delete a patient",
+        "steps": [
+          "Open \"Patients\" and type a name, phone, email or CPF in the search box.",
+          "Use the \"Insurance\" filter to narrow by health plan, or choose \"No insurance\".",
+          "To edit, click the pencil icon on the patient's row, adjust the fields and click \"Save\".",
+          "To delete, click the trash icon and confirm on \"Delete\".",
+          "Note: patients with clinical records cannot be deleted — use the LGPD flow when needed."
+        ]
+      },
+      {
+        "title": "Schedule an appointment",
+        "steps": [
+          "Open \"Appointments\" in the sidebar.",
+          "Click \"+ New Appointment\".",
+          "In the \"Patient\" field, click and select the patient from the list (or type to search).",
+          "In the \"Practitioner\" field, select the responsible doctor or professional.",
+          "In \"Date and time\", choose the date and time; if available slots appear, click one of the green buttons.",
+          "Adjust the type and duration if needed (default is 30 minutes).",
+          "Click \"Save\". The appointment now appears on the calendar."
+        ]
+      },
+      {
+        "title": "Update an appointment's status",
+        "steps": [
+          "Open \"Appointments\" and find the appointment on the calendar.",
+          "Open the appointment and change the status along the flow: confirmed, arrived, in progress or completed.",
+          "Use \"cancelled\" or \"no-show\" when the patient does not attend.",
+          "Save. No-show/cancelled statuses feed the follow-up automations."
+        ]
+      },
+      {
+        "title": "Record an encounter (SOAP note)",
+        "steps": [
+          "Open \"Encounters\" in the sidebar.",
+          "Create a new encounter and link it to the patient (and the appointment, if any).",
+          "Fill in the S (subjective), O (objective), A (assessment) and P (plan) fields.",
+          "Add ICD-10 diagnosis codes when applicable.",
+          "Save the encounter. Do not delete patients with clinical history."
+        ]
+      },
+      {
+        "title": "Issue a prescription",
+        "steps": [
+          "Open \"Prescriptions\" in the sidebar.",
+          "Create a new prescription linked to the patient (and the encounter, if any).",
+          "Add each medication with dosage, frequency, duration and instructions.",
+          "Save. When available, the prescription can be generated as PDF and sent via WhatsApp."
+        ]
+      },
+      {
+        "title": "Add an inventory item, batch and movement",
+        "steps": [
+          "Open \"Inventory\" in the sidebar.",
+          "Add the item with its name, unit, category and minimum stock.",
+          "Register a batch with batch number, expiry date and quantity.",
+          "Record outflows/usage as the item is consumed.",
+          "Track low-stock and expiring-batch alerts from the Dashboard."
+        ]
+      },
+      {
+        "title": "Add a vendor",
+        "steps": [
+          "Open \"Vendors\" in the sidebar.",
+          "Click \"+ New vendor\".",
+          "Fill in the legal name and CNPJ (required), plus the contact details.",
+          "Click \"Save\"."
+        ]
+      },
+      {
+        "title": "Issue an invoice",
+        "steps": [
+          "Open \"Invoices\" in the sidebar.",
+          "Create a new invoice and link it to the patient when applicable.",
+          "Add the line items and amounts and review the total.",
+          "Click \"Save\". Mark the invoice as paid when received; pending ones appear on the Dashboard."
+        ]
+      },
+      {
+        "title": "Run payroll",
+        "steps": [
+          "Open \"Payroll\" in the sidebar.",
+          "Add or update the employees.",
+          "Run the payroll for the desired period (month).",
+          "Review the INSS, IRRF and FGTS amounts, approve and record the payment."
+        ]
+      },
+      {
+        "title": "Handle conversations and use the WhatsApp simulator",
+        "steps": [
+          "Open \"Marketing\" (WhatsApp) in the sidebar.",
+          "Under \"Conversations\", select a number to see the history and reply.",
+          "Without Meta credentials, sending stays in simulation (dry-run) mode and nothing leaves the server.",
+          "Use the simulator to test the bot flow as if you were the patient."
+        ]
+      },
+      {
+        "title": "Create a template, campaign and automation",
+        "steps": [
+          "Under \"Templates\", create or edit a message using {{name}} and set the category (marketing or utility).",
+          "Under \"Campaigns\", choose the segment (consented, inactive, birthdays…) and send the blast.",
+          "Under \"Automations\", enable 24h/2h reminders, NPS, welcome and others, and run them whenever you want.",
+          "Respect opt-out: anyone replying STOP/SAIR stops receiving campaigns."
+        ]
+      },
+      {
+        "title": "Record consent and handle LGPD requests",
+        "steps": [
+          "Record LGPD consent on the patient's record when creating or editing it.",
+          "Open \"LGPD\" in the sidebar to see consents, opt-outs and the audit trail.",
+          "When you receive an access, rectification or deletion request, open a data-subject request.",
+          "Fulfil the request and record the response; everything is stored in the audit log."
+        ]
+      },
+      {
+        "title": "Create a team user (admin)",
+        "steps": [
+          "Open \"Team\" in the sidebar.",
+          "Click \"+ New user\".",
+          "Fill in email, a strong password and choose the role (doctor, reception, etc.).",
+          "Click \"Save\". Prefer deactivating rather than deleting when there is history."
+        ]
+      },
+      {
+        "title": "Generate an API token (admin)",
+        "steps": [
+          "Open \"Settings\" in the sidebar.",
+          "In the API tokens section, click to generate a new token.",
+          "Set the name, the scope (read or read/write) and the expiry.",
+          "Copy the displayed token — it is shown only once — and store it securely."
+        ]
+      },
+      {
+        "title": "Create and switch clinics (superadmin)",
+        "steps": [
+          "Open \"Clinics\" in the sidebar.",
+          "Click to create a new clinic and set the initial admin.",
+          "Use the top selector to switch the working context between clinics."
+        ]
+      },
+      {
+        "title": "Save a shortcut in the Apps module",
+        "steps": [
+          "Open \"Apps\" in the sidebar.",
+          "Type a name in the \"Name\" field and the address in the \"URL\" field (https:// is added automatically if missing).",
+          "Click \"+ Add\"; the shortcut appears as a card.",
+          "Click the card to open the site in a new tab; use the trash icon and confirm on \"Delete\" to remove it."
+        ]
+      },
+      {
+        "title": "Install the app (PWA)",
+        "steps": [
+          "In the browser (mobile or Windows), open the browser menu.",
+          "Choose \"Install app\" or \"Add to home screen\".",
+          "Confirm; the app then opens in its own window for quick access."
+        ]
+      }
+    ]
   },
   "picker": {
     "change": "Change",

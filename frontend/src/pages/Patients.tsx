@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { ConfirmDialog, FormError } from '../components/crud';
 import { PatientForm } from '../components/PatientForm';
+import { CONVENIOS } from '../lib/convenios';
 
 type ViewId = 'all' | 'recent' | 'insurance' | 'upcoming' | 'inactive';
 
@@ -109,6 +110,15 @@ export default function Patients() {
     setCreatedTo('');
     setPage(0);
   };
+
+  const insuranceOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const name of CONVENIOS) set.add(name);
+    for (const name of insurers) {
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [insurers]);
 
   const exportCsv = () => {
     const rows = (selected.size ? patients.filter((p) => selected.has(p.id)) : patients);
@@ -220,7 +230,7 @@ export default function Patients() {
         >
           <option value="">{t('patients.filters.insurance')}</option>
           <option value="__none__">{t('patients.filters.no_insurance')}</option>
-          {insurers.map((name) => <option key={name} value={name}>{name}</option>)}
+          {insuranceOptions.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
         <select
           className="crm-filter"

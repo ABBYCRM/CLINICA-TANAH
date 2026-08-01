@@ -23,6 +23,7 @@ import Clinics from './pages/Clinics';
 import Manual from './pages/Manual';
 import Forms from './pages/Forms';
 import PublicIntake from './pages/PublicIntake';
+import Apps from './pages/Apps';
 import InstallPrompt from './components/InstallPrompt';
 import { registerSW } from 'virtual:pwa-register';
 import './index.css';
@@ -61,6 +62,7 @@ function AppRoutes() {
         <Route path="settings" element={<Settings />} />
         <Route path="clinics" element={<Clinics />} />
         <Route path="manual" element={<Manual />} />
+        <Route path="apps" element={<Apps />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
