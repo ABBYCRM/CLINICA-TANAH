@@ -9,6 +9,18 @@ import { useI18n } from '../hooks/useI18n';
 const HORIZONS = [4, 8, 12, 24, 52, 54];
 const ADHERENCE = ['low', 'moderate', 'high'] as const;
 
+const REVIEW_KEYS = [
+  'identity_preserved',
+  'anatomy_plausible',
+  'scenario_conservative',
+  'assumptions_visible',
+  'no_prohibited_manipulation',
+  'consent_active',
+  'watermark_present',
+] as const;
+
+type ReviewKey = typeof REVIEW_KEYS[number];
+
 function useAuthBlob(url: string | null, deps: any[]) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
@@ -48,7 +60,29 @@ function Thumb({ url, label }: { url: string | null; label: string }) {
   );
 }
 
-function ScenarioCard({ patientId, scenario, onRefresh }: { patientId: string; scenario: any; onRefresh: () => void }) {
+async function openAuthHtml(url: string) {
+  const token = localStorage.getItem('auth_token');
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new Error('report');
+  const blob = await res.blob();
+  const obj = URL.createObjectURL(blob);
+  window.open(obj, '_blank', 'noopener,noreferrer');
+  setTimeout(() => URL.revokeObjectURL(obj), 60_000);
+}
+
+function ScenarioCard({
+  patientId,
+  scenario,
+  selected,
+  onSelect,
+  onRefresh,
+}: {
+  patientId: string;
+  scenario: any;
+  selected: boolean;
+  onSelect: () => void;
+  onRefresh: () => void;
+}) {
   const { t } = useI18n();
   const src = useAuthBlob(
     scenario.has_image || scenario.image_url
@@ -62,7 +96,12 @@ function ScenarioCard({ patientId, scenario, onRefresh }: { patientId: string; s
     return () => clearInterval(tmr);
   }, [scenario.status, onRefresh]);
   return (
-    <div className="crm-timeline-card overflow-hidden p-0" data-testid={`body-scenario-${scenario.id}`}>
+    <button
+      type="button"
+      className={`crm-timeline-card overflow-hidden p-0 text-left w-full ${selected ? 'ring-2 ring-[color:var(--brass)]' : ''}`}
+      data-testid={`body-scenario-${scenario.id}`}
+      onClick={onSelect}
+    >
       {src ? (
         <img src={src} alt="" className="w-full aspect-[3/4] object-cover" />
       ) : (
@@ -76,9 +115,18 @@ function ScenarioCard({ patientId, scenario, onRefresh }: { patientId: string; s
           {scenario.review_status || 'pending_review'} · {scenario.status}
           {scenario.horizon_weeks || scenario.weeks ? ` · ${scenario.horizon_weeks || scenario.weeks}w` : ''}
         </div>
+        {scenario.prompt_version && (
+          <div className="text-[10px] text-[color:var(--ink-muted)] truncate" data-testid={`body-scenario-prompt-${scenario.id}`}>
+            {scenario.prompt_version}
+          </div>
+        )}
       </div>
-    </div>
+    </button>
   );
+}
+
+function emptyChecklist(): Record<ReviewKey, boolean> {
+  return Object.fromEntries(REVIEW_KEYS.map((k) => [k, false])) as Record<ReviewKey, boolean>;
 }
 
 export default function ScenarioSimulator({
@@ -125,6 +173,14 @@ export default function ScenarioSimulator({
   const [pinned, setPinned] = useState<any | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [stepPassword, setStepPassword] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [inspectorMode, setInspectorMode] = useState<'single' | 'contact'>('single');
+  const [checklist, setChecklist] = useState<Record<ReviewKey, boolean>>(emptyChecklist);
+  const [reviewSignature, setReviewSignature] = useState('');
+  const [reviewComment, setReviewComment] = useState('');
+  const [reportSignature, setReportSignature] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
 
   useEffect(() => {
     setMedIds(medications.filter((m: any) => m.status === 'active').map((m: any) => m.id));
@@ -132,6 +188,20 @@ export default function ScenarioSimulator({
     setExIds(exercise.map((p: any) => p.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.medications?.length, data?.plans?.length]);
+
+  useEffect(() => {
+    if (!scenarios.length) {
+      setSelectedId(null);
+      return;
+    }
+    if (selectedId && scenarios.some((s: any) => s.id === selectedId)) return;
+    setSelectedId(scenarios[0].id);
+  }, [scenarios, selectedId]);
+
+  const selected = useMemo(
+    () => scenarios.find((s: any) => s.id === selectedId) || scenarios[0] || null,
+    [scenarios, selectedId],
+  );
 
   const toggle = (list: string[], id: string, setter: (v: string[]) => void) => {
     setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -183,6 +253,7 @@ export default function ScenarioSimulator({
   const generate = async () => {
     setBusy('generate'); setError('');
     try {
+      const step = await api.post('/api/auth/step-up', { password: stepPassword });
       const frontId = session?.assets?.front?.id || null;
       await api.post(`/api/clinical/body/${patientId}/scenarios`, {
         title: t('body.scenario_default_title'),
@@ -193,6 +264,7 @@ export default function ScenarioSimulator({
         capture_session_id: session?.id || null,
         generate: true,
         photorealism: true,
+        step_up_token: step.step_up_token,
         plan_config: planConfig,
         assumptions,
         sleep_adequate: sleep,
@@ -201,6 +273,7 @@ export default function ScenarioSimulator({
         comorbidity_stable: comorbidity,
         change_magnitude: magnitude,
       });
+      setStepPassword('');
       onRefresh();
     } catch (e: any) {
       setError(e?.body?.message || e?.message || t('body.simulations_blocked'));
@@ -209,8 +282,69 @@ export default function ScenarioSimulator({
     }
   };
 
+  const submitReview = async (decision: 'approved' | 'rejected') => {
+    if (!selected?.id || !reviewSignature.trim()) return;
+    setBusy('review'); setError('');
+    try {
+      await api.post(`/api/clinical/body/scenarios/${selected.id}/reviews`, {
+        decision,
+        checklist,
+        signature_name: reviewSignature.trim(),
+        comment: reviewComment.trim() || null,
+      });
+      setChecklist(emptyChecklist());
+      setReviewComment('');
+      onRefresh();
+    } catch (e: any) {
+      setError(e?.body?.message || e?.message || t('errors.generic'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const createReport = async () => {
+    if (!selected?.id || !reportSignature.trim()) return;
+    setBusy('report'); setError('');
+    try {
+      const res = await api.post('/api/clinical/body/reports', {
+        scenario_id: selected.id,
+        signature_name: reportSignature.trim(),
+        next_follow_up_date: followUpDate || null,
+      });
+      if (res?.html_url) await openAuthHtml(res.html_url);
+      onRefresh();
+    } catch (e: any) {
+      setError(e?.body?.message || e?.message || t('errors.generic'));
+    } finally {
+      setBusy('');
+    }
+  };
+
   const qualityFront = session?.assets?.front?.quality || session?.quality_summary?.front || null;
   const views = ['front', 'left', 'right', 'back'] as const;
+  const activeEnvelope = envelope || pinned;
+  const anatomy = activeEnvelope?.anatomicalEnvelope;
+  const narrative = activeEnvelope?.narrativePt || [];
+  const visualProfiles = activeEnvelope?.visualProfiles || [];
+
+  const needsReview = selected
+    && (selected.review_status === 'pending_review' || !selected.review_status)
+    && (
+      ['completed', 'ready'].includes(selected.status)
+      || !!selected.has_image
+      || !!selected.image_url
+    );
+
+  const canReport = selected?.review_status === 'approved';
+
+  const beforeUrl = session?.assets?.front?.preview_url || (session?.id
+    ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/front/image`
+    : null);
+  const afterUrl = selected && (selected.has_image || selected.image_url)
+    ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image`
+    : null;
+
+  const providersOrder = data?.image_providers?.order;
 
   return (
     <div className="space-y-4" data-testid="body-scenarios-full">
@@ -403,6 +537,21 @@ export default function ScenarioSimulator({
           ))}
         </div>
 
+        <div className="crm-inset-panel !p-3 space-y-2" data-testid="sim-step-up">
+          <label className="text-xs text-[color:var(--ink-muted)] block">
+            {t('body.step_up_password')}
+            <input
+              className="input mt-1 w-full max-w-sm"
+              type="password"
+              autoComplete="current-password"
+              value={stepPassword}
+              onChange={(e) => setStepPassword(e.target.value)}
+              data-testid="sim-step-password"
+            />
+          </label>
+          <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.step_up_hint')}</p>
+        </div>
+
         <div className="flex flex-wrap gap-2 pt-1">
           <button type="button" className="btn-secondary text-sm" disabled={busy === 'preview'} onClick={calcEnvelope} data-testid="sim-calc">
             {busy === 'preview' ? '…' : t('body.sim_calc')}
@@ -418,67 +567,110 @@ export default function ScenarioSimulator({
           <button
             type="button"
             className="btn-primary text-sm"
-            disabled={busy === 'generate' || !data?.simulations_allowed}
+            disabled={busy === 'generate' || !data?.simulations_allowed || !stepPassword}
             onClick={generate}
             data-testid="sim-generate"
           >
             {busy === 'generate' ? t('body.generating') : t('body.sim_generate')}
           </button>
         </div>
-        {error && <p className="text-sm text-[#8b3a2a]">{error}</p>}
+        {error && <p className="text-sm text-[#8b3a2a]" data-testid="sim-error">{error}</p>}
         {!data?.simulations_allowed && (
           <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] rounded-lg px-3 py-2">{t('body.simulations_blocked')}</p>
         )}
       </section>
 
-      {(envelope || pinned) && (
-        <section className="crm-inset-panel space-y-2">
+      {activeEnvelope && (
+        <section className="crm-inset-panel space-y-2" data-testid="sim-envelope">
           <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.sim_envelope')}</h4>
-          {(envelope || pinned)?.blockers?.length > 0 && (
+          {activeEnvelope?.blockers?.length > 0 && (
             <ul className="text-sm text-[#8b3a2a] list-disc pl-4">
-              {(envelope || pinned).blockers.map((b: string, i: number) => <li key={i}>{b}</li>)}
+              {activeEnvelope.blockers.map((b: string, i: number) => <li key={i}>{b}</li>)}
             </ul>
           )}
-          <p className="text-sm text-[color:var(--ink)]">{(envelope || pinned)?.summary}</p>
-          <p className="text-[11px] text-[color:var(--ink-muted)]">{(envelope || pinned)?.identity_locks}</p>
+          <p className="text-sm text-[color:var(--ink)]">{activeEnvelope?.summary}</p>
+          <p className="text-[11px] text-[color:var(--ink-muted)]">{activeEnvelope?.identity_locks}</p>
           <ul className="space-y-1.5 pt-1">
-            {((envelope || pinned)?.rules || []).filter((r: any) => r.applied).map((r: any) => (
+            {(activeEnvelope?.rules || []).filter((r: any) => r.applied).map((r: any) => (
               <li key={r.id} className="text-xs border-l-2 border-[color:var(--brass)] pl-2">
                 <span className="font-medium">IF</span> {r.if} → <span className="font-medium">THEN</span> {r.then}
                 <span className="text-[color:var(--ink-muted)]"> ({r.silhouette_delta_pct?.toFixed?.(1) ?? r.silhouette_delta_pct}%)</span>
               </li>
             ))}
           </ul>
-          {(envelope || pinned)?.projected && (
+          {activeEnvelope?.projected && (
             <div className="flex flex-wrap gap-4 text-sm pt-1">
-              <span>→ {t('body.weight')}: <strong className="tabular-nums">{(envelope || pinned).projected.weight_kg ?? '—'}</strong> kg</span>
-              <span>{t('body.waist')}: <strong className="tabular-nums">{(envelope || pinned).projected.waist_cm ?? '—'}</strong> cm</span>
-              <span>IMC: <strong className="tabular-nums">{(envelope || pinned).projected.bmi ?? '—'}</strong></span>
-              {(envelope || pinned).projected.body_fat_pct != null && (
-                <span>%G: <strong className="tabular-nums">{(envelope || pinned).projected.body_fat_pct}</strong></span>
+              <span>→ {t('body.weight')}: <strong className="tabular-nums">{activeEnvelope.projected.weight_kg ?? '—'}</strong> kg</span>
+              <span>{t('body.waist')}: <strong className="tabular-nums">{activeEnvelope.projected.waist_cm ?? '—'}</strong> cm</span>
+              <span>IMC: <strong className="tabular-nums">{activeEnvelope.projected.bmi ?? '—'}</strong></span>
+              {activeEnvelope.projected.body_fat_pct != null && (
+                <span>%G: <strong className="tabular-nums">{activeEnvelope.projected.body_fat_pct}</strong></span>
               )}
             </div>
           )}
-          {(envelope || pinned)?.energy && (
+          {activeEnvelope?.energy && (
             <div className="text-xs text-[color:var(--ink-muted)] flex flex-wrap gap-3 pt-1">
-              <span>BMR {(envelope || pinned).energy.bmr_kcal ?? '—'}</span>
-              <span>TDEE {(envelope || pinned).energy.tdee_kcal ?? '—'}</span>
-              <span>{t('body.life_calories')} {(envelope || pinned).energy.intake_kcal ?? '—'}</span>
-              <span>{t('body.life_deficit')} {(envelope || pinned).energy.deficit_kcal_day ?? '—'} kcal/d</span>
+              <span>BMR {activeEnvelope.energy.bmr_kcal ?? '—'}</span>
+              <span>TDEE {activeEnvelope.energy.tdee_kcal ?? '—'}</span>
+              <span>{t('body.life_calories')} {activeEnvelope.energy.intake_kcal ?? '—'}</span>
+              <span>{t('body.life_deficit')} {activeEnvelope.energy.deficit_kcal_day ?? '—'} kcal/d</span>
             </div>
           )}
-          {(envelope || pinned)?.monthly_rates?.length > 0 && (
+          {activeEnvelope?.monthly_rates?.length > 0 && (
             <ul className="text-xs text-[color:var(--ink-muted)] space-y-0.5 pt-1">
-              {(envelope || pinned).monthly_rates.map((r: any, i: number) => (
+              {activeEnvelope.monthly_rates.map((r: any, i: number) => (
                 <li key={i} className="tabular-nums">{r.label}: {r.kg_per_month} kg/mês ({r.pct_bw_per_month}% PC/mês)</li>
               ))}
             </ul>
           )}
-          {(envelope || pinned)?.rag_citations?.length > 0 && (
+
+          {anatomy?.regions?.length > 0 && (
+            <div className="pt-2" data-testid="sim-anatomy-regions">
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.anatomy_regions')}</div>
+              <ul className="grid sm:grid-cols-2 gap-1">
+                {anatomy.regions.map((r: any) => (
+                  <li key={r.region} className="text-xs flex justify-between gap-2 border-l-2 border-[color:var(--brass)]/40 pl-2">
+                    <span className="font-medium">{r.region}</span>
+                    <span className="tabular-nums text-[color:var(--ink-muted)]">
+                      {typeof r.deltaPct === 'number' ? `${r.deltaPct > 0 ? '+' : ''}${r.deltaPct.toFixed(1)}%` : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {narrative.length > 0 && (
+            <div className="pt-2" data-testid="sim-narrative">
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.narrative')}</div>
+              <ul className="space-y-1 list-disc pl-4">
+                {narrative.map((line: string, i: number) => (
+                  <li key={i} className="text-xs text-[color:var(--ink)]">{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {visualProfiles.length > 0 && (
+            <div className="pt-2" data-testid="sim-visual-profiles">
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">Visual profiles</div>
+              <ul className="space-y-1">
+                {visualProfiles.map((vp: any, i: number) => (
+                  <li key={`${vp.profileId}-${i}`} className="text-xs border-l-2 border-[color:var(--brass)]/50 pl-2">
+                    <span className="font-medium">{vp.medication}</span>
+                    <span className="text-[color:var(--ink-muted)]"> · {vp.labelPt || vp.profileId}</span>
+                    {vp.kind ? <span className="text-[color:var(--ink-muted)]"> ({vp.kind})</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {activeEnvelope?.rag_citations?.length > 0 && (
             <div className="pt-2">
               <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.sim_rag')}</div>
               <ul className="space-y-1">
-                {(envelope || pinned).rag_citations.slice(0, 5).map((c: any) => (
+                {activeEnvelope.rag_citations.slice(0, 5).map((c: any) => (
                   <li key={c.id} className="text-[11px] border-l-2 border-[color:var(--brass)]/50 pl-2">
                     <span className="font-medium text-[color:var(--ink)]">{c.title}</span>
                     <span className="block text-[color:var(--ink-muted)]">{c.source}</span>
@@ -490,15 +682,167 @@ export default function ScenarioSimulator({
         </section>
       )}
 
+      <section className="crm-inset-panel space-y-3" data-testid="sim-ba-inspector">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.inspector_title')}</h4>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className={`crm-feed-tab ${inspectorMode === 'single' ? 'is-active' : ''}`}
+              onClick={() => setInspectorMode('single')}
+              data-testid="sim-inspector-single"
+            >
+              {t('body.inspector_single')}
+            </button>
+            <button
+              type="button"
+              className={`crm-feed-tab ${inspectorMode === 'contact' ? 'is-active' : ''}`}
+              onClick={() => setInspectorMode('contact')}
+              data-testid="sim-inspector-contact"
+            >
+              {t('body.inspector_contact')}
+            </button>
+          </div>
+        </div>
+        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.inspector_sync_note')}</p>
+        {inspectorMode === 'single' ? (
+          <div className="grid grid-cols-2 gap-3 max-w-lg">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.views.front')}</div>
+              <Thumb url={beforeUrl} label={t('body.views.front')} />
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.tabs.scenarios')}</div>
+              <Thumb url={afterUrl} label={selected?.title || t('body.tabs.scenarios')} />
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-2xl">
+            {views.map((v) => (
+              <div key={v}>
+                <Thumb
+                  url={session?.assets?.[v]?.preview_url || (session?.id
+                    ? `/api/clinical/body/${patientId}/capture-sessions/${session.id}/assets/${v}/image`
+                    : null)}
+                  label={t(`body.views.${v}`)}
+                />
+                <div className="text-[10px] text-center text-[color:var(--ink-muted)] mt-1">{t(`body.views.${v}`)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <div className="grid lg:grid-cols-[1fr_0.85fr] gap-4">
         <section className="space-y-3">
           <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.tabs.scenarios')}</h4>
           <div className="grid sm:grid-cols-2 gap-3">
             {scenarios.map((s: any) => (
-              <ScenarioCard key={s.id} patientId={patientId} scenario={s} onRefresh={onRefresh} />
+              <ScenarioCard
+                key={s.id}
+                patientId={patientId}
+                scenario={s}
+                selected={selected?.id === s.id}
+                onSelect={() => setSelectedId(s.id)}
+                onRefresh={onRefresh}
+              />
             ))}
             {!scenarios.length && <p className="text-sm text-[color:var(--ink-muted)]">{t('body.sim_no_scenarios')}</p>}
           </div>
+
+          {needsReview && (
+            <section className="crm-inset-panel space-y-3" data-testid="sim-clinical-review">
+              <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.review_title')}</h4>
+              <ul className="space-y-1.5">
+                {REVIEW_KEYS.map((key) => (
+                  <li key={key}>
+                    <label className="flex items-start gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={!!checklist[key]}
+                        onChange={(e) => setChecklist((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        data-testid={`sim-review-${key}`}
+                      />
+                      <span>{t(`body.checklist_${key}`)}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <label className="text-xs text-[color:var(--ink-muted)] block">
+                {t('body.review_signature')}
+                <input
+                  className="input mt-1 w-full max-w-sm"
+                  value={reviewSignature}
+                  onChange={(e) => setReviewSignature(e.target.value)}
+                  data-testid="sim-review-signature"
+                />
+              </label>
+              <label className="text-xs text-[color:var(--ink-muted)] block">
+                Comment
+                <textarea
+                  className="input mt-1 w-full min-h-[4rem]"
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  data-testid="sim-review-comment"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-primary text-sm"
+                  disabled={busy === 'review' || !reviewSignature.trim() || !REVIEW_KEYS.every((k) => checklist[k])}
+                  onClick={() => submitReview('approved')}
+                  data-testid="sim-review-approve"
+                >
+                  {t('body.review_approve')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-sm"
+                  disabled={busy === 'review' || !reviewSignature.trim()}
+                  onClick={() => submitReview('rejected')}
+                  data-testid="sim-review-reject"
+                >
+                  {t('body.review_reject')}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {canReport && (
+            <section className="crm-inset-panel space-y-3" data-testid="sim-create-report">
+              <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.create_report')}</h4>
+              <label className="text-xs text-[color:var(--ink-muted)] block">
+                {t('body.review_signature')}
+                <input
+                  className="input mt-1 w-full max-w-sm"
+                  value={reportSignature}
+                  onChange={(e) => setReportSignature(e.target.value)}
+                  data-testid="sim-report-signature"
+                />
+              </label>
+              <label className="text-xs text-[color:var(--ink-muted)] block">
+                Follow-up
+                <input
+                  className="input mt-1 w-full max-w-sm"
+                  type="date"
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                  data-testid="sim-report-followup"
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                disabled={busy === 'report' || !reportSignature.trim()}
+                onClick={createReport}
+                data-testid="sim-create-report-btn"
+              >
+                {t('body.create_report')}
+              </button>
+            </section>
+          )}
         </section>
 
         <aside className="crm-inset-panel space-y-4" data-testid="sim-inspector">
@@ -547,16 +891,32 @@ export default function ScenarioSimulator({
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.sim_provenance')}</div>
             <p className="text-xs text-[color:var(--ink-muted)]">
-              {scenarios[0]?.provider
-                ? `${scenarios[0].provider} · ${scenarios[0].status}`
-                : t('body.sim_awaiting_gen')}
+              {selected?.provider
+                ? `${selected.provider} · ${selected.status}`
+                : scenarios[0]?.provider
+                  ? `${scenarios[0].provider} · ${scenarios[0].status}`
+                  : t('body.sim_awaiting_gen')}
             </p>
+            {providersOrder?.length > 0 && (
+              <p className="text-[11px] text-[color:var(--ink-muted)] mt-1" data-testid="sim-providers-order">
+                {t('body.providers_order')}: {Array.isArray(providersOrder) ? providersOrder.join(' → ') : String(providersOrder)}
+              </p>
+            )}
+            {selected?.prompt_version && (
+              <p className="text-[11px] text-[color:var(--ink-muted)] mt-0.5">{selected.prompt_version}</p>
+            )}
           </div>
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.sim_reviewer')}</div>
             <p className="text-xs">
-              <span className="badge badge-yellow">{t('body.sim_pending_review')}</span>
+              <span className={`badge ${
+                selected?.review_status === 'approved' ? 'badge-green'
+                  : selected?.review_status === 'rejected' ? 'badge-slate'
+                    : 'badge-yellow'
+              }`}>
+                {selected?.review_status || t('body.sim_pending_review')}
+              </span>
             </p>
           </div>
         </aside>

@@ -35,6 +35,18 @@ import {
   type PlanConfig,
   type ScenarioAssumptions,
 } from '../services/scenarioEnvelope';
+import {
+  enrichEnvelopeWithAnatomy,
+  PROMPT_VERSION,
+  SCENARIO_WATERMARK,
+} from '../services/anatomicalEnvelope';
+import {
+  getById as getLibraryMedById,
+  listLibrary,
+  search as searchLibrary,
+} from '../services/bodyMedicationLibrary';
+import { verifyStepUp } from './auth';
+import { uploadsRoot } from '../services/nvidiaOcr';
 
 function ageFromBirthDate(birth?: string | null): number | null {
   if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(birth)) return null;
@@ -148,6 +160,322 @@ const BODY_PURPOSES = [
   'research',
   'marketing',
 ] as const;
+
+const BODY_FEATURE_FLAGS = {
+  gemini_generation: true,
+  patient_scenario_visibility: true,
+  public_export: false,
+  provider_model_changes: true,
+  offline_phi_queue: false,
+  high_contrast_default: false,
+} as const;
+
+const REVIEW_CHECKLIST_KEYS = [
+  'identity_preserved',
+  'anatomy_plausible',
+  'scenario_conservative',
+  'assumptions_visible',
+  'no_prohibited_manipulation',
+  'consent_active',
+  'watermark_present',
+] as const;
+
+function requireStepUp(req: Request, res: Response): boolean {
+  const token = String(
+    req.headers['x-step-up']
+    || req.headers['x-step-up-token']
+    || req.body?.step_up_token
+    || '',
+  ).trim();
+  if (!verifyStepUp(token, req.user!.id)) {
+    res.status(403).json({
+      error: 'step_up_required',
+      message: 'Re-authenticate with POST /api/auth/step-up before generating body images.',
+    });
+    return false;
+  }
+  return true;
+}
+
+function markScenarioOutputViews(scenarioId: string) {
+  db.prepare(`
+    UPDATE body_scenarios
+       SET output_views = ?, updated_at = datetime('now')
+     WHERE id = ?
+  `).run(JSON.stringify({ front: { has_image: true } }), scenarioId);
+}
+
+function enrichFromContext(opts: {
+  envelope: ReturnType<typeof computeScenarioEnvelope>;
+  medications: any[];
+  plans: any[];
+  plan_config: PlanConfig;
+  assumptions: ScenarioAssumptions;
+  sex?: string | null;
+}) {
+  const medIds = new Set(opts.plan_config.medication_record_ids || opts.medications.map((m) => m.id));
+  const nutIds = new Set(opts.plan_config.nutrition_plan_ids || []);
+  const exIds = new Set(opts.plan_config.exercise_plan_ids || []);
+  const selectedMeds = opts.medications.filter((m) => medIds.has(m.id));
+  const nuts = opts.plans.filter((p) => p.plan_type === 'nutrition' && (nutIds.size ? nutIds.has(p.id) : true));
+  const exs = opts.plans.filter((p) => p.plan_type === 'exercise' && (exIds.size ? exIds.has(p.id) : true));
+  return enrichEnvelopeWithAnatomy({
+    envelope: opts.envelope,
+    medications: selectedMeds.map((m) => ({
+      id: m.id,
+      name: m.name,
+      visual_profile: m.visual_profile,
+      class_tag: m.class_tag,
+      dosage: m.dosage,
+    })),
+    sex: opts.sex,
+    hasNutrition: nuts.length > 0 || !!(opts.plan_config.daily_calories || opts.plan_config.deficit_kcal),
+    hasExercise: exs.length > 0,
+    nutritionAdherence: opts.plan_config.nutrition_adherence,
+    exerciseAdherence: opts.plan_config.exercise_adherence,
+    medicationAdherence: opts.plan_config.medication_adherence,
+    proteinEmphasis: !!opts.plan_config.protein_emphasis,
+    resistanceDays: opts.plan_config.resistance_days_per_week,
+    cardioDays: opts.plan_config.cardio_days_per_week,
+    assumptions: opts.assumptions,
+  });
+}
+
+/** ANVISA library — mount BEFORE /:patientId */
+router.get('/library/medications', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const q = String(req.query.q || req.query.search || '').trim();
+  const items = q ? searchLibrary(db, q) : listLibrary(db);
+  res.json({
+    notice: 'Registre apenas medicamentos em uso ou prescritos. O aplicativo não recomenda início, troca ou ajuste de dose.',
+    items,
+    count: items.length,
+  });
+});
+
+router.get('/flags', requireRole(...CLINICAL_ROLES), (_req: Request, res: Response) => {
+  const flags = {
+    gemini_generation: process.env.GEMINI_ENABLED !== '0' && !!process.env.GEMINI_API_KEY
+      ? true
+      : BODY_FEATURE_FLAGS.gemini_generation,
+    patient_scenario_visibility: BODY_FEATURE_FLAGS.patient_scenario_visibility,
+    public_export: BODY_FEATURE_FLAGS.public_export,
+    provider_model_changes: BODY_FEATURE_FLAGS.provider_model_changes,
+    offline_phi_queue: BODY_FEATURE_FLAGS.offline_phi_queue,
+    high_contrast_default: BODY_FEATURE_FLAGS.high_contrast_default,
+  };
+  res.json({ flags, defaults: { ...BODY_FEATURE_FLAGS } });
+});
+
+router.get('/settings/integrations', requireRole('admin', 'doctor'), (_req: Request, res: Response) => {
+  const status = imageProvidersStatus();
+  res.json({
+    providers: {
+      a2e: { configured: status.a2e, model: status.a2e_model },
+      gemini: { configured: status.gemini, model: status.gemini_model },
+      bitdeer: { configured: status.bitdeer, model: status.bitdeer_model },
+      local_morph: { configured: status.local_morph, note: 'identity-preserving noop when LOCAL_MORPH_FALLBACK=1' },
+    },
+    order: status.order,
+  });
+});
+
+router.get('/quality/events', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const rows = db.prepare(`
+    SELECT * FROM body_quality_events WHERE tenant_id = ?
+    ORDER BY created_at DESC LIMIT 100
+  `).all(req.tenantId);
+  res.json({ events: rows });
+});
+
+router.post('/quality/events', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const parsed = z.object({
+    kind: z.string().min(1).max(80),
+    title: z.string().min(1).max(200),
+    description: z.string().max(4000).optional().nullable(),
+    severity: z.enum(['info', 'warning', 'critical']).optional().default('info'),
+    related_model: z.string().max(120).optional().nullable(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+  const id = uuid();
+  db.prepare(`
+    INSERT INTO body_quality_events
+      (id, tenant_id, kind, title, description, severity, status, related_model, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
+  `).run(
+    id, req.tenantId, parsed.data.kind, parsed.data.title,
+    parsed.data.description ?? null, parsed.data.severity,
+    parsed.data.related_model ?? null, req.user!.id,
+  );
+  const event = db.prepare(`SELECT * FROM body_quality_events WHERE id = ?`).get(id);
+  res.status(201).json({ event });
+});
+
+router.post('/reports', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const parsed = z.object({
+    scenario_id: z.string().min(1),
+    signature_name: z.string().min(1).max(200),
+    next_follow_up_date: z.string().max(40).optional().nullable(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+
+  const scenario = db.prepare(`
+    SELECT * FROM body_scenarios WHERE id = ? AND tenant_id = ?
+  `).get(parsed.data.scenario_id, req.tenantId) as any;
+  if (!scenario) { res.status(404).json({ error: 'not_found' }); return; }
+  if (scenario.review_status !== 'approved') {
+    res.status(400).json({ error: 'review_required', message: 'Scenario must be review_status=approved before report export.' });
+    return;
+  }
+
+  const patient = patientInTenant(scenario.patient_id, req.tenantId!);
+  const plan = scenario.execution_plan ? JSON.parse(scenario.execution_plan) : null;
+  const id = uuid();
+  const dir = path.join(uploadsRoot(), req.tenantId!, 'body', scenario.patient_id, 'reports');
+  fs.mkdirSync(dir, { recursive: true });
+  const htmlPath = path.join(dir, `${id}.html`);
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"/><title>Relatório de cenário — Clínica Tanah</title>
+<style>
+  body{font-family:Georgia,serif;max-width:720px;margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#faf8f5}
+  h1{font-size:1.4rem;margin-bottom:.25rem} .meta{color:#555;font-size:.9rem}
+  .wm{margin-top:1.5rem;padding:.75rem;border:1px solid #c9a227;background:#fff8e7;font-size:.85rem}
+  .regions td{padding:.25rem .5rem;border-bottom:1px solid #eee}
+</style></head><body>
+  <h1>Relatório ilustrativo de cenário corporal</h1>
+  <p class="meta">Paciente: ${patient?.full_name || scenario.patient_id} · Cenário: ${scenario.title || scenario.id}</p>
+  <p class="meta">Assinado por: ${parsed.data.signature_name} · Gerado em ${new Date().toISOString()}</p>
+  ${parsed.data.next_follow_up_date ? `<p class="meta">Próximo retorno: ${parsed.data.next_follow_up_date}</p>` : ''}
+  <p>${(plan?.summary || scenario.goal || '').replace(/</g, '&lt;')}</p>
+  <p class="wm">${scenario.watermark || SCENARIO_WATERMARK}</p>
+  <p class="meta">prompt_version: ${scenario.prompt_version || PROMPT_VERSION}</p>
+</body></html>`;
+  fs.writeFileSync(htmlPath, html, 'utf8');
+
+  db.prepare(`
+    INSERT INTO body_scenario_reports
+      (id, tenant_id, patient_id, scenario_id, signature_name, next_follow_up_date, html_path, status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?)
+  `).run(
+    id, req.tenantId, scenario.patient_id, scenario.id,
+    parsed.data.signature_name, parsed.data.next_follow_up_date ?? null,
+    htmlPath, req.user!.id,
+  );
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'create_body_scenario_report', resourceType: 'body_scenario_report', resourceId: id,
+    afterValue: { scenario_id: scenario.id },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+
+  res.status(201).json({
+    id,
+    html_url: `/api/clinical/body/reports/${id}/html`,
+  });
+});
+
+router.get('/reports/:reportId/html', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const row = db.prepare(`
+    SELECT * FROM body_scenario_reports WHERE id = ? AND tenant_id = ?
+  `).get(req.params.reportId, req.tenantId) as any;
+  if (!row?.html_path || !fs.existsSync(row.html_path)) {
+    res.status(404).json({ error: 'not_found' });
+    return;
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'private, max-age=60');
+  fs.createReadStream(row.html_path).pipe(res);
+});
+
+router.post('/scenarios/:scenarioId/reviews', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const scenario = db.prepare(`
+    SELECT * FROM body_scenarios WHERE id = ? AND tenant_id = ?
+  `).get(req.params.scenarioId, req.tenantId) as any;
+  if (!scenario) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const reviewable = ['completed', 'ready', 'pending_review'].includes(scenario.status)
+    || scenario.review_status === 'pending_review';
+  if (!reviewable) {
+    res.status(400).json({
+      error: 'invalid_status',
+      message: 'Review only when status is completed/ready/pending_review',
+      status: scenario.status,
+    });
+    return;
+  }
+
+  const checklistSchema = z.object(
+    Object.fromEntries(REVIEW_CHECKLIST_KEYS.map((k) => [k, z.boolean()])) as Record<typeof REVIEW_CHECKLIST_KEYS[number], z.ZodBoolean>,
+  );
+  const parsed = z.object({
+    decision: z.enum(['approved', 'rejected']),
+    checklist: checklistSchema,
+    signature_name: z.string().min(1).max(200),
+    comment: z.string().max(2000).optional().nullable(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
+
+  const checklist = parsed.data.checklist as Record<string, boolean>;
+
+  db.prepare(`
+    UPDATE body_scenarios SET
+      review_status = ?,
+      reviewed_at = datetime('now'),
+      reviewed_by = ?,
+      review_checklist = ?,
+      review_signature = ?,
+      review_comment = ?,
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(
+    parsed.data.decision,
+    req.user!.id,
+    JSON.stringify(checklist),
+    parsed.data.signature_name,
+    parsed.data.comment ?? null,
+    scenario.id,
+  );
+
+  const updated = db.prepare(`SELECT id, status, review_status, reviewed_at, review_signature FROM body_scenarios WHERE id = ?`).get(scenario.id);
+  res.json({ scenario: updated });
+});
+
+router.post('/capture-sessions/:sessionId/assets/sign', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const session = db.prepare(`
+    SELECT * FROM body_capture_sessions WHERE id = ? AND tenant_id = ?
+  `).get(req.params.sessionId, req.tenantId) as any;
+  if (!session) { res.status(404).json({ error: 'not_found' }); return; }
+  if (session.status === 'complete') {
+    res.status(409).json({ error: 'session_immutable' }); return;
+  }
+  const view = String(req.body?.view || 'front') as CaptureView;
+  if (!CAPTURE_VIEWS.includes(view)) {
+    res.status(400).json({ error: 'invalid_view' });
+    return;
+  }
+  const contentType = String(req.body?.content_type || 'image/jpeg');
+  const ttl = Number(req.body?.ttl_sec) || 3600;
+  // Pre-upload handshake (BodyPath parity) — token scopes session+view; upload still authenticated.
+  const payload = `${session.id}.${view}.${Math.floor(Date.now() / 1000) + ttl}`;
+  const sig = createHmac('sha256', assetSigningSecret()).update(payload).digest('hex').slice(0, 32);
+  const upload_token = Buffer.from(`${payload}.${sig}`).toString('base64url');
+  const expires_at = new Date(Date.now() + ttl * 1000).toISOString();
+  res.json({
+    upload_token,
+    view,
+    content_type: contentType,
+    expires_at,
+    session_id: session.id,
+  });
+});
 
 function assetSigningSecret(): string {
   return process.env.JWT_SECRET || process.env.A2E_API_KEY || 'clinica-tanah-body-asset-dev';
@@ -471,6 +799,20 @@ function latestMeasurement(tenantId: string, patientId: string) {
   `).get(tenantId, patientId) as any;
 }
 
+router.get('/:patientId/reports', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const patient = patientInTenant(req.params.patientId, req.tenantId!);
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  const reports = db.prepare(`
+    SELECT id, scenario_id, signature_name, next_follow_up_date, status, created_by, created_at,
+           '/api/clinical/body/reports/' || id || '/html' AS html_url
+    FROM body_scenario_reports
+    WHERE tenant_id = ? AND patient_id = ?
+    ORDER BY created_at DESC LIMIT 50
+  `).all(req.tenantId, patient.id);
+  res.json({ reports });
+});
+
 /** GET /api/clinical/body/:patientId — full body prontuário summary */
 router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
@@ -505,12 +847,25 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   const scenarios = db.prepare(`
     SELECT id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, status, provider, image_url,
            CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
-           error, review_status, execution_plan, plan_config, assumptions, created_at, updated_at
+           error, review_status, execution_plan, plan_config, assumptions, created_at, updated_at,
+           prompt_version, watermark, output_views, reviewed_at, review_signature
     FROM body_scenarios WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
   `).all(req.tenantId, patient.id) as any[];
   const consents = consentMap(req.tenantId!, patient.id);
   const bmi = latest?.bmi ?? calcBmi(latest?.height_cm, latest?.weight_kg);
+
+  const parsedScenarios = scenarios.map((s) => ({
+    ...s,
+    execution_plan: s.execution_plan ? JSON.parse(s.execution_plan) : null,
+    plan_config: s.plan_config ? JSON.parse(s.plan_config) : null,
+    assumptions: s.assumptions ? JSON.parse(s.assumptions) : null,
+    output_views: s.output_views ? JSON.parse(s.output_views) : null,
+  }));
+  const latestPlan = parsedScenarios.find((s) => s.execution_plan)?.execution_plan || null;
+
+  const includeLibrary = String(req.query.include_library || '') === '1'
+    || String(req.query.library || '') === '1';
 
   logAudit({
     tenantId: req.tenantId,
@@ -545,12 +900,15 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     active_capture_session: capture_sessions.find((s: any) => s.status === 'complete')
       || capture_sessions[0]
       || null,
-    scenarios: scenarios.map((s) => ({
-      ...s,
-      execution_plan: s.execution_plan ? JSON.parse(s.execution_plan) : null,
-      plan_config: s.plan_config ? JSON.parse(s.plan_config) : null,
-      assumptions: s.assumptions ? JSON.parse(s.assumptions) : null,
-    })),
+    scenarios: parsedScenarios,
+    anatomical: latestPlan ? {
+      anatomicalEnvelope: latestPlan.anatomicalEnvelope || null,
+      visualProfiles: latestPlan.visualProfiles || null,
+      narrativePt: latestPlan.narrativePt || null,
+      prompt_version: latestPlan.prompt_version || null,
+      watermark: latestPlan.watermark || null,
+    } : null,
+    ...(includeLibrary ? { medication_library: listLibrary(db, { limit: 100 }) } : {}),
     consents,
     simulations_allowed: simulationsAllowed(consents),
     counts: {
@@ -632,24 +990,39 @@ router.post('/:patientId/medications', requireRole('doctor', 'nurse', 'admin'), 
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
   const parsed = z.object({
-    name: z.string().min(1).max(200),
+    name: z.string().min(1).max(200).optional(),
     dosage: z.string().max(200).optional().nullable(),
     frequency: z.string().max(200).optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),
     started_at: z.string().optional().nullable(),
     class_tag: z.string().max(80).optional().nullable(),
     confirmation: z.string().max(80).optional().nullable(),
+    library_id: z.string().max(80).optional().nullable(),
+    visual_profile: z.string().max(80).optional().nullable(),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
-  const id = uuid();
   const d = parsed.data;
+  let name = d.name || '';
+  let visual_profile = d.visual_profile ?? null;
+  let library_id = d.library_id ?? null;
+  let class_tag = d.class_tag ?? null;
+  if (library_id) {
+    const lib = getLibraryMedById(db, library_id);
+    if (!lib) { res.status(400).json({ error: 'library_id_not_found' }); return; }
+    name = name || lib.brand_name || lib.active_ingredient || library_id;
+    visual_profile = visual_profile || lib.visual_profile;
+    if (!class_tag && lib.visual_profile) class_tag = lib.visual_profile;
+  }
+  if (!name) { res.status(400).json({ error: 'validation', message: 'name_or_library_id_required' }); return; }
+  const id = uuid();
   db.prepare(`
     INSERT INTO body_medications
-      (id, tenant_id, patient_id, name, dosage, frequency, notes, started_at, class_tag, confirmation)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, tenant_id, patient_id, name, dosage, frequency, notes, started_at, class_tag, confirmation, library_id, visual_profile)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    id, req.tenantId, patient.id, d.name, d.dosage ?? null, d.frequency ?? null, d.notes ?? null,
-    d.started_at ?? null, d.class_tag ?? null, d.confirmation ?? 'clinician_confirmed',
+    id, req.tenantId, patient.id, name, d.dosage ?? null, d.frequency ?? null, d.notes ?? null,
+    d.started_at ?? null, class_tag, d.confirmation ?? 'clinician_confirmed',
+    library_id, visual_profile,
   );
   const row = db.prepare(`SELECT * FROM body_medications WHERE id = ?`).get(id);
   res.status(201).json({ medication: row });
@@ -715,7 +1088,7 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
   const latest = flattenMeasurement(latestMeasurement(req.tenantId!, patient.id));
-  const medications = db.prepare(`SELECT id, name, class_tag, dosage FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+  const medications = db.prepare(`SELECT id, name, class_tag, dosage, visual_profile, library_id FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
     .all(req.tenantId, patient.id) as any[];
   const plans = db.prepare(`SELECT * FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
     .all(req.tenantId, patient.id).map(hydrateLifestylePlan) as any[];
@@ -734,7 +1107,7 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
     change_magnitude: req.body?.change_magnitude === 'moderate' ? 'moderate' : 'conservative',
     ...(req.body?.assumptions || {}),
   };
-  const execution_plan = computeScenarioEnvelope({
+  const basePlan = computeScenarioEnvelope({
     horizon_weeks: horizon,
     sex: patient.gender,
     age_years: ageFromBirthDate(patient.birth_date),
@@ -751,6 +1124,14 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
     exercisePlans: plans.filter((p) => p.plan_type === 'exercise'),
     plan_config,
     assumptions,
+  });
+  const execution_plan = enrichFromContext({
+    envelope: basePlan,
+    medications,
+    plans,
+    plan_config,
+    assumptions,
+    sex: patient.gender,
   });
   res.json({ execution_plan });
 });
@@ -918,9 +1299,11 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
 
+  if (parsed.data.generate && !requireStepUp(req, res)) return;
+
   const weeks = parsed.data.horizon_weeks || parsed.data.weeks || 12;
   const latestFlat = flattenMeasurement(latestMeasurement(req.tenantId!, patient.id));
-  const medications = db.prepare(`SELECT id, name, class_tag, dosage FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+  const medications = db.prepare(`SELECT id, name, class_tag, dosage, visual_profile, library_id FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
     .all(req.tenantId, patient.id) as any[];
   const plans = db.prepare(`SELECT * FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
     .all(req.tenantId, patient.id).map(hydrateLifestylePlan) as any[];
@@ -942,7 +1325,7 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
       || 'conservative',
   };
 
-  const execution_plan = computeScenarioEnvelope({
+  const basePlan = computeScenarioEnvelope({
     horizon_weeks: weeks,
     sex: patient.gender,
     age_years: ageFromBirthDate(patient.birth_date),
@@ -959,6 +1342,14 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
     exercisePlans: plans.filter((p) => p.plan_type === 'exercise'),
     plan_config,
     assumptions,
+  });
+  const execution_plan = enrichFromContext({
+    envelope: basePlan,
+    medications,
+    plans,
+    plan_config,
+    assumptions,
+    sex: patient.gender,
   });
 
   let capture: any = null;
@@ -1014,14 +1405,17 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   db.prepare(`
     INSERT INTO body_scenarios
       (id, tenant_id, patient_id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, prompt, status,
-       measurement_snapshot, created_by, plan_config, assumptions, execution_plan, photorealism, review_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 'pending_review')
+       measurement_snapshot, created_by, plan_config, assumptions, execution_plan, photorealism, review_status,
+       prompt_version, watermark)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?)
   `).run(
     id, req.tenantId, patient.id, capture?.id ?? null, captureSessionId,
     parsed.data.title, parsed.data.goal ?? execution_plan.summary, weeks, weeks,
     seal(prompt), snapshot, req.user!.id,
     JSON.stringify(plan_config), JSON.stringify(assumptions), JSON.stringify(execution_plan),
     parsed.data.photorealism === false ? 0 : 1,
+    execution_plan.prompt_version || PROMPT_VERSION,
+    execution_plan.watermark || SCENARIO_WATERMARK,
   );
 
   if (!parsed.data.generate) {
@@ -1139,6 +1533,7 @@ async function runGenerate(req: Request, scenarioId: string, patientId: string, 
                 UPDATE body_scenarios SET status = 'completed', provider = ?, image_path = ?, error = NULL, updated_at = datetime('now')
                 WHERE id = ?
               `).run(retry.provider, imagePath, scenarioId);
+              markScenarioOutputViews(scenarioId);
               return;
             }
             if (retry.imageUrl) {
@@ -1164,6 +1559,7 @@ async function runGenerate(req: Request, scenarioId: string, patientId: string, 
       UPDATE body_scenarios SET status = 'completed', provider = ?, image_path = ?, error = NULL, updated_at = datetime('now')
       WHERE id = ?
     `).run(result.provider, imagePath, scenarioId);
+    markScenarioOutputViews(scenarioId);
     return;
   }
 
@@ -1192,6 +1588,7 @@ async function persistScenarioImage(
         SET status = 'completed', provider = ?, provider_task_id = ?, image_url = ?, image_path = ?, error = NULL, updated_at = datetime('now')
         WHERE id = ?
       `).run(provider, taskId || null, imageUrl, imagePath, scenarioId);
+      markScenarioOutputViews(scenarioId);
       return;
     }
   } catch { /* keep remote URL */ }
@@ -1200,10 +1597,12 @@ async function persistScenarioImage(
     SET status = 'completed', provider = ?, provider_task_id = ?, image_url = ?, error = NULL, updated_at = datetime('now')
     WHERE id = ?
   `).run(provider, taskId || null, imageUrl, scenarioId);
+  markScenarioOutputViews(scenarioId);
 }
 
 router.post('/:patientId/scenarios/:scenarioId/generate', requireRole('doctor', 'nurse', 'admin'), async (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
+  if (!requireStepUp(req, res)) return;
   const consents = consentMap(req.tenantId!, req.params.patientId);
   if (!simulationsAllowed(consents)) {
     res.status(403).json({ error: 'simulations_blocked', consents });

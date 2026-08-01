@@ -123,6 +123,15 @@ export default function CaptureStudio({
     try {
       const sess = await ensureSession();
       const { contentType, dataBase64 } = await fileToBase64(file);
+      // BodyPath-compatible pre-upload handshake (token logged server-side; upload remains authenticated)
+      try {
+        await api.post(`/api/clinical/body/capture-sessions/${sess.id}/assets/sign`, {
+          view,
+          content_type: contentType,
+        });
+      } catch {
+        /* sign is optional handshake — continue upload */
+      }
       const updated = await api.post(`/api/clinical/body/capture-sessions/${sess.id}/assets`, {
         view,
         content_type: contentType,

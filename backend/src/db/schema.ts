@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import fs from 'fs';
 import { migratePhiAtRest } from '../services/phiCrypto';
+import { ensureBodyMedicationLibrary } from '../services/bodyMedicationLibrary';
 
 let _db: Database.Database | null = null;
 let _dbPath: string | null = null;
@@ -1287,6 +1288,16 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE body_scenarios ADD COLUMN execution_plan TEXT`,
     `ALTER TABLE body_scenarios ADD COLUMN photorealism INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE body_scenarios ADD COLUMN review_status TEXT DEFAULT 'pending_review'`,
+    `ALTER TABLE body_medications ADD COLUMN library_id TEXT`,
+    `ALTER TABLE body_medications ADD COLUMN visual_profile TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN prompt_version TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN watermark TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN reviewed_at TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN reviewed_by TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN review_checklist TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN review_signature TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN review_comment TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN output_views TEXT`,
     // Prescription soft-cancel (CFM clinical retention — never hard-delete)
     `ALTER TABLE prescriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE prescriptions ADD COLUMN cancelled_at TEXT`,
@@ -1307,6 +1318,62 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE prescriptions ADD COLUMN signed_at TEXT`,
   ]) {
     try { openDb().exec(sql); } catch { /* exists */ }
+  }
+
+  // BodyPath parity — medication library, scenario reports, quality events
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS body_medication_library (
+      id TEXT PRIMARY KEY,
+      brand_name TEXT,
+      active_ingredient TEXT,
+      dosage_form TEXT,
+      concentration TEXT,
+      route TEXT,
+      pharmacologic_class TEXT,
+      therapeutic_category TEXT,
+      visual_profile TEXT,
+      anvisa_id TEXT,
+      holder TEXT,
+      indication_text TEXT,
+      label_url TEXT,
+      status TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS body_scenario_reports (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      scenario_id TEXT NOT NULL,
+      signature_name TEXT,
+      next_follow_up_date TEXT,
+      html_path TEXT,
+      status TEXT NOT NULL DEFAULT 'ready',
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_reports_patient ON body_scenario_reports(tenant_id, patient_id);
+    CREATE INDEX IF NOT EXISTS idx_body_reports_scenario ON body_scenario_reports(scenario_id);
+
+    CREATE TABLE IF NOT EXISTS body_quality_events (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      severity TEXT NOT NULL DEFAULT 'info',
+      status TEXT NOT NULL DEFAULT 'open',
+      related_model TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_quality_tenant ON body_quality_events(tenant_id, created_at);
+  `);
+
+  try {
+    ensureBodyMedicationLibrary(openDb());
+  } catch (e) {
+    console.warn('ensureBodyMedicationLibrary failed:', (e as Error)?.message || e);
   }
 
   // ============================================================

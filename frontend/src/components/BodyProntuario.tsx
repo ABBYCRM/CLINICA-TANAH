@@ -3,7 +3,7 @@
  * Capture · Measurements · Medications · Lifestyle · Scenarios · Reports
  * Nested inside patient workspace shell — use inset panels, not stacked cards.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import CaptureStudio from './CaptureStudio';
@@ -36,6 +36,16 @@ function Metric({ label, value, unit }: { label: string; value: string | number 
   );
 }
 
+async function openAuthHtml(url: string) {
+  const token = localStorage.getItem('auth_token');
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new Error('report');
+  const blob = await res.blob();
+  const obj = URL.createObjectURL(blob);
+  window.open(obj, '_blank', 'noopener,noreferrer');
+  setTimeout(() => URL.revokeObjectURL(obj), 60_000);
+}
+
 export default function BodyProntuario({ patientId }: {
   patientId: string;
   patientName?: string;
@@ -52,6 +62,11 @@ export default function BodyProntuario({ patientId }: {
   const [medName, setMedName] = useState('');
   const [medDose, setMedDose] = useState('');
   const [medClass, setMedClass] = useState('');
+  const [libraryId, setLibraryId] = useState('');
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryItems, setLibraryItems] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+  const [flags, setFlags] = useState<any | null>(null);
   const [activeSession, setActiveSession] = useState<any | null>(null);
 
   const load = useCallback(() => {
@@ -68,9 +83,58 @@ export default function BodyProntuario({ patientId }: {
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    if (tab !== 'medications') return;
+    let cancelled = false;
+    const q = libraryQuery.trim();
+    const path = q
+      ? `/api/clinical/body/library/medications?q=${encodeURIComponent(q)}`
+      : '/api/clinical/body/library/medications';
+    api.get(path)
+      .then((res) => {
+        if (!cancelled) setLibraryItems(res.items || []);
+      })
+      .catch(() => {
+        if (!cancelled) setLibraryItems([]);
+      });
+    return () => { cancelled = true; };
+  }, [tab, libraryQuery]);
+
+  useEffect(() => {
+    if (tab !== 'reports') return;
+    let cancelled = false;
+    Promise.all([
+      api.get(`/api/clinical/body/${patientId}/reports`),
+      api.get('/api/clinical/body/flags'),
+    ])
+      .then(([rep, fl]) => {
+        if (cancelled) return;
+        setReports(rep.reports || []);
+        setFlags(fl.flags || fl);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e?.message || t('errors.generic'));
+      });
+    return () => { cancelled = true; };
+  }, [tab, patientId, t, data?.counts?.scenarios]);
+
   const summary = data?.clinical_summary || {};
   const consents = data?.consents || {};
   const counts = data?.counts || {};
+
+  const approvedScenarios = useMemo(
+    () => (data?.scenarios || []).filter((s: any) => s.review_status === 'approved').length,
+    [data?.scenarios],
+  );
+
+  const pickLibrary = (id: string) => {
+    setLibraryId(id);
+    const item = libraryItems.find((x) => x.id === id);
+    if (item) {
+      setMedName(item.brand_name || item.active_ingredient || '');
+      setMedClass(item.visual_profile || item.pharmacologic_class || '');
+    }
+  };
 
   const grantConsents = async (purposes: string[]) => {
     setBusy('consent');
@@ -99,18 +163,21 @@ export default function BodyProntuario({ patientId }: {
   };
 
   const addMed = async () => {
-    if (!medName.trim()) return;
+    if (!medName.trim() && !libraryId) return;
     setBusy('med');
     try {
       await api.post(`/api/clinical/body/${patientId}/medications`, {
-        name: medName.trim(),
+        name: medName.trim() || undefined,
         dosage: medDose.trim() || null,
         class_tag: medClass.trim() || null,
         confirmation: 'clinician_confirmed',
+        library_id: libraryId || null,
       });
       setMedName('');
       setMedDose('');
       setMedClass('');
+      setLibraryId('');
+      setLibraryQuery('');
       load();
     } catch (e: any) {
       setError(e?.message || t('errors.generic'));
@@ -124,6 +191,7 @@ export default function BodyProntuario({ patientId }: {
   }
 
   const showSummaryStrip = tab === 'capture' || tab === 'medications' || tab === 'reports';
+  const publicExportBlocked = flags?.public_export === false;
 
   return (
     <div className="flex flex-col min-w-0" data-testid="body-prontuario">
@@ -176,11 +244,48 @@ export default function BodyProntuario({ patientId }: {
           <section className="crm-inset-panel space-y-3" data-testid="body-medications">
             <h3 className="crm-record-panel-title">{t('body.tabs.medications')}</h3>
             <p className="text-xs text-[color:var(--ink-muted)]">{t('body.meds_disclaimer')}</p>
+
+            <div className="space-y-2">
+              <label className="text-xs text-[color:var(--ink-muted)] block">
+                {t('body.library_search')}
+                <input
+                  className="input mt-1 w-full"
+                  placeholder={t('body.library_pick')}
+                  value={libraryQuery}
+                  onChange={(e) => setLibraryQuery(e.target.value)}
+                  data-testid="body-med-library-search"
+                />
+              </label>
+              <label className="text-xs text-[color:var(--ink-muted)] block">
+                {t('body.library_pick')}
+                <select
+                  className="input mt-1 w-full"
+                  value={libraryId}
+                  onChange={(e) => {
+                    if (e.target.value) pickLibrary(e.target.value);
+                    else {
+                      setLibraryId('');
+                    }
+                  }}
+                  data-testid="body-med-library-select"
+                >
+                  <option value="">—</option>
+                  {libraryItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.brand_name || item.active_ingredient}
+                      {item.active_ingredient && item.brand_name ? ` — ${item.active_ingredient}` : ''}
+                      {item.visual_profile ? ` (${item.visual_profile})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             <div className="flex flex-wrap gap-2">
-              <input className="input flex-1 min-w-[10rem]" placeholder={t('body.med_name')} value={medName} onChange={(e) => setMedName(e.target.value)} />
+              <input className="input flex-1 min-w-[10rem]" placeholder={t('body.med_name')} value={medName} onChange={(e) => setMedName(e.target.value)} data-testid="body-med-name" />
               <input className="input w-36" placeholder={t('body.med_dose')} value={medDose} onChange={(e) => setMedDose(e.target.value)} />
               <input className="input w-40" placeholder={t('body.med_class')} value={medClass} onChange={(e) => setMedClass(e.target.value)} />
-              <button type="button" className="btn-primary text-sm" disabled={busy === 'med'} onClick={addMed}>{t('common.add')}</button>
+              <button type="button" className="btn-primary text-sm" disabled={busy === 'med'} onClick={addMed} data-testid="body-med-add">{t('common.add')}</button>
             </div>
             <ul className="space-y-1.5">
               {(data?.medications || []).map((m: any) => (
@@ -189,6 +294,7 @@ export default function BodyProntuario({ patientId }: {
                     <strong>{m.name}</strong>
                     {m.dosage ? ` · ${m.dosage}` : ''}
                     {m.class_tag ? ` · ${m.class_tag}` : ''}
+                    {m.library_id ? <span className="text-[11px] text-[color:var(--ink-muted)]"> · lib:{m.library_id}</span> : null}
                   </span>
                   <button
                     type="button"
@@ -235,7 +341,7 @@ export default function BodyProntuario({ patientId }: {
         )}
 
         {tab === 'reports' && (
-          <section className="crm-inset-panel space-y-2" data-testid="body-reports">
+          <section className="crm-inset-panel space-y-3" data-testid="body-reports">
             <h3 className="crm-record-panel-title">{t('body.tabs.reports')}</h3>
             <p className="text-sm text-[color:var(--ink-muted)]">
               {t('body.captures_scenarios')}: {counts.captures || 0} · {counts.scenarios || 0}
@@ -243,9 +349,49 @@ export default function BodyProntuario({ patientId }: {
             <p className="text-sm text-[color:var(--ink-muted)]">
               {t('body.tabs.medications')}: {counts.medications || 0} · {t('body.tabs.lifestyle')}: {counts.plans || 0}
             </p>
+            <p className="text-sm" data-testid="body-approved-count">
+              Approved scenarios: <strong className="tabular-nums">{approvedScenarios}</strong>
+            </p>
             {summary.bmi != null && (
               <p className="text-sm">{t('body.bmi')}: <strong className="tabular-nums">{summary.bmi}</strong></p>
             )}
+
+            {publicExportBlocked && (
+              <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] rounded-lg px-3 py-2" data-testid="body-public-export-blocked">
+                {t('body.public_export_blocked')}
+              </p>
+            )}
+
+            <ul className="space-y-2" data-testid="body-reports-list">
+              {reports.map((r: any) => (
+                <li key={r.id} className="crm-timeline-card text-sm flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <span className="font-medium">{r.signature_name || r.id}</span>
+                    <span className="block text-[11px] text-[color:var(--ink-muted)]">
+                      {r.status} · {r.created_at}
+                      {r.next_follow_up_date ? ` · FU ${r.next_follow_up_date}` : ''}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    data-testid={`body-report-open-${r.id}`}
+                    onClick={async () => {
+                      try {
+                        await openAuthHtml(r.html_url || `/api/clinical/body/reports/${r.id}/html`);
+                      } catch (e: any) {
+                        setError(e?.message || t('errors.generic'));
+                      }
+                    }}
+                  >
+                    HTML
+                  </button>
+                </li>
+              ))}
+              {!reports.length && (
+                <li className="text-sm text-[color:var(--ink-muted)]">{t('body.reports_empty')}</li>
+              )}
+            </ul>
           </section>
         )}
 

@@ -1,15 +1,17 @@
 /**
  * Body composition scenario imagery — ultra-realistic clinical visualizations.
  *
- * Provider order (BodyPath-compatible): A2E (nano-banana-pro 4K) → Gemini image.
+ * Provider order (BodyPath-compatible): A2E → Gemini → Bitdeer → local_morph fallback.
  * Images illustrate professionally mediated scenarios — NOT autonomous diagnosis.
  */
 import fs from 'fs';
 import path from 'path';
 import { uploadsRoot } from './nvidiaOcr';
 
+export type ImageProvider = 'a2e' | 'gemini' | 'bitdeer' | 'local_morph';
+
 export type ImageGenResult = {
-  provider: 'a2e' | 'gemini';
+  provider: ImageProvider;
   taskId?: string;
   status: 'completed' | 'pending' | 'failed';
   imageUrl?: string;
@@ -22,6 +24,7 @@ export type ImageGenResult = {
 const A2E_BASE = process.env.A2E_BASE_URL || 'https://video.a2e.ai';
 const A2E_MODEL = process.env.A2E_MODEL || 'nano-banana-pro';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
+const BITDEER_MODEL = process.env.BITDEER_MODEL || 'flux-schnell';
 
 export function bodyUploadsDir(tenantId: string, patientId: string): string {
   const dir = path.join(uploadsRoot(), tenantId, 'body', patientId);
@@ -76,19 +79,45 @@ function geminiEnabled(): boolean {
   return process.env.GEMINI_ENABLED !== '0' && !!process.env.GEMINI_API_KEY;
 }
 
-function providerOrder(): Array<'a2e' | 'gemini'> {
-  const raw = (process.env.IMAGE_PROVIDER_ORDER || 'a2e,gemini')
+function bitdeerBaseUrl(): string | null {
+  const base = (
+    process.env.BITDEER_BASE_URL
+    || process.env.BITDEER_API_BASE
+    || process.env.BITDEER_API_URL
+    || ''
+  ).replace(/\/$/, '');
+  return base || null;
+}
+
+function bitdeerEnabled(): boolean {
+  if (process.env.BITDEER_ENABLED === '0') return false;
+  return !!(process.env.BITDEER_API_KEY && bitdeerBaseUrl());
+}
+
+function localMorphEnabled(): boolean {
+  return process.env.LOCAL_MORPH_FALLBACK === '1' || process.env.LOCAL_MORPH_FALLBACK === 'true';
+}
+
+function providerOrder(): ImageProvider[] {
+  const raw = (process.env.IMAGE_PROVIDER_ORDER || 'a2e,gemini,bitdeer,local_morph')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  const out: Array<'a2e' | 'gemini'> = [];
+  const out: ImageProvider[] = [];
+  const push = (p: ImageProvider) => {
+    if (!out.includes(p)) out.push(p);
+  };
   for (const p of raw) {
-    if (p === 'a2e' && a2eEnabled()) out.push('a2e');
-    if (p === 'gemini' && geminiEnabled()) out.push('gemini');
+    if (p === 'a2e' && a2eEnabled()) push('a2e');
+    if (p === 'gemini' && geminiEnabled()) push('gemini');
+    if (p === 'bitdeer' && bitdeerEnabled()) push('bitdeer');
+    if ((p === 'local_morph' || p === 'local') && localMorphEnabled()) push('local_morph');
   }
   if (!out.length) {
-    if (a2eEnabled()) out.push('a2e');
-    if (geminiEnabled()) out.push('gemini');
+    if (a2eEnabled()) push('a2e');
+    if (geminiEnabled()) push('gemini');
+    if (bitdeerEnabled()) push('bitdeer');
+    if (localMorphEnabled()) push('local_morph');
   }
   return out;
 }
@@ -212,6 +241,84 @@ async function generateGemini(opts: {
   return { provider: 'gemini', status: 'failed', error: 'gemini_no_image', raw: json };
 }
 
+/** Bitdeer / OpenAI-compatible image generate — skipped when not configured. */
+async function generateBitdeer(opts: {
+  prompt: string;
+  referencePath?: string | null;
+}): Promise<ImageGenResult> {
+  const key = process.env.BITDEER_API_KEY;
+  const base = bitdeerBaseUrl();
+  if (!key || !base) {
+    return { provider: 'bitdeer', status: 'failed', error: 'bitdeer_not_configured' };
+  }
+
+  const endpoint = process.env.BITDEER_GENERATE_PATH
+    || '/v1/images/generations';
+  const url = `${base}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+  const body: Record<string, unknown> = {
+    model: BITDEER_MODEL,
+    prompt: opts.prompt,
+    n: 1,
+    size: process.env.BITDEER_IMAGE_SIZE || '1024x1536',
+    response_format: 'b64_json',
+  };
+  if (opts.referencePath && fs.existsSync(opts.referencePath)) {
+    body.image = fs.readFileSync(opts.referencePath).toString('base64');
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      provider: 'bitdeer',
+      status: 'failed',
+      error: json?.error?.message || json?.message || `bitdeer_http_${res.status}`,
+      raw: json,
+    };
+  }
+  const item = json?.data?.[0] || json?.images?.[0] || json;
+  if (item?.b64_json || item?.base64) {
+    return {
+      provider: 'bitdeer',
+      status: 'completed',
+      imageBytes: Buffer.from(item.b64_json || item.base64, 'base64'),
+      contentType: 'image/png',
+      raw: { model: BITDEER_MODEL },
+    };
+  }
+  if (item?.url) {
+    return { provider: 'bitdeer', status: 'completed', imageUrl: item.url, raw: json };
+  }
+  return { provider: 'bitdeer', status: 'failed', error: 'bitdeer_no_image', raw: json };
+}
+
+/** Identity-preserving no-op morph: copy reference bytes when clouds fail. */
+function localMorphFallback(referencePath?: string | null): ImageGenResult {
+  if (!localMorphEnabled()) {
+    return { provider: 'local_morph', status: 'failed', error: 'local_morph_disabled' };
+  }
+  if (!referencePath || !fs.existsSync(referencePath)) {
+    return { provider: 'local_morph', status: 'failed', error: 'local_morph_no_reference' };
+  }
+  const imageBytes = fs.readFileSync(referencePath);
+  const contentType = referencePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  return {
+    provider: 'local_morph',
+    status: 'completed',
+    imageBytes,
+    contentType,
+    raw: { note: 'identity_preserving_noop_morph' },
+  };
+}
+
 /** Public HTTPS URL for A2E reference (temporary signed local file via APP_ORIGIN if available). */
 export async function generateBodyScenarioImage(opts: {
   name: string;
@@ -236,7 +343,6 @@ export async function generateBodyScenarioImage(opts: {
   for (const provider of order) {
     try {
       if (provider === 'a2e') {
-        // Try with reference first (identity-preserving edit), then text-only.
         const attempts: Array<string[] | undefined> = publicRef ? [[publicRef], undefined] : [undefined];
         for (const inputImages of attempts) {
           last = await startA2e({ name: opts.name, prompt: opts.prompt, inputImages });
@@ -259,6 +365,21 @@ export async function generateBodyScenarioImage(opts: {
         });
         if (last.status !== 'failed') return last;
         errors.push(`gemini:${last.error || 'failed'}`);
+        continue;
+      }
+      if (provider === 'bitdeer') {
+        last = await generateBitdeer({
+          prompt: opts.prompt,
+          referencePath: opts.referencePath,
+        });
+        if (last.status !== 'failed') return last;
+        errors.push(`bitdeer:${last.error || 'failed'}`);
+        continue;
+      }
+      if (provider === 'local_morph') {
+        last = localMorphFallback(opts.referencePath);
+        if (last.status !== 'failed') return last;
+        errors.push(`local_morph:${last.error || 'failed'}`);
       }
     } catch (e: any) {
       errors.push(`${provider}:${e?.message || String(e)}`);
@@ -278,8 +399,12 @@ export function imageProvidersStatus() {
   return {
     a2e: a2eEnabled(),
     gemini: geminiEnabled(),
+    bitdeer: bitdeerEnabled(),
+    local_morph: localMorphEnabled(),
     order: providerOrder(),
     a2e_model: A2E_MODEL,
     gemini_model: GEMINI_MODEL,
+    bitdeer_model: bitdeerEnabled() ? BITDEER_MODEL : null,
+    bitdeer_configured: bitdeerEnabled(),
   };
 }
