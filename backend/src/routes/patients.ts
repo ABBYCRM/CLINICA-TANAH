@@ -1291,7 +1291,8 @@ router.get('/:id/summary', (req: Request, res: Response) => {
     ORDER BY a.scheduled_at ASC LIMIT 5
   `).all(req.params.id, req.tenantId);
   const activePrescriptions = (db.prepare(`
-    SELECT COUNT(*) AS c FROM prescriptions WHERE patient_id = ? AND tenant_id = ?
+    SELECT COUNT(*) AS c FROM prescriptions
+    WHERE patient_id = ? AND tenant_id = ? AND COALESCE(status, 'active') = 'active'
   `).get(req.params.id, req.tenantId) as any).c;
   logAudit({
     tenantId: req.tenantId,
