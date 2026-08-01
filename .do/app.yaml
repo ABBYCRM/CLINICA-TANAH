@@ -61,7 +61,9 @@ services:
         type: SECRET
         scope: RUN_TIME
       - key: IMAGE_PROVIDER_ORDER
-        value: "a2e,gemini"
+        value: "a2e,gemini,bitdeer,local_morph"
+      - key: LOCAL_MORPH_FALLBACK
+        value: "1"
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED
