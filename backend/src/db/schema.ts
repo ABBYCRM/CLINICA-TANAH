@@ -1363,6 +1363,23 @@ export function seedMarketingDefaults(tenantId: string): void {
     CREATE INDEX IF NOT EXISTS idx_body_reports_patient ON body_scenario_reports(tenant_id, patient_id);
     CREATE INDEX IF NOT EXISTS idx_body_reports_scenario ON body_scenario_reports(scenario_id);
 
+    CREATE TABLE IF NOT EXISTS body_clinical_reports (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'clinical_full',
+      title TEXT,
+      signature_name TEXT,
+      next_follow_up_date TEXT,
+      include_json TEXT,
+      html_path TEXT,
+      status TEXT NOT NULL DEFAULT 'ready',
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_clinical_reports_patient
+      ON body_clinical_reports(tenant_id, patient_id, created_at);
+
     CREATE TABLE IF NOT EXISTS body_quality_events (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,

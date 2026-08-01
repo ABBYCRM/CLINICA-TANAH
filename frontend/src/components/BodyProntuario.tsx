@@ -71,6 +71,30 @@ export default function BodyProntuario({ patientId }: {
   const [reports, setReports] = useState<any[]>([]);
   const [flags, setFlags] = useState<any | null>(null);
   const [activeSession, setActiveSession] = useState<any | null>(null);
+  const [reportSignature, setReportSignature] = useState('');
+  const [reportFollowUp, setReportFollowUp] = useState('');
+  const [reportMsg, setReportMsg] = useState('');
+  const [reportInclude, setReportInclude] = useState({
+    demographics: true,
+    consents: true,
+    alerts: true,
+    measurements: true,
+    medications: true,
+    lifestyle: true,
+    captures: true,
+    scenarios: true,
+    chart: true,
+    appointments: true,
+  });
+  const reloadReports = useCallback(() => {
+    return Promise.all([
+      api.get(`/api/clinical/body/${patientId}/reports`),
+      api.get('/api/clinical/body/flags'),
+    ]).then(([rep, fl]) => {
+      setReports(rep.reports || []);
+      setFlags(fl.flags || fl);
+    });
+  }, [patientId]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -117,20 +141,37 @@ export default function BodyProntuario({ patientId }: {
   useEffect(() => {
     if (tab !== 'reports') return;
     let cancelled = false;
-    Promise.all([
-      api.get(`/api/clinical/body/${patientId}/reports`),
-      api.get('/api/clinical/body/flags'),
-    ])
-      .then(([rep, fl]) => {
-        if (cancelled) return;
-        setReports(rep.reports || []);
-        setFlags(fl.flags || fl);
-      })
+    reloadReports()
       .catch((e) => {
         if (!cancelled) setError(e?.message || t('errors.generic'));
       });
     return () => { cancelled = true; };
-  }, [tab, patientId, t, data?.counts?.scenarios]);
+  }, [tab, reloadReports, t, data?.counts?.scenarios]);
+
+  const generateFullReport = async () => {
+    if (!reportSignature.trim()) {
+      setReportMsg(t('body.full_report_sig_required'));
+      return;
+    }
+    setBusy('full-report');
+    setReportMsg('');
+    try {
+      const res = await api.post(`/api/clinical/body/${patientId}/clinical-reports`, {
+        signature_name: reportSignature.trim(),
+        next_follow_up_date: reportFollowUp || null,
+        include: reportInclude,
+      });
+      setReportMsg(t('body.full_report_created'));
+      await reloadReports();
+      if (res?.html_url) {
+        try { await openAuthHtml(res.html_url); } catch { /* list still refreshed */ }
+      }
+    } catch (e: any) {
+      setReportMsg(e?.message || t('errors.generic'));
+    } finally {
+      setBusy('');
+    }
+  };
 
   const summary = data?.clinical_summary || {};
   const consents = data?.consents || {};
@@ -439,18 +480,76 @@ export default function BodyProntuario({ patientId }: {
         {tab === 'reports' && (
           <section className="crm-inset-panel space-y-3" data-testid="body-reports">
             <h3 className="crm-record-panel-title">{t('body.tabs.reports')}</h3>
-            <p className="text-sm text-[color:var(--ink-muted)]">
-              {t('body.captures_scenarios')}: {counts.captures || 0} · {counts.scenarios || 0}
-            </p>
-            <p className="text-sm text-[color:var(--ink-muted)]">
-              {t('body.tabs.medications')}: {counts.medications || 0} · {t('body.tabs.lifestyle')}: {counts.plans || 0}
-            </p>
-            <p className="text-sm" data-testid="body-approved-count">
-              Approved scenarios: <strong className="tabular-nums">{approvedScenarios}</strong>
-            </p>
-            {summary.bmi != null && (
-              <p className="text-sm">{t('body.bmi')}: <strong className="tabular-nums">{summary.bmi}</strong></p>
-            )}
+            <p className="text-sm text-[color:var(--ink-muted)] leading-relaxed">{t('body.full_report_intro')}</p>
+
+            <div className="rounded-lg border border-[rgba(176,183,192,0.45)] bg-[#f7f1e6] px-3 py-2.5 space-y-3" data-testid="body-full-report-form">
+              <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.full_report_title')}</h4>
+              <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">{t('body.full_report_hint')}</p>
+
+              <div className="grid sm:grid-cols-2 gap-2">
+                <label className="text-xs text-[color:var(--ink-muted)]">{t('body.full_report_signature')}
+                  <input
+                    className="input mt-1 w-full"
+                    value={reportSignature}
+                    onChange={(e) => setReportSignature(e.target.value)}
+                    placeholder={t('body.full_report_signature_ph')}
+                    data-testid="body-full-report-signature"
+                  />
+                </label>
+                <label className="text-xs text-[color:var(--ink-muted)]">{t('body.full_report_followup')}
+                  <input
+                    className="input mt-1 w-full"
+                    type="date"
+                    value={reportFollowUp}
+                    onChange={(e) => setReportFollowUp(e.target.value)}
+                    data-testid="body-full-report-followup"
+                  />
+                </label>
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-2">
+                  {t('body.full_report_sections')}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm" data-testid="body-full-report-sections">
+                  {(Object.keys(reportInclude) as Array<keyof typeof reportInclude>).map((key) => (
+                    <label key={key} className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reportInclude[key]}
+                        onChange={(e) => setReportInclude((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        data-testid={`body-full-report-section-${key}`}
+                      />
+                      {t(`body.full_report_section_${key}`)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                disabled={busy === 'full-report'}
+                onClick={generateFullReport}
+                data-testid="body-full-report-generate"
+              >
+                {busy === 'full-report' ? '…' : t('body.full_report_generate')}
+              </button>
+              {reportMsg && (
+                <p className="text-sm text-[color:var(--ink-muted)]" data-testid="body-full-report-msg">{reportMsg}</p>
+              )}
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-2 text-sm text-[color:var(--ink-muted)]">
+              <p>{t('body.captures_scenarios')}: {counts.captures || 0} · {counts.scenarios || 0}</p>
+              <p>{t('body.tabs.medications')}: {counts.medications || 0} · {t('body.tabs.lifestyle')}: {counts.plans || 0}</p>
+              <p data-testid="body-approved-count">
+                {t('body.approved_scenarios')}: <strong className="tabular-nums text-[color:var(--ink)]">{approvedScenarios}</strong>
+              </p>
+              {summary.bmi != null && (
+                <p>{t('body.bmi')}: <strong className="tabular-nums text-[color:var(--ink)]">{summary.bmi}</strong></p>
+              )}
+            </div>
 
             {publicExportBlocked && (
               <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] rounded-lg px-3 py-2" data-testid="body-public-export-blocked">
@@ -462,9 +561,12 @@ export default function BodyProntuario({ patientId }: {
               {reports.map((r: any) => (
                 <li key={r.id} className="crm-timeline-card text-sm flex flex-wrap items-center justify-between gap-2">
                   <span>
-                    <span className="font-medium">{r.signature_name || r.id}</span>
+                    <span className="font-medium">{r.title || r.signature_name || r.id}</span>
                     <span className="block text-[11px] text-[color:var(--ink-muted)]">
-                      {r.status} · {r.created_at}
+                      {r.kind === 'clinical_full' || !r.scenario_id
+                        ? t('body.full_report_kind')
+                        : t('body.scenario_report_kind')}
+                      {' · '}{r.status} · {r.created_at}
                       {r.next_follow_up_date ? ` · FU ${r.next_follow_up_date}` : ''}
                     </span>
                   </span>
@@ -474,7 +576,12 @@ export default function BodyProntuario({ patientId }: {
                     data-testid={`body-report-open-${r.id}`}
                     onClick={async () => {
                       try {
-                        await openAuthHtml(r.html_url || `/api/clinical/body/reports/${r.id}/html`);
+                        await openAuthHtml(
+                          r.html_url
+                          || (r.kind === 'clinical_full' || !r.scenario_id
+                            ? `/api/clinical/body/clinical-reports/${r.id}/html`
+                            : `/api/clinical/body/reports/${r.id}/html`),
+                        );
                       } catch (e: any) {
                         setError(e?.message || t('errors.generic'));
                       }

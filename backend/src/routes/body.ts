@@ -47,6 +47,12 @@ import {
   search as searchLibrary,
 } from '../services/bodyMedicationLibrary';
 import { verifyStepUp } from './auth';
+import {
+  collectClinicalReportData,
+  ensureClinicalReportsTable,
+  renderClinicalReportHtml,
+  writeClinicalReportHtml,
+} from '../services/clinicalFullReport';
 import { uploadsRoot } from '../services/nvidiaOcr';
 
 function ageFromBirthDate(birth?: string | null): number | null {
@@ -731,6 +737,29 @@ router.get('/reports/:reportId/html', requireRole(...CLINICAL_ROLES), (req: Requ
   fs.createReadStream(row.html_path).pipe(res);
 });
 
+/** Full clinical dossier HTML (auth-only) */
+router.get('/clinical-reports/:reportId/html', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  ensureClinicalReportsTable(db);
+  const row = db.prepare(`
+    SELECT * FROM body_clinical_reports WHERE id = ? AND tenant_id = ?
+  `).get(req.params.reportId, req.tenantId) as any;
+  if (!row?.html_path || !fs.existsSync(row.html_path)) {
+    res.status(404).json({ error: 'not_found' });
+    return;
+  }
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'view_clinical_full_report', resourceType: 'body_clinical_report', resourceId: row.id,
+    afterValue: { patient_id: row.patient_id },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'private, max-age=60');
+  fs.createReadStream(row.html_path).pipe(res);
+});
+
 router.post('/scenarios/:scenarioId/reviews', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
   const scenario = db.prepare(`
@@ -1319,14 +1348,117 @@ router.get('/:patientId/reports', requireRole(...CLINICAL_ROLES), (req: Request,
   if (!requireClinical(req, res)) return;
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
-  const reports = db.prepare(`
+  ensureClinicalReportsTable(db);
+  const scenarioReports = db.prepare(`
     SELECT id, scenario_id, signature_name, next_follow_up_date, status, created_by, created_at,
+           'scenario' AS kind,
            '/api/clinical/body/reports/' || id || '/html' AS html_url
     FROM body_scenario_reports
     WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
+  `).all(req.tenantId, patient.id) as any[];
+  const clinicalReports = db.prepare(`
+    SELECT id, NULL AS scenario_id, signature_name, next_follow_up_date, status, created_by, created_at,
+           kind, title,
+           '/api/clinical/body/clinical-reports/' || id || '/html' AS html_url
+    FROM body_clinical_reports
+    WHERE tenant_id = ? AND patient_id = ?
+    ORDER BY created_at DESC LIMIT 50
+  `).all(req.tenantId, patient.id) as any[];
+  const reports = [...clinicalReports, ...scenarioReports]
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, 80);
+  res.json({ reports, clinical_reports: clinicalReports, scenario_reports: scenarioReports });
+});
+
+router.get('/:patientId/clinical-reports', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const patient = patientInTenant(req.params.patientId, req.tenantId!);
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  ensureClinicalReportsTable(db);
+  const reports = db.prepare(`
+    SELECT id, kind, title, signature_name, next_follow_up_date, status, created_by, created_at,
+           '/api/clinical/body/clinical-reports/' || id || '/html' AS html_url
+    FROM body_clinical_reports
+    WHERE tenant_id = ? AND patient_id = ?
+    ORDER BY created_at DESC LIMIT 50
   `).all(req.tenantId, patient.id);
   res.json({ reports });
+});
+
+router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const patient = patientInTenant(req.params.patientId, req.tenantId!);
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  const parsed = z.object({
+    signature_name: z.string().min(1).max(200),
+    next_follow_up_date: z.string().max(40).optional().nullable(),
+    title: z.string().max(200).optional().nullable(),
+    include: z.object({
+      demographics: z.boolean().optional(),
+      consents: z.boolean().optional(),
+      alerts: z.boolean().optional(),
+      measurements: z.boolean().optional(),
+      medications: z.boolean().optional(),
+      lifestyle: z.boolean().optional(),
+      captures: z.boolean().optional(),
+      scenarios: z.boolean().optional(),
+      chart: z.boolean().optional(),
+      appointments: z.boolean().optional(),
+    }).optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
+
+  ensureClinicalReportsTable(db);
+  const include = parsed.data.include || {};
+  const payload = collectClinicalReportData({
+    db,
+    tenantId: req.tenantId!,
+    patientId: patient.id,
+    signatureName: parsed.data.signature_name,
+    nextFollowUpDate: parsed.data.next_follow_up_date,
+    include,
+    generatedBy: { id: req.user!.id, email: req.user!.email, name: (req.user as any).full_name },
+  });
+  const html = renderClinicalReportHtml(payload, {
+    signatureName: parsed.data.signature_name,
+    nextFollowUpDate: parsed.data.next_follow_up_date,
+    generatedBy: (req.user as any).full_name || req.user!.email,
+  });
+  const id = uuid();
+  const htmlPath = writeClinicalReportHtml({
+    tenantId: req.tenantId!,
+    patientId: patient.id,
+    reportId: id,
+    html,
+  });
+  const title = parsed.data.title?.trim()
+    || `Relatório clínico completo — ${patient.full_name || patient.id}`;
+  db.prepare(`
+    INSERT INTO body_clinical_reports
+      (id, tenant_id, patient_id, kind, title, signature_name, next_follow_up_date, include_json, html_path, status, created_by)
+    VALUES (?, ?, ?, 'clinical_full', ?, ?, ?, ?, ?, 'ready', ?)
+  `).run(
+    id, req.tenantId, patient.id, title,
+    parsed.data.signature_name, parsed.data.next_follow_up_date ?? null,
+    JSON.stringify(include), htmlPath, req.user!.id,
+  );
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'create_clinical_full_report', resourceType: 'body_clinical_report', resourceId: id,
+    afterValue: { patient_id: patient.id, sections: Object.keys(include).length ? include : 'all' },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+
+  res.status(201).json({
+    id,
+    kind: 'clinical_full',
+    title,
+    html_url: `/api/clinical/body/clinical-reports/${id}/html`,
+    counts: payload.counts,
+  });
 });
 
 /** GET /api/clinical/body/:patientId — full body prontuário summary */
