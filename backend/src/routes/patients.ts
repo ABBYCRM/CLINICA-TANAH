@@ -820,6 +820,237 @@ router.get('/:id/record', (req: Request, res: Response) => {
   });
 });
 
+/**
+ * Resolve a timeline event into a live inspectable entity payload.
+ * Used by the patient workspace activity inspector (URL ?event=…).
+ */
+router.get('/:id/timeline/:eventId', (req: Request, res: Response) => {
+  const patient = db.prepare(`SELECT id, phone, full_name FROM patients WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.id, req.tenantId) as any;
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const eventId = String(req.params.eventId || '');
+  const clinicalOk = canViewClinical(req.user?.role);
+  const parseArr = (v: any): string[] => {
+    if (Array.isArray(v)) return v;
+    try { return v ? JSON.parse(v) : []; } catch { return []; }
+  };
+
+  const entityIdFrom = (prefix: string) =>
+    eventId.startsWith(prefix) ? eventId.slice(prefix.length) : null;
+
+  let kind = 'unknown';
+  let entity: any = null;
+  let related: Record<string, unknown> = {};
+  const actions: Array<{ id: string; label_key: string }> = [];
+
+  const apptId = entityIdFrom('appt-') || (req.query.appointment_id as string) || null;
+  const encId = entityIdFrom('enc-');
+  const rxId = entityIdFrom('rx-');
+  const invId = entityIdFrom('inv-');
+  const waId = entityIdFrom('wa-');
+  const surveyId = entityIdFrom('survey-');
+  const taskId = entityIdFrom('task-');
+  const ticketId = entityIdFrom('ticket-');
+  const docId = entityIdFrom('doc-');
+  const consentId = entityIdFrom('consent-');
+
+  if (apptId || eventId.startsWith('appt-')) {
+    const id = apptId || entityIdFrom('appt-');
+    kind = 'appointment';
+    entity = db.prepare(`
+      SELECT a.*, p.full_name AS patient_name, p.phone AS patient_phone,
+             u.full_name AS practitioner_name
+      FROM appointments a
+      JOIN patients p ON p.id = a.patient_id
+      JOIN users u ON u.id = a.practitioner_id
+      WHERE a.id = ? AND a.patient_id = ? AND a.tenant_id = ?
+    `).get(id, patient.id, req.tenantId);
+    if (entity) {
+      actions.push(
+        { id: 'goto_appointments', label_key: 'patients.inspector.action_goto_appointments' },
+        { id: 'status_cycle', label_key: 'patients.inspector.action_update_status' },
+      );
+      if (clinicalOk) actions.push({ id: 'goto_clinical', label_key: 'patients.inspector.action_goto_clinical' });
+      const linkedEnc = clinicalOk
+        ? db.prepare(`
+            SELECT id, started_at, assessment FROM encounters
+            WHERE appointment_id = ? AND patient_id = ? AND tenant_id = ? LIMIT 1
+          `).get(entity.id, patient.id, req.tenantId)
+        : null;
+      related = {
+        encounter: linkedEnc
+          ? { id: (linkedEnc as any).id, started_at: (linkedEnc as any).started_at, preview: (linkedEnc as any).assessment ? String((linkedEnc as any).assessment).slice(0, 120) : null }
+          : null,
+      };
+    }
+  } else if (encId) {
+    kind = 'encounter';
+    if (!clinicalOk) {
+      res.status(403).json({ error: 'clinical_restricted' }); return;
+    }
+    const raw = db.prepare(`
+      SELECT e.*, u.full_name AS practitioner_name
+      FROM encounters e JOIN users u ON u.id = e.practitioner_id
+      WHERE e.id = ? AND e.patient_id = ? AND e.tenant_id = ?
+    `).get(encId, patient.id, req.tenantId) as any;
+    if (raw) {
+      entity = revealEncounterRow(raw)!;
+      entity.practitioner_name = raw.practitioner_name;
+      entity.icd10_codes = parseArr(entity.icd10_codes);
+      actions.push(
+        { id: 'goto_clinical', label_key: 'patients.inspector.action_goto_clinical' },
+        { id: 'goto_encounters', label_key: 'patients.inspector.action_goto_encounters' },
+      );
+      if (entity.appointment_id) {
+        related.appointment = db.prepare(`
+          SELECT id, scheduled_at, type, status FROM appointments WHERE id = ? AND tenant_id = ?
+        `).get(entity.appointment_id, req.tenantId);
+      }
+    }
+  } else if (rxId) {
+    kind = 'prescription';
+    if (!clinicalOk) {
+      res.status(403).json({ error: 'clinical_restricted' }); return;
+    }
+    const raw = db.prepare(`
+      SELECT pr.*, u.full_name AS practitioner_name
+      FROM prescriptions pr LEFT JOIN users u ON u.id = pr.practitioner_id
+      WHERE pr.id = ? AND pr.patient_id = ? AND pr.tenant_id = ?
+    `).get(rxId, patient.id, req.tenantId) as any;
+    if (raw) {
+      entity = { ...raw, items: revealPrescriptionItems(raw.items) };
+      actions.push({ id: 'goto_clinical', label_key: 'patients.inspector.action_goto_clinical' });
+    }
+  } else if (invId) {
+    kind = 'invoice';
+    const inv = db.prepare(`
+      SELECT i.*, p.full_name AS patient_name
+      FROM invoices i LEFT JOIN patients p ON p.id = i.patient_id
+      WHERE i.id = ? AND i.patient_id = ? AND i.tenant_id = ?
+    `).get(invId, patient.id, req.tenantId) as any;
+    if (inv) {
+      entity = inv;
+      related = {
+        lines: db.prepare(`SELECT * FROM invoice_lines WHERE invoice_id = ?`).all(invId),
+        documents: db.prepare(`
+          SELECT id, original_name, mime_type, size_bytes, ocr_status, ocr_model, created_at
+          FROM invoice_documents WHERE invoice_id = ? AND tenant_id = ? ORDER BY created_at DESC
+        `).all(invId, req.tenantId),
+      };
+      actions.push(
+        { id: 'goto_billing', label_key: 'patients.inspector.action_goto_billing' },
+        { id: 'open_invoices', label_key: 'patients.inspector.action_open_invoices' },
+      );
+      if (inv.status !== 'paid' && ['admin', 'accountant', 'receptionist'].includes(req.user?.role || '')) {
+        actions.push({ id: 'mark_paid', label_key: 'patients.inspector.action_mark_paid' });
+      }
+    }
+  } else if (waId) {
+    kind = 'whatsapp';
+    if (patient.phone) {
+      entity = db.prepare(`
+        SELECT id, direction, body, status, created_at, phone
+        FROM whatsapp_messages WHERE id = ? AND phone = ? AND tenant_id = ?
+      `).get(waId, patient.phone, req.tenantId);
+    }
+    actions.push({ id: 'goto_whatsapp', label_key: 'patients.inspector.action_goto_whatsapp' });
+  } else if (surveyId) {
+    kind = 'survey';
+    entity = db.prepare(`
+      SELECT * FROM satisfaction_surveys WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(surveyId, patient.id, req.tenantId);
+    actions.push({ id: 'goto_surveys', label_key: 'patients.inspector.action_goto_surveys' });
+  } else if (taskId) {
+    kind = 'task';
+    entity = db.prepare(`
+      SELECT * FROM patient_tasks WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(taskId, patient.id, req.tenantId);
+    actions.push({ id: 'goto_tasks', label_key: 'patients.inspector.action_goto_tasks' });
+    if (entity && (entity as any).status === 'open') {
+      actions.push({ id: 'resolve_task', label_key: 'patients.inspector.action_resolve' });
+    }
+  } else if (ticketId) {
+    kind = 'complaint';
+    entity = db.prepare(`
+      SELECT * FROM service_tickets WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(ticketId, patient.id, req.tenantId);
+    actions.push({ id: 'goto_tasks', label_key: 'patients.inspector.action_goto_tasks' });
+    if (entity && (entity as any).status === 'open') {
+      actions.push({ id: 'resolve_ticket', label_key: 'patients.inspector.action_resolve' });
+    }
+  } else if (docId) {
+    kind = 'document';
+    entity = db.prepare(`
+      SELECT * FROM patient_documents WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(docId, patient.id, req.tenantId);
+    actions.push({ id: 'goto_documents', label_key: 'patients.inspector.action_goto_documents' });
+  } else if (consentId) {
+    kind = 'consent';
+    entity = db.prepare(`
+      SELECT id, consent_type, granted, granted_at, revoked_at, policy_version
+      FROM lgpd_consents WHERE id = ? AND subject_type = 'patient' AND subject_id = ?
+    `).get(consentId, patient.id);
+    actions.push({ id: 'goto_privacy', label_key: 'patients.inspector.action_goto_privacy' });
+  } else if (eventId.startsWith('created-') || eventId.startsWith('note-')) {
+    kind = eventId.startsWith('note-') ? 'note' : 'created';
+    entity = {
+      patient_id: patient.id,
+      full_name: patient.full_name,
+      kind,
+    };
+    actions.push({ id: 'edit_patient', label_key: 'patients.inspector.action_edit_patient' });
+  } else {
+    // Durable patient_timeline_events row
+    const durable = db.prepare(`
+      SELECT id, kind, title, subtitle, status, meta, occurred_at AS at
+      FROM patient_timeline_events
+      WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(eventId, patient.id, req.tenantId) as any;
+    if (durable) {
+      kind = durable.kind || 'lifecycle';
+      let meta: any = undefined;
+      try { meta = durable.meta ? JSON.parse(durable.meta) : undefined; } catch { /* */ }
+      entity = { ...durable, meta };
+      if (meta?.appointment_id) {
+        related.appointment = db.prepare(`
+          SELECT id, scheduled_at, type, status FROM appointments WHERE id = ? AND tenant_id = ?
+        `).get(meta.appointment_id, req.tenantId);
+        actions.push({ id: 'open_related_appt', label_key: 'patients.inspector.action_open_related' });
+      }
+      if (meta?.purpose) actions.push({ id: 'goto_privacy', label_key: 'patients.inspector.action_goto_privacy' });
+      if (meta?.task_id) actions.push({ id: 'goto_tasks', label_key: 'patients.inspector.action_goto_tasks' });
+    }
+  }
+
+  if (!entity) {
+    res.status(404).json({ error: 'event_not_found', event_id: eventId });
+    return;
+  }
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'inspect_timeline_event',
+    resourceType: 'patient',
+    resourceId: patient.id,
+    afterValue: { event_id: eventId, kind },
+    ipAddress: req.ip, userAgent: req.headers['user-agent'] as string,
+    legalBasis: clinicalOk && ['encounter', 'prescription'].includes(kind)
+      ? 'health_protection_art7_VIII'
+      : 'legitimate_interest_art7_VI',
+  });
+
+  res.json({
+    event_id: eventId,
+    kind,
+    entity,
+    related,
+    actions,
+    patient: { id: patient.id, full_name: patient.full_name },
+  });
+});
+
 /** Update granular consent ledger from Patient Workspace. */
 router.put('/:id/consents', requireRole('admin', 'doctor', 'nurse', 'receptionist', 'dpo'), (req: Request, res: Response) => {
   const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;

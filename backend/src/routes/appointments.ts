@@ -61,6 +61,25 @@ router.get('/availability', (req: Request, res: Response) => {
   });
 });
 
+router.get('/:id', (req: Request, res: Response) => {
+  const row = db.prepare(`
+    SELECT a.*, p.full_name AS patient_name, p.phone AS patient_phone,
+           u.full_name AS practitioner_name
+    FROM appointments a
+    JOIN patients p ON p.id = a.patient_id
+    JOIN users u ON u.id = a.practitioner_id
+    WHERE a.id = ? AND a.tenant_id = ?
+  `).get(req.params.id, req.tenantId) as any;
+  if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'view_appointment', resourceType: 'appointment', resourceId: row.id,
+    legalBasis: 'contract_art7_V',
+  });
+  res.json({ appointment: row });
+});
+
 function slotTaken(practitionerId: string, scheduledAt: string, tenantId: string, excludeId?: string): boolean {
   const row = db.prepare(`
     SELECT id FROM appointments
