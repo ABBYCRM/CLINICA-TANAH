@@ -1,0 +1,69 @@
+name: clinica-tanah
+region: nyc
+# Live: https://clinica-tanah-bbqu7.ondigitalocean.app
+features:
+  - buildpack-stack=ubuntu-22
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: clinica-tanah-web
+services:
+  - name: clinica-tanah-web
+    dockerfile_path: Dockerfile
+    github:
+      repo: ABBYCRM/CLINICA-TANAH
+      branch: cursor/bodypath-parity-import-531c
+      deploy_on_push: true
+    http_port: 10000
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 30
+      period_seconds: 15
+    envs:
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "10000"
+      - key: DB_DIR
+        value: "/data"
+      - key: DEFAULT_LOCALE
+        value: "pt-BR"
+      - key: APP_ORIGIN
+        value: "https://clinica-tanah-bbqu7.ondigitalocean.app"
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        value: "1234"
+      - key: ALLOW_DEMO_PASSWORD_RESET
+        value: "1"
+      - key: META_WA_VERIFY_TOKEN
+        value: "clinica-tanah-verify"
+      - key: JWT_SECRET
+        type: SECRET
+        scope: RUN_AND_BUILD_TIME
+      - key: A2E_ENABLED
+        value: "true"
+      - key: A2E_MODEL
+        value: "nano-banana-pro"
+      - key: A2E_IMAGE_SIZE
+        value: "4K"
+      - key: A2E_API_KEY
+        type: SECRET
+        scope: RUN_TIME
+      - key: GEMINI_ENABLED
+        value: "true"
+      - key: GEMINI_MODEL
+        value: "gemini-2.5-flash-image"
+      - key: GEMINI_API_KEY
+        type: SECRET
+        scope: RUN_TIME
+      - key: IMAGE_PROVIDER_ORDER
+        value: "a2e,gemini,bitdeer,local_morph"
+      - key: LOCAL_MORPH_FALLBACK
+        value: "1"
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED

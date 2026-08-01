@@ -5,20 +5,22 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && node -e \"require('fs').cpSync('src/i18n', 'dist/i18n', {recursive: true})\"",
+    "build": "tsc && node -e \"const fs=require('fs');fs.cpSync('src/i18n','dist/i18n',{recursive:true});fs.cpSync('src/data','dist/data',{recursive:true});\"",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^11.3.0",
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "express-rate-limit": "^7.4.1",
+    "jpeg-js": "^0.4.4",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^9.0.3",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
@@ -29,6 +31,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.7.4",
+    "@types/nodemailer": "^8.0.1",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
