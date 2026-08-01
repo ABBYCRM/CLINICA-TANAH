@@ -81,7 +81,43 @@ export default function Clinics() {
       {error && <FormError message={error} />}
 
       <div className="card">
-        <div className="overflow-x-auto">
+        <div className="md:hidden mobile-stack-list" data-testid="clinics-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && tenants.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {!loading && tenants.map((tn) => (
+            <div
+              key={tn.id}
+              className={`mobile-stack-item ${effectiveTenantId === tn.id ? 'bg-clinic-50' : ''}`}
+            >
+              <div className="min-w-0">
+                <div className="mobile-stack-title">{tn.name}</div>
+                <div className="mobile-stack-meta">{tn.slug}</div>
+              </div>
+              <div className="mobile-stack-grid">
+                <div>
+                  <div className="mobile-stack-label">{t('clinics.staff')}</div>
+                  <div>{tn.staff_count ?? '—'}</div>
+                </div>
+                <div>
+                  <div className="mobile-stack-label">{t('clinics.patients')}</div>
+                  <div>{tn.patient_count ?? '—'}</div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  className="btn-secondary text-xs"
+                  data-testid={`switch-tenant-${tn.slug}`}
+                  onClick={() => setEffectiveTenantId(tn.id === user.tenant_id ? null : tn.id)}
+                >
+                  {effectiveTenantId === tn.id || (!effectiveTenantId && tn.id === user.tenant_id)
+                    ? t('clinics.viewing')
+                    : t('clinics.switch')}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

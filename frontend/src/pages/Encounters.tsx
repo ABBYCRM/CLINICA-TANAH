@@ -108,7 +108,43 @@ export default function Encounters() {
       {error && <FormError message={error} />}
 
       <div className="card">
-        <div className="overflow-x-auto">
+        <div className="md:hidden mobile-stack-list" data-testid="encounters-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && encounters.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {encounters.map((e) => {
+            const codes = parseCodes(e.icd10_codes);
+            const cancelled = (e.status || 'active') === 'cancelled';
+            return (
+              <div key={e.id} className={`mobile-stack-item ${cancelled ? 'opacity-80' : ''}`} data-testid={`enc-card-${e.id}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mobile-stack-title">{e.patient_name}</div>
+                    <div className="mobile-stack-meta">{fmtWhen(e.started_at, locale)} · {e.practitioner_name}</div>
+                  </div>
+                  {cancelled && <span className="badge-red text-[10px] shrink-0">{t('encounters.status_cancelled')}</span>}
+                </div>
+                <p className={`text-sm ${cancelled ? 'line-through text-[color:var(--ink-muted)]' : 'text-[color:var(--ink)]'}`}>
+                  {e.assessment || '—'}
+                </p>
+                {!!codes.length && <span className="badge-blue">{codes.join(', ')}</span>}
+                <div className="flex justify-end gap-2 pt-1">
+                  {cancelled ? (
+                    <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => restoreEnc(e)} data-testid={`enc-restore-${e.id}`}>
+                      {t('encounters.restore')}
+                    </button>
+                  ) : (
+                    <RowActions
+                      onEdit={() => { setEditing(e); setShowForm(true); }}
+                      onDelete={() => setCancelling(e)}
+                      deleteTitle={t('encounters.cancel_action')}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

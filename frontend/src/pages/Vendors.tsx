@@ -41,8 +41,8 @@ export default function Vendors() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4" data-testid="vendors-page">
+      <div className="page-header">
         <h1 className="page-title">{t('vendors.title')}</h1>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-vendor">
           + {t('vendors.new')}
@@ -52,7 +52,38 @@ export default function Vendors() {
       {error && <FormError message={error} />}
 
       <div className="card">
-        <div className="overflow-x-auto">
+        <div className="md:hidden mobile-stack-list" data-testid="vendors-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && vendors.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {vendors.map((v) => (
+            <div key={v.id} className="mobile-stack-item">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mobile-stack-title">{v.legal_name}</div>
+                  <div className="mobile-stack-meta">{v.trade_name || '—'} · <span className="font-mono">{v.cnpj}</span></div>
+                </div>
+                {v.anvisa_license && <span className="badge-green shrink-0">{v.anvisa_license}</span>}
+              </div>
+              <div className="mobile-stack-grid">
+                <div>
+                  <div className="mobile-stack-label">{t('vendors.phone')}</div>
+                  <div>{v.phone || '—'}</div>
+                </div>
+                <div>
+                  <div className="mobile-stack-label">{t('vendors.contact_name')}</div>
+                  <div>{v.contact_name || '—'}</div>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <RowActions
+                  onEdit={() => { setEditing(v); setShowForm(true); }}
+                  onDelete={() => setDeleting(v)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

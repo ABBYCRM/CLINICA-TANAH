@@ -61,7 +61,7 @@ export default function Apps() {
   const initialOf = (s: string) => (s.trim()[0] || '?').toUpperCase();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="apps-page">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{t('apps.title')}</h1>
         <p className="text-sm text-slate-500 mt-1">{t('apps.subtitle')}</p>

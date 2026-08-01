@@ -43,7 +43,7 @@ export default function LGPD() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">{t('lgpd.title')}</h1>
         <button onClick={() => setShowRequestForm(true)} className="btn-primary" data-testid="new-lgpd-request">
           + {t('lgpd.new_request')}
@@ -116,7 +116,25 @@ export default function LGPD() {
 
       <div className="card">
         <div className="px-5 py-3 border-b border-slate-200 font-semibold">{t('lgpd.consent_records')} ({consents.length})</div>
-        <div className="overflow-x-auto">
+        <div className="md:hidden mobile-stack-list" data-testid="lgpd-consents-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && consents.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {consents.slice(0, 30).map((c) => (
+            <div key={c.id} className="mobile-stack-item">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mobile-stack-title">{c.consent_type}</div>
+                  <div className="mobile-stack-meta">{c.granted_at} · {c.subject_type} · {c.subject_id.slice(0, 8)}</div>
+                </div>
+                {c.revoked_at ? <span className="badge-red shrink-0">Revoked</span> :
+                  c.granted ? <span className="badge-green shrink-0">✓ Active</span> :
+                  <span className="badge-yellow shrink-0">Denied</span>}
+              </div>
+              <div className="text-xs font-mono text-[color:var(--ink-muted)]">IP {c.ip_address || '—'}</div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
@@ -151,7 +169,31 @@ export default function LGPD() {
 
       <div className="card">
         <div className="px-5 py-3 border-b border-slate-200 font-semibold">{t('lgpd.data_requests')} ({requests.length})</div>
-        <div className="overflow-x-auto">
+        <div className="md:hidden mobile-stack-list" data-testid="lgpd-requests-mobile-list">
+          {requests.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {requests.map((r) => (
+            <div key={r.id} className="mobile-stack-item">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mobile-stack-title">{r.subject_name || '—'}</div>
+                  <div className="mobile-stack-meta">{t(`lgpd.types.${r.request_type}`)} · {r.requested_at}</div>
+                </div>
+                <span className={`shrink-0 ${r.status === 'fulfilled' ? 'badge-green' : r.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
+                  {r.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-[color:var(--ink-muted)]">{r.subject_id.slice(0, 8)}</span>
+                {r.status === 'open' && (
+                  <button onClick={() => fulfill(r.id)} className="text-xs font-medium text-clinic-700 hover:underline">
+                    ✓ {t('lgpd.fulfill')}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

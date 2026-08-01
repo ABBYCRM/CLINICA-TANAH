@@ -72,7 +72,7 @@ export default function Accounting() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="accounting-page">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">{t('accounting.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
@@ -95,7 +95,34 @@ export default function Accounting() {
 
       {tab === 'tb' && (
         <div className="card">
-          <div className="overflow-x-auto">
+          <div className="md:hidden mobile-stack-list" data-testid="accounting-tb-mobile-list">
+            {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+            {!loading && tb.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+            {tb.map((row) => (
+              <div key={row.code} className="mobile-stack-item">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mobile-stack-title">{row.name}</div>
+                    <div className="mobile-stack-meta font-mono">{row.code} · {t(`accounting.types.${row.type}`)}</div>
+                  </div>
+                  <div className={`font-mono text-sm font-semibold shrink-0 ${row.balance < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    {row.balance.toFixed(2)}
+                  </div>
+                </div>
+                <div className="mobile-stack-grid">
+                  <div>
+                    <div className="mobile-stack-label">{t('accounting.debit')}</div>
+                    <div className="font-mono">{row.total_debit.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('accounting.credit')}</div>
+                    <div className="font-mono">{row.total_credit.toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>
@@ -171,7 +198,28 @@ export default function Accounting() {
 
       {tab === 'accounts' && (
         <div className="card">
-          <div className="overflow-x-auto">
+          <div className="md:hidden mobile-stack-list" data-testid="accounting-accounts-mobile-list">
+            {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+            {!loading && accounts.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+            {accounts.map((a) => (
+              <div key={a.id} className={`mobile-stack-item ${a.active ? '' : 'opacity-50'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mobile-stack-title">{a.name}</div>
+                    <div className="mobile-stack-meta font-mono">{a.code} · {t(`accounting.types.${a.type}`)}</div>
+                  </div>
+                  {a.active ? <span className="badge-green shrink-0">✓</span> : <span className="badge-slate shrink-0">—</span>}
+                </div>
+                <div className="flex justify-end">
+                  <RowActions
+                    onEdit={() => setAccountForm({ open: true, initial: a })}
+                    onDelete={() => setDeleting(a)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>
@@ -206,7 +254,31 @@ export default function Accounting() {
 
       {tab === 'journal' && (
         <div className="card">
-          <div className="overflow-x-auto">
+          <div className="md:hidden mobile-stack-list" data-testid="accounting-journal-mobile-list">
+            {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+            {!loading && entries.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+            {entries.map((e) => (
+              <div key={e.id} className="mobile-stack-item">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mobile-stack-title">{e.description}</div>
+                    <div className="mobile-stack-meta font-mono">#{e.entry_number} · {e.entry_date}</div>
+                  </div>
+                </div>
+                <div className="mobile-stack-grid">
+                  <div>
+                    <div className="mobile-stack-label">{t('accounting.debit')}</div>
+                    <div className="font-mono">{Number(e.total_debit).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('accounting.credit')}</div>
+                    <div className="font-mono">{Number(e.total_credit).toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>

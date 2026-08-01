@@ -50,14 +50,23 @@ function attachConsoleGuard(page: Page) {
 }
 
 async function expectLoadedListOrCards(page: Page) {
-  // Prefer a table when present; otherwise accept card grid / empty state.
-  const table = page.locator('table').first();
-  if (await table.count()) {
-    await expect(table).toBeVisible();
+  // Mobile card lists (Team/Folha pattern) take priority — desktop tables are md:hidden there.
+  const mobileList = page.locator('[data-testid$="-mobile-list"]').first();
+  if (await mobileList.count()) {
+    await expect(mobileList).toBeVisible({ timeout: 10_000 });
     return;
   }
+  // Visible table (desktop or overflow-x tray)
+  const table = page.locator('table').first();
+  if (await table.count()) {
+    const visible = await table.isVisible().catch(() => false);
+    if (visible) {
+      await expect(table).toBeVisible();
+      return;
+    }
+  }
   const empty = page.getByText(/sem dados|no data|sin datos/i).first();
-  const card = page.locator('.card').first();
+  const card = page.locator('.card, .crm-timeline-card, .crm-inset-panel').first();
   await expect(empty.or(card)).toBeVisible({ timeout: 10_000 });
 }
 
@@ -173,7 +182,7 @@ test.describe('Page-by-page tour', () => {
   test('Contabilidade (tabs)', async () => {
     await page.goto('/accounting');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('table').first()).toBeVisible({ timeout: 10_000 });
+    await expectLoadedListOrCards(page);
     for (const re of [
       /balancete|trial balance|balancete/i,
       /dre|income|resultado/i,
@@ -188,6 +197,7 @@ test.describe('Page-by-page tour', () => {
     }
     await page.locator('button').filter({ hasText: /plano|accounts|cuentas/i }).first().click();
     await expect(page.getByTestId('new-account')).toBeVisible();
+    await expectLoadedListOrCards(page);
     await shot(page, '08-accounting');
     await guard.assertClean();
   });

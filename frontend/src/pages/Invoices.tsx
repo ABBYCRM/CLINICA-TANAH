@@ -122,7 +122,53 @@ export default function Invoices() {
       </div>
 
       <div className="card">
-        <div className="overflow-x-auto">
+        <div className="md:hidden mobile-stack-list" data-testid="invoices-mobile-list">
+          {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+          {!loading && invoices.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+          {invoices.map((inv) => {
+            const color = inv.status === 'paid' ? 'badge-green' : inv.status === 'overdue' ? 'badge-red' : inv.status === 'cancelled' ? 'badge-slate' : 'badge-yellow';
+            return (
+              <div key={inv.id} className="mobile-stack-item">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <button type="button" className="mobile-stack-title font-mono text-left text-clinic-700" onClick={() => openDetail(inv)}>
+                      {inv.invoice_number}
+                    </button>
+                    <div className="mobile-stack-meta">{inv.patient_name || '—'} · {inv.issue_date}</div>
+                  </div>
+                  <span className={`${color} shrink-0`}>{inv.status}</span>
+                </div>
+                <div className="mobile-stack-grid">
+                  <div>
+                    <div className="mobile-stack-label">{t('common.total')}</div>
+                    <div className="font-mono font-semibold">R$ {Number(inv.total).toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('invoices.documents')}</div>
+                    <div>{(inv.document_count || 0) > 0 ? inv.document_count : '—'}</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2 pt-1">
+                  <button type="button" className="btn-secondary text-xs" onClick={() => openDetail(inv)}>
+                    {t('invoices.open')}
+                  </button>
+                  {inv.status !== 'paid' && inv.status !== 'cancelled' && (
+                    <button type="button" className="btn-secondary text-xs" onClick={() => markPaid(inv.id)}>
+                      ✓ {t('invoices.mark_paid')}
+                    </button>
+                  )}
+                  {inv.status !== 'paid' && (
+                    <RowActions
+                      onEdit={() => { setEditing(inv); setShowForm(true); }}
+                      onDelete={() => setDeleting(inv)}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>

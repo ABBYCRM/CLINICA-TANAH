@@ -316,7 +316,58 @@ export default function Payroll() {
       {runs.length > 0 && (
         <div className="card">
           <div className="px-5 py-3 border-b border-slate-200 font-semibold">{t('payroll.runs')}</div>
-          <div className="overflow-x-auto">
+          <div className="md:hidden mobile-stack-list" data-testid="payroll-runs-mobile-list">
+            {runs.map((r) => (
+              <div key={r.id} className="mobile-stack-item">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <button type="button" className="mobile-stack-title text-left text-[#6B7280] hover:underline" onClick={() => openRun(r.id)}>
+                      {r.period}
+                    </button>
+                    <div className="mobile-stack-meta">{typeLabel(r.type)}</div>
+                  </div>
+                  <span className={`badge shrink-0 ${r.status === 'paid' ? 'badge-green' : r.status === 'approved' ? 'badge-blue' : 'badge-yellow'}`}>{r.status}</span>
+                </div>
+                <div className="mobile-stack-grid">
+                  <div>
+                    <div className="mobile-stack-label">{t('payroll.gross')}</div>
+                    <div className="font-mono text-sm">{money(r.total_gross, locale)}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('payroll.net')}</div>
+                    <div className="font-mono text-sm font-bold text-emerald-800">{money(r.total_net, locale)}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('payroll.inss')}</div>
+                    <div className="font-mono text-sm text-rose-700">{money(r.total_inss, locale)}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('payroll.irrf')}</div>
+                    <div className="font-mono text-sm text-rose-700">{money(r.total_irrf, locale)}</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                  <button onClick={() => openRun(r.id)} className="text-xs font-medium text-[#6B7280] hover:underline px-1.5">
+                    {t('payroll.view_payslips')}
+                  </button>
+                  {r.status === 'draft' && (
+                    <button onClick={() => transition(r.id, 'approve')} className="text-xs font-medium text-sky-800 hover:underline px-1.5">
+                      {t('payroll.approve')}
+                    </button>
+                  )}
+                  {r.status === 'approved' && (
+                    <button onClick={() => transition(r.id, 'pay')} className="text-xs font-medium text-emerald-800 hover:underline px-1.5">
+                      {t('payroll.pay')}
+                    </button>
+                  )}
+                  {r.status === 'draft' && (
+                    <RowActions onDelete={() => setDeleting({ kind: 'run', row: r })} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>

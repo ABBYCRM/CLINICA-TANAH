@@ -114,7 +114,45 @@ export default function Inventory() {
 
       {tab === 'items' && (
         <div className="card">
-          <div className="overflow-x-auto">
+          <div className="md:hidden mobile-stack-list" data-testid="inventory-mobile-list">
+            {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+            {!loading && items.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+            {items.map((it) => (
+              <div key={it.id} className={`mobile-stack-item ${it.low_stock ? 'bg-rose-50/40' : ''}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mobile-stack-title">
+                      {it.name}
+                      {it.controlled ? <span className="ml-2 badge-red">⚠ C</span> : null}
+                    </div>
+                    <div className="mobile-stack-meta font-mono">{it.sku} · {it.category} · {it.unit}</div>
+                  </div>
+                  <div className={`font-mono text-sm shrink-0 ${it.low_stock ? 'text-rose-600 font-bold' : ''}`}>
+                    {it.current_stock}
+                  </div>
+                </div>
+                <div className="mobile-stack-grid">
+                  <div>
+                    <div className="mobile-stack-label">{t('inventory.min_stock')}</div>
+                    <div>{it.min_stock}</div>
+                  </div>
+                  <div>
+                    <div className="mobile-stack-label">{t('inventory.unit_cost')}</div>
+                    <div className="font-mono">R$ {Number(it.unit_cost).toFixed(2)}</div>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <RowActions
+                    editTestId={`edit-item-${it.id}`}
+                    deleteTestId={`delete-item-${it.id}`}
+                    onEdit={() => setItemForm({ open: true, initial: it })}
+                    onDelete={() => setDeleting({ kind: 'item', row: it })}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>
@@ -223,7 +261,34 @@ function BatchesView({ refreshKey, onEdit, onDelete }: {
 
   return (
     <div className="card">
-      <div className="overflow-x-auto">
+      <div className="md:hidden mobile-stack-list" data-testid="batches-mobile-list">
+        {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+        {!loading && batches.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+        {batches.map((b) => {
+          const days = Math.floor((new Date(b.expiry_date).getTime() - Date.now()) / 86400000);
+          return (
+            <div key={b.id} className="mobile-stack-item">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mobile-stack-title">{b.item_name}</div>
+                  <div className="mobile-stack-meta font-mono">{b.batch_number}</div>
+                </div>
+                <div className="font-mono text-sm shrink-0">{b.quantity}</div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={days < 0 ? 'badge-red' : days < 30 ? 'badge-yellow' : 'badge-slate'}>
+                  {b.expiry_date} {days < 0 ? '⚠ ' + t('inventory.expired') : days < 30 ? `(${days}d)` : ''}
+                </span>
+                <span className="text-sm font-mono text-[color:var(--ink-muted)]">R$ {Number(b.cost_per_unit ?? 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-end">
+                <RowActions onEdit={() => onEdit(b)} onDelete={() => onDelete(b)} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-slate-50">
             <tr>
@@ -282,7 +347,26 @@ function MovementsView({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="card">
-      <div className="overflow-x-auto">
+      <div className="md:hidden mobile-stack-list" data-testid="movements-mobile-list">
+        {loading && <div className="p-6 text-center text-slate-400">{t('common.loading')}</div>}
+        {!loading && movements.length === 0 && <div className="p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+        {movements.map((m) => (
+          <div key={m.id} className="mobile-stack-item">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="mobile-stack-title">{m.item_name}</div>
+                <div className="mobile-stack-meta">{m.created_at} · {m.user_name || '—'}</div>
+              </div>
+              <div className="font-mono text-sm shrink-0">{m.quantity}</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={badge(m.movement_type)}>{t(`inventory.movement_${m.movement_type}`)}</span>
+              <span className="text-xs text-slate-500">{m.reason || '—'}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-slate-50">
             <tr>
