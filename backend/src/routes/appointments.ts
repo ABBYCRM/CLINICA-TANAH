@@ -153,17 +153,22 @@ router.put('/:id', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req
 });
 
 router.delete('/:id', requireRole('admin', 'receptionist'), (req: Request, res: Response) => {
-  const appt = db.prepare(`SELECT id FROM appointments WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  const appt = db.prepare(`SELECT id, status FROM appointments WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!appt) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`UPDATE encounters SET appointment_id = NULL WHERE appointment_id = ?`).run(req.params.id);
-  db.prepare(`DELETE FROM appointments WHERE id = ? AND tenant_id = ?`).run(req.params.id, req.tenantId);
+  // Soft-cancel — keep schedule history for audit / CFM-adjacent retention
+  db.prepare(`
+    UPDATE appointments SET status = 'cancelled', updated_at = datetime('now')
+    WHERE id = ? AND tenant_id = ?
+  `).run(req.params.id, req.tenantId);
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
-    action: 'delete_appointment', resourceType: 'appointment', resourceId: req.params.id,
+    action: 'cancel_appointment', resourceType: 'appointment', resourceId: req.params.id,
+    beforeValue: { status: appt.status },
+    afterValue: { status: 'cancelled' },
     legalBasis: 'contract_art7_V',
   });
-  res.json({ ok: true });
+  res.json({ ok: true, status: 'cancelled', soft_cancelled: true });
 });
 
 export default router;

@@ -39,7 +39,7 @@ import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
 import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/security';
 import { assertSecurityConfig, encryptionStatus } from './services/phiCrypto';
-
+import { buildLgpdPolicy } from './services/lgpdPolicy';
 assertSecurityConfig();
 try {
   initSchema();
@@ -119,6 +119,15 @@ app.use('/api/tenants', tenantsRouter);
 app.use('/api/forms', formsRouter);
 app.use('/api/public/forms', publicFormsRouter);
 app.use('/api/apps', appsRouter);
+
+// Public LGPD privacy policy (no auth — patients / intake)
+app.get('/api/public/privacy', (_req, res) => {
+  try {
+    res.json(buildLgpdPolicy());
+  } catch (e: any) {
+    res.status(500).json({ error: 'policy_unavailable', message: e?.message });
+  }
+});
 
 // Dashboard
 import { db } from './db/schema';

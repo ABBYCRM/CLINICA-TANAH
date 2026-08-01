@@ -295,7 +295,7 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   const consents: string[] = ['health_data_processing', 'data_processing'];
   if (d.consent_whatsapp) consents.push('whatsapp_communication', 'whatsapp_admin', 'appointment_reminders');
   if (d.consent_marketing) consents.push('marketing_news', 'promotions_events');
-  if (d.consent_calls) consents.push('post_visit_survey');
+  if (d.consent_calls) consents.push('phone_calls', 'post_visit_survey');
 
   for (const ctype of consents) {
     recordConsent({

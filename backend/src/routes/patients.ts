@@ -438,8 +438,15 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
   const clinical = (db.prepare(`
     SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ? AND tenant_id = ?) +
-           (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ? AND tenant_id = ?) AS c
-  `).get(req.params.id, req.tenantId, req.params.id, req.tenantId) as any).c;
+           (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM body_medications WHERE patient_id = ? AND tenant_id = ?) +
+           (SELECT COUNT(*) FROM body_measurements WHERE patient_id = ? AND tenant_id = ?) AS c
+  `).get(
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+    req.params.id, req.tenantId,
+  ) as any).c;
   if (clinical > 0) {
     res.status(409).json({
       error: 'has_clinical_records',

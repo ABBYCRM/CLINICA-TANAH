@@ -9,6 +9,7 @@ export default function LGPD() {
   const [consents, setConsents] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [policy, setPolicy] = useState<any>(null);
+  const [posture, setPosture] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [error, setError] = useState('');
@@ -19,10 +20,12 @@ export default function LGPD() {
       api.get('/api/lgpd/consents'),
       api.get('/api/lgpd/data-requests'),
       api.get('/api/lgpd/policy'),
-    ]).then(([c, r, p]) => {
+      api.get('/api/lgpd/security-posture').catch(() => null),
+    ]).then(([c, r, p, pos]) => {
       setConsents(c.consents);
       setRequests(r.requests);
       setPolicy(p);
+      setPosture(pos);
     }).catch(console.error).finally(() => setLoading(false));
   };
 
@@ -73,6 +76,25 @@ export default function LGPD() {
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+      )}
+
+      {posture && (
+        <div className={`card p-5 ${posture.production_key_ok === false ? 'border border-[#c48a6a]' : ''}`}>
+          <h3 className="font-semibold mb-2 text-clinic-700">{t('lgpd.security_posture')}</h3>
+          <div className="text-sm space-y-1">
+            <div>{t('lgpd.encryption_key')}: <span className="font-mono">{posture.encryption?.key_source}</span>
+              {posture.production_key_ok === false ? (
+                <span className="badge-yellow ml-2">{t('lgpd.key_warning')}</span>
+              ) : (
+                <span className="badge-green ml-2">OK</span>
+              )}
+            </div>
+            <div className="text-xs text-[color:var(--ink-muted)]">
+              {t('lgpd.retention_flags')}: soft-cancel · anonimização art.18 · CFM {posture.retention?.cfm_years}a
+            </div>
+            <a href="/privacidade" target="_blank" rel="noreferrer" className="text-sm underline inline-block mt-1">{t('privacy.page_title')} ↗</a>
           </div>
         </div>
       )}
