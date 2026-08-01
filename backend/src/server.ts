@@ -113,12 +113,9 @@ app.use('/api/payroll', payrollRouter);
 app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/tenants', tenantsRouter);
-<<<<<<< HEAD
 app.use('/api/forms', formsRouter);
 app.use('/api/public/forms', publicFormsRouter);
-=======
 app.use('/api/apps', appsRouter);
->>>>>>> 17378c4 (Add Apps menu tab to store and delete user URL shortcuts)
 
 // Dashboard
 import { db } from './db/schema';
