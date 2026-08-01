@@ -1063,4 +1063,157 @@ export function seedMarketingDefaults(tenantId: string): void {
     }
   }
   ensureRecallAutomation(tenantId);
+
+  // ---- BodyPath clinical module (prontuário corporal / image scenarios) ----
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS body_measurements (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      height_cm REAL,
+      weight_kg REAL,
+      waist_cm REAL,
+      notes TEXT,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      recorded_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_meas_patient ON body_measurements(tenant_id, patient_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS body_medications (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      dosage TEXT,
+      frequency TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      notes TEXT,
+      started_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_meds_patient ON body_medications(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_lifestyle_plans (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      weeks INTEGER,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_plans_patient ON body_lifestyle_plans(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_consents (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      granted INTEGER NOT NULL DEFAULT 0,
+      granted_at TEXT,
+      revoked_at TEXT,
+      notice_version TEXT NOT NULL DEFAULT 'body.consent.pt-BR.v1',
+      evidence_channel TEXT NOT NULL DEFAULT 'in_app',
+      UNIQUE(tenant_id, patient_id, purpose)
+    );
+
+    CREATE TABLE IF NOT EXISTS body_captures (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      view_angle TEXT NOT NULL DEFAULT 'front',
+      status TEXT NOT NULL DEFAULT 'uploaded',
+      image_path TEXT,
+      content_type TEXT DEFAULT 'image/jpeg',
+      notes TEXT,
+      created_by TEXT,
+      validated_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_cap_patient ON body_captures(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_scenarios (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      capture_id TEXT,
+      title TEXT NOT NULL,
+      goal TEXT,
+      weeks INTEGER,
+      prompt TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      provider TEXT,
+      provider_task_id TEXT,
+      image_url TEXT,
+      image_path TEXT,
+      measurement_snapshot TEXT,
+      error TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_scen_patient ON body_scenarios(tenant_id, patient_id);
+
+    -- Multi-view capture sessions (BodyPath parity: front/left/right/back)
+    CREATE TABLE IF NOT EXISTS body_capture_sessions (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      validated_at TEXT,
+      quality_summary TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_sess_patient ON body_capture_sessions(tenant_id, patient_id);
+
+    CREATE TABLE IF NOT EXISTS body_capture_assets (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      view TEXT NOT NULL CHECK(view IN ('front','left','right','back')),
+      image_path TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      sha256 TEXT NOT NULL,
+      width INTEGER,
+      height INTEGER,
+      quality_json TEXT,
+      metrics_json TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(session_id, view)
+    );
+    CREATE INDEX IF NOT EXISTS idx_body_asset_session ON body_capture_assets(session_id);
+  `);
+
+  // Expand anthropometrics + lifestyle + scenario simulator columns
+  for (const sql of [
+    `ALTER TABLE body_measurements ADD COLUMN payload TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN bmi REAL`,
+    `ALTER TABLE body_measurements ADD COLUMN whr REAL`,
+    `ALTER TABLE body_measurements ADD COLUMN whtr REAL`,
+    `ALTER TABLE body_measurements ADD COLUMN device_label TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN fasting_state TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN clothing_note TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN posture_note TEXT`,
+    `ALTER TABLE body_measurements ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE body_lifestyle_plans ADD COLUMN plan_type TEXT NOT NULL DEFAULT 'nutrition'`,
+    `ALTER TABLE body_lifestyle_plans ADD COLUMN summary TEXT`,
+    `ALTER TABLE body_medications ADD COLUMN class_tag TEXT`,
+    `ALTER TABLE body_medications ADD COLUMN confirmation TEXT DEFAULT 'clinician_confirmed'`,
+    `ALTER TABLE body_scenarios ADD COLUMN capture_session_id TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN horizon_weeks INTEGER`,
+    `ALTER TABLE body_scenarios ADD COLUMN plan_config TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN assumptions TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN execution_plan TEXT`,
+    `ALTER TABLE body_scenarios ADD COLUMN photorealism INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE body_scenarios ADD COLUMN review_status TEXT DEFAULT 'pending_review'`,
+  ]) {
+    try { openDb().exec(sql); } catch { /* exists */ }
+  }
 }

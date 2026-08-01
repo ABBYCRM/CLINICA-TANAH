@@ -167,6 +167,9 @@ h1, h2, .font-display {
   font-optical-sizing: auto;
   letter-spacing: -0.02em;
 }
+.font-body {
+  font-family: var(--font-body);
+}
 
 @layer components {
   .btn {
