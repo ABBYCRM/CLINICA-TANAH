@@ -133,7 +133,10 @@ formsRouter.post('/:id/send-invite', requireRole('admin', 'receptionist', 'docto
       results.email = sent;
       mailto = sent.mailto_url || null;
       if (sent.ok) status = 'sent';
-      else {
+      else if (sent.error === 'smtp_not_configured' && mailto) {
+        status = d.channel === 'both' ? 'partial' : 'mailto';
+        errorMsg = 'smtp_not_configured';
+      } else {
         status = d.channel === 'both' ? 'partial' : 'failed';
         errorMsg = sent.error || 'email_failed';
       }
