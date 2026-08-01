@@ -740,6 +740,17 @@ h1, h2, .font-display {
   }
 }
 
+/* Mobile clinical: chart first — rails bury "Abrir prontuário" below the fold */
+@media (max-width: 1023px) {
+  .crm-record-grid.is-clinical {
+    display: flex;
+    flex-direction: column;
+  }
+  .crm-record-grid.is-clinical > .crm-record-col:nth-child(2) {
+    order: -1;
+  }
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }

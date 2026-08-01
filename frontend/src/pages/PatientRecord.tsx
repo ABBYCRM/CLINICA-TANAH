@@ -165,6 +165,32 @@ export default function PatientRecord() {
     setSearchParams(next, { replace: true });
   };
 
+  /** Switch workspace tab; on clinical, close inspector + scroll chart into view (mobile). */
+  const selectWorkspaceTab = (next: WorkspaceTab, opts?: { closeInspector?: boolean }) => {
+    if (opts?.closeInspector !== false && openEventId) closeEvent();
+    setTab(next);
+  };
+
+  useEffect(() => {
+    if (tab !== 'clinical') return;
+    let cancelled = false;
+    const scroll = () => {
+      if (cancelled) return;
+      const chart = document.querySelector('[data-testid="prontuario-chart"]') as HTMLElement | null;
+      if (!chart) return;
+      const rect = chart.getBoundingClientRect();
+      const inView = rect.top >= 0 && rect.top < window.innerHeight * 0.55;
+      if (!inView) chart.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    const t1 = window.setTimeout(scroll, 60);
+    const t2 = window.setTimeout(scroll, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [tab, id]);
+
   const filteredTimeline = useMemo(() => {
     if (tab === 'timeline' || tab === 'overview') return timeline;
     if (tab === 'appointments') return timeline.filter((x: any) => x.kind === 'appointment' || x.kind === 'recall');
@@ -439,7 +465,7 @@ export default function PatientRecord() {
             <button
               key={x.id}
               type="button"
-              onClick={() => setTab(x.id)}
+              onClick={() => selectWorkspaceTab(x.id)}
               className={`crm-feed-tab ${tab === x.id ? 'is-active' : ''}`}
               data-testid={`workspace-tab-${x.id}`}
             >
@@ -701,17 +727,22 @@ export default function PatientRecord() {
             <div className="crm-rail-actions">
               <Link to="/whatsapp" className="btn-secondary">{t('patients.workspace.action_whatsapp')}</Link>
               <Link to="/appointments" className="btn-secondary">{t('patients.workspace.action_schedule')}</Link>
-              <button type="button" className="btn-secondary" onClick={() => setTab('tasks')}>
+              <button type="button" className="btn-secondary" onClick={() => selectWorkspaceTab('tasks')}>
                 {t('patients.workspace.action_task')}
               </button>
               <button type="button" className="btn-secondary" disabled={ticketBusy} onClick={createTicket}>
                 {ticketBusy ? '…' : t('patients.workspace.action_ticket')}
               </button>
-              <button type="button" className="btn-secondary" onClick={() => setTab('privacy')}>
+              <button type="button" className="btn-secondary" onClick={() => selectWorkspaceTab('privacy')}>
                 {t('patients.workspace.action_consent')}
               </button>
               {clinicalOk && (
-                <button type="button" className="btn-secondary" onClick={() => setTab('clinical')}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  data-testid="action-open-clinical"
+                  onClick={() => selectWorkspaceTab('clinical')}
+                >
                   {t('patients.workspace.action_clinical')}
                 </button>
               )}
@@ -783,7 +814,7 @@ export default function PatientRecord() {
                     consents: 'privacy',
                   };
                   const nextTab = tabMap[key];
-                  if (nextTab) setTab(nextTab);
+                  if (nextTab) selectWorkspaceTab(nextTab);
                   const first = assoc?.items?.[0];
                   if (!first?.id) return;
                   const prefix: Record<string, string> = {
@@ -834,7 +865,7 @@ export default function PatientRecord() {
           eventList={filteredTimeline}
           onClose={closeEvent}
           onOpenEvent={openEvent}
-          onNavigateTab={(tabId) => setTab(tabId as WorkspaceTab)}
+          onNavigateTab={(tabId) => selectWorkspaceTab(tabId as WorkspaceTab)}
           onEditPatient={() => setShowForm(true)}
           onChanged={load}
         />

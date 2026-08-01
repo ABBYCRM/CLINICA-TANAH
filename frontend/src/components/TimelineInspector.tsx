@@ -447,6 +447,7 @@ export default function TimelineInspector({
                     type="button"
                     className="btn-secondary text-xs"
                     disabled={busy === a.id}
+                    data-testid={`inspector-action-${a.id}`}
                     onClick={() => runAction(a.id)}
                   >
                     {busy === a.id ? '…' : (t(a.label_key) !== a.label_key ? t(a.label_key) : a.id)}
