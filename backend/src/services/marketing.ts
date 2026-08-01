@@ -3,7 +3,7 @@
  * Messages stay LGPD-aware (consent + opt-out) and append promo footers for marketing.
  */
 import { db } from '../db/schema';
-import { sendTextMessage, getOrCreateConversation, updateConversation } from './whatsapp';
+import { sendTextMessage, getOrCreateConversation, updateConversation, phoneLookupVariants } from './whatsapp';
 import { t, Locale } from './i18n';
 
 export type AudienceSegment =
@@ -358,11 +358,15 @@ export async function runAutomationForPatient(
     return { ok: false, error: 'marketing_blocked', key: auto.key, skipped: 1, reason: 'marketing_blocked' };
   }
 
-  // Operational opt-out check via conversation state
-  const convOptOut = db.prepare(`
-    SELECT state FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?
-  `).get(patient.phone, tenantId) as any;
-  if (convOptOut?.state === 'lgpd_optout') {
+  // Operational opt-out check via conversation state (phone variants)
+  let convOptOut: any = null;
+  for (const phone of phoneLookupVariants(patient.phone)) {
+    convOptOut = db.prepare(`
+      SELECT state, opted_out FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?
+    `).get(phone, tenantId) as any;
+    if (convOptOut) break;
+  }
+  if (convOptOut?.state === 'lgpd_optout' || convOptOut?.opted_out) {
     return { ok: false, error: 'opted_out', key: auto.key, skipped: 1, reason: 'opted_out' };
   }
 

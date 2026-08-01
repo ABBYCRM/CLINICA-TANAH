@@ -12,7 +12,8 @@ import { t, type Locale } from '../services/i18n';
 import {
   sendTextMessage, persistIncoming, getOrCreateConversation, updateConversation,
   verifyWebhookSignature, markAsRead, applyStatusUpdate, pingMeta, isLive,
-  resolveTenantForPhone,
+  resolveTenantForPhone, listMessagesForPhones, phoneLookupVariants,
+  ensurePatientConversation,
 } from '../services/whatsapp';
 import { getAvailableSlots, getPractitionerLoads } from '../services/availability';
 import { DEFAULT_TENANT_ID } from '../db/schema';
@@ -603,9 +604,9 @@ router.get('/conversations', authenticate, (req, res) => {
 router.get('/messages', authenticate, (req: Request, res: Response) => {
   const phone = req.query.phone as string;
   if (!phone) { res.status(400).json({ error: 'phone required' }); return; }
-  res.json({ messages: db.prepare(`
-    SELECT * FROM whatsapp_messages WHERE phone = ? AND tenant_id = ? ORDER BY rowid ASC LIMIT 200
-  `).all(phone, req.tenantId) });
+  res.json({
+    messages: listMessagesForPhones(req.tenantId!, phoneLookupVariants(phone), 200, 'asc'),
+  });
 });
 
 // Staff sends a message to a patient
@@ -613,11 +614,27 @@ router.post('/send', authenticate, requireRole('admin','receptionist','doctor','
   const phone = req.body.phone as string;
   const body = req.body.body as string;
   if (!phone || !body) { res.status(400).json({ error: 'phone and body required' }); return; }
-  const conv = db.prepare(`SELECT opted_out FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(phone, req.tenantId) as any;
-  if (conv?.opted_out) {
+  let opted = false;
+  for (const p of phoneLookupVariants(phone)) {
+    const conv = db.prepare(`SELECT opted_out FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(p, req.tenantId) as any;
+    if (conv?.opted_out) { opted = true; break; }
+  }
+  if (opted) {
     res.status(409).json({ error: 'opted_out', message: 'This number has opted out (LGPD). Message not sent.' });
     return;
   }
+  // Link conversation to patient when phone matches a record
+  try {
+    const digits = String(phone).replace(/\D/g, '');
+    const patient = db.prepare(`
+      SELECT id FROM patients WHERE tenant_id = ? AND (
+        phone = ? OR replace(replace(replace(phone,'+',''),'-',''),' ','') = ?
+      ) LIMIT 1
+    `).get(req.tenantId, phone, digits) as any;
+    if (patient?.id) {
+      ensurePatientConversation(req.tenantId!, phone, patient.id);
+    }
+  } catch { /* ignore */ }
   const result = await sendTextMessage(phone, body, req.tenantId!);
   logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'whatsapp_staff_send', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
   res.status(result.ok ? 200 : 502).json(result);

@@ -62,10 +62,13 @@ async function metaRequest(path: string, init: RequestInit = {}): Promise<{ ok: 
 
 export async function sendTextMessage(to: string, body: string, tenantId: string = DEFAULT_TENANT_ID): Promise<SendResult> {
   const id = uuid();
+  const conv = getOrCreateConversation(to, tenantId);
+  const phoneKey = conv?.phone || to;
   db.prepare(`
     INSERT INTO whatsapp_messages (id, tenant_id, phone, direction, body, status)
     VALUES (?, ?, ?, 'out', ?, 'queued')
-  `).run(id, tenantId, to, body);
+  `).run(id, tenantId, phoneKey, body);
+  try { updateConversation(phoneKey, tenantId, {}); } catch { /* ignore */ }
 
   if (!isLive()) {
     return { ok: true, message_id: `dry-${id}`, dry_run: true };
@@ -76,7 +79,7 @@ export async function sendTextMessage(to: string, body: string, tenantId: string
       body: JSON.stringify({
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
-        to,
+        to: normalizePhoneDigits(to) || to,
         type: 'text',
         text: { body, preview_url: false },
       }),
@@ -134,12 +137,107 @@ export function persistIncoming(phone: string, body: string, waMessageId?: strin
     INSERT INTO whatsapp_messages (id, tenant_id, phone, direction, body, wa_message_id, status)
     VALUES (?, ?, ?, 'in', ?, ?, 'received')
   `).run(uuid(), tenantId, phone, body, waMessageId ?? null);
+  try {
+    getOrCreateConversation(phone, tenantId);
+    updateConversation(phone, tenantId, {});
+  } catch { /* ignore */ }
 }
 
 export { persistIncoming as persistIncomingPublic };
 
+/** Digits-only form of a phone (for Meta / local match). */
+export function normalizePhoneDigits(phone: string): string {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+/** Common storage variants for the same Brazilian WhatsApp number. */
+export function phoneLookupVariants(phone: string): string[] {
+  const raw = String(phone || '').trim();
+  const digits = normalizePhoneDigits(raw);
+  const out = new Set<string>();
+  if (raw) out.add(raw);
+  if (digits) {
+    out.add(digits);
+    out.add(`+${digits}`);
+    if (digits.startsWith('55') && digits.length >= 12) {
+      const local = digits.slice(2);
+      out.add(local);
+      out.add(`+${local}`);
+      out.add(`+55${local}`);
+    } else if (digits.length >= 10 && digits.length <= 11) {
+      out.add(`55${digits}`);
+      out.add(`+55${digits}`);
+    }
+  }
+  return [...out];
+}
+
+export function listMessagesForPhones(
+  tenantId: string,
+  phones: string[],
+  limit = 200,
+  order: 'asc' | 'desc' = 'asc',
+): any[] {
+  const variants = [...new Set(phones.flatMap((p) => phoneLookupVariants(p)).filter(Boolean))];
+  if (!variants.length) return [];
+  const placeholders = variants.map(() => '?').join(',');
+  const dir = order === 'asc' ? 'ASC' : 'DESC';
+  return db.prepare(`
+    SELECT id, phone, direction, body, status, wa_message_id, created_at
+    FROM whatsapp_messages
+    WHERE tenant_id = ? AND phone IN (${placeholders})
+    ORDER BY created_at ${dir}, rowid ${dir}
+    LIMIT ?
+  `).all(tenantId, ...variants, limit) as any[];
+}
+
+/** Messages for a patient: conversation patient_id link + phone variants. */
+export function listMessagesForPatient(
+  tenantId: string,
+  patientId: string,
+  phone: string | null | undefined,
+  limit = 80,
+): any[] {
+  const phones = new Set<string>();
+  if (phone) phoneLookupVariants(phone).forEach((p) => phones.add(p));
+  try {
+    const linked = db.prepare(`
+      SELECT phone FROM whatsapp_conversations
+      WHERE tenant_id = ? AND patient_id = ?
+    `).all(tenantId, patientId) as any[];
+    for (const row of linked) {
+      if (row.phone) phoneLookupVariants(row.phone).forEach((p) => phones.add(p));
+    }
+  } catch { /* ignore */ }
+  // Newest first for workspace lists
+  return listMessagesForPhones(tenantId, [...phones], limit, 'desc');
+}
+
+export function ensurePatientConversation(tenantId: string, phone: string, patientId: string): any {
+  const variants = phoneLookupVariants(phone);
+  let conv: any = null;
+  for (const p of variants) {
+    conv = db.prepare(`SELECT * FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(p, tenantId) as any;
+    if (conv) break;
+  }
+  if (!conv) {
+    conv = getOrCreateConversation(phone, tenantId);
+  }
+  updateConversation(conv.phone || phone, tenantId, { patient_id: patientId });
+  return db.prepare(`SELECT * FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`)
+    .get(conv.phone || phone, tenantId);
+}
+
 export function getOrCreateConversation(phone: string, tenantId: string): any {
   let conv = db.prepare(`SELECT * FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+  if (!conv) {
+    // Try digit / + variants before creating a duplicate thread
+    for (const v of phoneLookupVariants(phone)) {
+      if (v === phone) continue;
+      conv = db.prepare(`SELECT * FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?`).get(v, tenantId) as any;
+      if (conv) return conv;
+    }
+  }
   if (!conv) {
     const id = uuid();
     db.prepare(`INSERT INTO whatsapp_conversations (id, tenant_id, phone, state, last_message_at) VALUES (?, ?, ?, 'idle', datetime('now'))`).run(id, tenantId, phone);
@@ -159,5 +257,14 @@ export function updateConversation(phone: string, tenantId: string, fields: { st
   sets.push('last_message_at = datetime(\'now\')');
   sets.push('updated_at = datetime(\'now\')');
   args.push(phone, tenantId);
-  db.prepare(`UPDATE whatsapp_conversations SET ${sets.join(', ')} WHERE phone = ? AND tenant_id = ?`).run(...args);
+  const result = db.prepare(`UPDATE whatsapp_conversations SET ${sets.join(', ')} WHERE phone = ? AND tenant_id = ?`).run(...args);
+  if (result.changes === 0) {
+    // Retry with alternate phone spellings
+    for (const v of phoneLookupVariants(phone)) {
+      if (v === phone) continue;
+      const r2 = db.prepare(`UPDATE whatsapp_conversations SET ${sets.join(', ')} WHERE phone = ? AND tenant_id = ?`)
+        .run(...args.slice(0, -2), v, tenantId);
+      if (r2.changes > 0) break;
+    }
+  }
 }

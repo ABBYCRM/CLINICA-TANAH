@@ -140,6 +140,10 @@ export default function PatientRecord() {
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docBusy, setDocBusy] = useState(false);
   const [docMsg, setDocMsg] = useState('');
+  const [waDraft, setWaDraft] = useState('');
+  const [waBusy, setWaBusy] = useState(false);
+  const [waMsg, setWaMsg] = useState('');
+  const [waAutoBusy, setWaAutoBusy] = useState<string | null>(null);
   const [recallDays, setRecallDays] = useState('90');
   const [recallBusy, setRecallBusy] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
@@ -160,14 +164,14 @@ export default function PatientRecord() {
   useEffect(load, [id, locale]);
 
   useEffect(() => {
-    if (tab !== 'tasks') return;
+    if (tab !== 'tasks' && tab !== 'whatsapp') return;
     let cancelled = false;
     Promise.all([
-      api.get('/api/users').catch(() => ({ users: [] })),
+      tab === 'tasks' ? api.get('/api/users').catch(() => ({ users: [] })) : Promise.resolve({ users: [] }),
       api.get('/api/whatsapp/automations').catch(() => ({ automations: [] })),
     ]).then(([usersRes, autoRes]) => {
       if (cancelled) return;
-      setTeamUsers(usersRes.users || usersRes || []);
+      if (tab === 'tasks') setTeamUsers(usersRes.users || usersRes || []);
       setAutomations(autoRes.automations || []);
     });
     return () => { cancelled = true; };
@@ -184,6 +188,8 @@ export default function PatientRecord() {
   const tasks = data?.tasks || [];
   const tickets = data?.tickets || [];
   const documents = data?.documents || [];
+  const whatsappMessages = data?.whatsapp_messages || associations?.whatsapp?.items || [];
+  const whatsappMeta = data?.whatsapp || {};
   const auditEvents = data?.audit_events || [];
   const privacyRequests = data?.privacy_requests || [];
   const clinicalOk = !!permissions.clinical;
@@ -464,6 +470,44 @@ export default function PatientRecord() {
     }
   };
 
+  const sendWhatsApp = async () => {
+    if (!id || !waDraft.trim()) return;
+    setWaBusy(true);
+    setWaMsg('');
+    try {
+      const res = await api.post(`/api/patients/${id}/whatsapp/send`, { body: waDraft.trim() });
+      setWaDraft('');
+      setWaMsg(res.dry_run
+        ? t('patients.workspace.whatsapp_sent_dry')
+        : t('patients.workspace.whatsapp_sent'));
+      setTab('whatsapp');
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setWaBusy(false);
+    }
+  };
+
+  const runPatientAutomation = async (automationId: string) => {
+    if (!id || !automationId) return;
+    setWaAutoBusy(automationId);
+    setWaMsg('');
+    try {
+      const res = await api.post(`/api/patients/${id}/whatsapp/automations/${automationId}/run`, {});
+      setWaMsg(
+        res.sent
+          ? t('patients.workspace.whatsapp_auto_sent')
+          : (res.reason || res.error || t('patients.workspace.whatsapp_auto_skipped')),
+      );
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setWaAutoBusy(null);
+    }
+  };
+
   const setRecall = async () => {
     if (!id) return;
     const days = parseInt(recallDays, 10);
@@ -541,7 +585,7 @@ export default function PatientRecord() {
           </Link>
           <div className="crm-record-actions">
             <Link to="/appointments" className="btn-secondary text-xs">{t('patients.workspace.action_schedule')}</Link>
-            <Link to="/whatsapp" className="btn-secondary text-xs">{t('patients.workspace.action_whatsapp')}</Link>
+            <button type="button" className="btn-secondary text-xs" onClick={() => selectWorkspaceTab('whatsapp')}>{t('patients.workspace.action_whatsapp')}</button>
             <button type="button" className="btn-secondary text-xs" onClick={() => setShowForm(true)}>{t('common.edit')}</button>
             {user?.role === 'admin' && (
               <button type="button" className="btn-danger text-xs" onClick={() => setDeleting(true)}>{t('common.delete')}</button>
@@ -727,6 +771,115 @@ export default function PatientRecord() {
                   <span className="text-xs text-[color:var(--ink-muted)] truncate flex-1">{s.comment || '—'}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {tab === 'whatsapp' && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-4" data-testid="workspace-whatsapp">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold text-sm">{t('patients.workspace.whatsapp_heading')}</h3>
+                  <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('patients.workspace.whatsapp_hint')}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`badge ${whatsappMeta.live ? 'badge-green' : 'badge-yellow'}`}>
+                    {whatsappMeta.live ? t('patients.workspace.whatsapp_live') : t('patients.workspace.whatsapp_dry_run')}
+                  </span>
+                  {patient?.phone && (
+                    <span className="text-xs text-[color:var(--ink-muted)]" data-testid="wa-phone">{patient.phone}</span>
+                  )}
+                  <Link to="/whatsapp" className="btn-secondary text-xs">{t('patients.workspace.whatsapp_open_hub')}</Link>
+                </div>
+              </div>
+
+              {!patient?.phone && (
+                <p className="text-sm text-[color:var(--ink-muted)]" data-testid="wa-no-phone">{t('patients.workspace.whatsapp_no_phone')}</p>
+              )}
+
+              {patient?.phone && (
+                <section className="crm-inset-panel space-y-2" data-testid="workspace-whatsapp-compose">
+                  <h4 className="font-display text-base text-[color:var(--ink)]">{t('patients.workspace.whatsapp_compose')}</h4>
+                  <textarea
+                    className="input w-full"
+                    rows={3}
+                    value={waDraft}
+                    onChange={(e) => setWaDraft(e.target.value)}
+                    placeholder={t('patients.workspace.whatsapp_placeholder')}
+                    data-testid="wa-draft"
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary text-sm"
+                    disabled={waBusy || !waDraft.trim()}
+                    onClick={sendWhatsApp}
+                    data-testid="wa-send"
+                  >
+                    {waBusy ? '…' : t('patients.workspace.whatsapp_send')}
+                  </button>
+                  {waMsg && <p className="text-xs text-emerald-700" data-testid="wa-msg">{waMsg}</p>}
+                </section>
+              )}
+
+              <section className="space-y-2" data-testid="workspace-whatsapp-automations">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
+                  {t('patients.workspace.whatsapp_automations')}
+                </h4>
+                {automations.length === 0 && (
+                  <p className="text-sm text-[color:var(--ink-muted)]">{t('patients.workspace.whatsapp_automations_empty')}</p>
+                )}
+                <ul className="space-y-2">
+                  {automations.map((a: any) => (
+                    <li key={a.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2" data-testid={`wa-auto-${a.key}`}>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{a.name || a.key}</div>
+                        <div className="text-[11px] text-[color:var(--ink-muted)] truncate">
+                          {a.key}
+                          {a.enabled ? '' : ` · ${t('patients.workspace.task_automation_disabled')}`}
+                          {a.message ? ` · ${String(a.message).slice(0, 80)}` : ''}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs shrink-0"
+                        disabled={!patient?.phone || !a.enabled || waAutoBusy === a.id}
+                        onClick={() => runPatientAutomation(a.id)}
+                        data-testid={`wa-auto-run-${a.key}`}
+                      >
+                        {waAutoBusy === a.id ? '…' : t('patients.workspace.whatsapp_run_automation')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+
+              <section className="space-y-2" data-testid="workspace-whatsapp-thread">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
+                  {t('patients.workspace.whatsapp_thread')}
+                </h4>
+                {whatsappMessages.length === 0 && (
+                  <p className="text-sm text-[color:var(--ink-muted)]" data-testid="wa-empty">{t('patients.workspace.whatsapp_empty')}</p>
+                )}
+                <ul className="space-y-2 max-h-[28rem] overflow-y-auto">
+                  {[...whatsappMessages].reverse().map((m: any) => (
+                    <li
+                      key={m.id}
+                      className={`crm-timeline-card text-sm ${m.direction === 'out' ? 'ml-4 border-l-2 border-[color:var(--brass-deep)]' : 'mr-4'}`}
+                      data-testid={`wa-msg-${m.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className={`badge text-[10px] ${m.direction === 'out' ? 'badge-green' : 'badge-slate'}`}>
+                          {m.direction === 'out' ? t('patients.workspace.whatsapp_out') : t('patients.workspace.whatsapp_in')}
+                        </span>
+                        <span className="text-[11px] text-[color:var(--ink-muted)]">
+                          {fmtDateTime(m.created_at, locale)}
+                          {m.status ? ` · ${m.status}` : ''}
+                        </span>
+                      </div>
+                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             </div>
           )}
 
@@ -1052,7 +1205,7 @@ export default function PatientRecord() {
 
           {tab !== 'audit' && tab !== 'clinical' && (
           <div className="p-4 space-y-5">
-            {grouped.length === 0 && tab !== 'tasks' && tab !== 'documents' && (
+            {grouped.length === 0 && tab !== 'tasks' && tab !== 'documents' && tab !== 'whatsapp' && (
               <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>
             )}
             {tab === 'tasks' && grouped.length > 0 && (
@@ -1060,7 +1213,7 @@ export default function PatientRecord() {
                 {t('patients.workspace.task_timeline')}
               </h4>
             )}
-            {tab !== 'documents' && grouped.map(([month, items]) => (
+            {tab !== 'documents' && tab !== 'whatsapp' && grouped.map(([month, items]) => (
               <div key={month}>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--ink-muted)] mb-2">{month}</div>
                 <ul className="space-y-2">

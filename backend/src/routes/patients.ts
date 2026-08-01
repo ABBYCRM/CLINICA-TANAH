@@ -33,6 +33,14 @@ import {
   mimeFromName,
   writePatientDocumentFile,
 } from '../services/patientDocumentsVault';
+import {
+  ensurePatientConversation,
+  isLive,
+  listMessagesForPatient,
+  sendTextMessage,
+} from '../services/whatsapp';
+import { runAutomationForPatient } from '../services/marketing';
+import type { Locale } from '../services/i18n';
 
 const router = Router();
 
@@ -606,13 +614,9 @@ router.get('/:id/record', (req: Request, res: Response) => {
   `).all(req.params.id, req.tenantId) as any[];
 
   let waMessages: any[] = [];
+  waMessages = listMessagesForPatient(req.tenantId!, req.params.id, p.phone || null, 80);
   if (p.phone) {
-    waMessages = db.prepare(`
-      SELECT id, direction, body, created_at, status
-      FROM whatsapp_messages
-      WHERE phone = ? AND tenant_id = ?
-      ORDER BY created_at DESC LIMIT 40
-    `).all(p.phone, req.tenantId) as any[];
+    try { ensurePatientConversation(req.tenantId!, p.phone, req.params.id); } catch { /* ignore */ }
   }
 
   let assignedProfessional: any = null;
@@ -868,6 +872,25 @@ router.get('/:id/record', (req: Request, res: Response) => {
     tasks,
     tickets,
     documents,
+    whatsapp_messages: waMessages,
+    whatsapp: {
+      phone: p.phone || null,
+      live: isLive(),
+      message_count: waMessages.length,
+      conversation: p.phone
+        ? (db.prepare(`
+            SELECT id, phone, state, opted_out, patient_id, last_message_at, lgpd_consent_granted
+            FROM whatsapp_conversations
+            WHERE tenant_id = ? AND (patient_id = ? OR phone = ?)
+            ORDER BY last_message_at DESC LIMIT 1
+          `).get(req.tenantId, req.params.id, p.phone) || null)
+        : (db.prepare(`
+            SELECT id, phone, state, opted_out, patient_id, last_message_at, lgpd_consent_granted
+            FROM whatsapp_conversations
+            WHERE tenant_id = ? AND patient_id = ?
+            ORDER BY last_message_at DESC LIMIT 1
+          `).get(req.tenantId, req.params.id) || null),
+    },
     privacy_requests: privacyRequests,
     audit_events: auditEvents,
     associations: {
@@ -895,7 +918,7 @@ router.get('/:id/record', (req: Request, res: Response) => {
       },
       invoices: { count: invoices.length, items: invoices.slice(0, 8) },
       consents: { count: consents.length, items: consents.slice(0, 8) },
-      whatsapp: { count: waMessages.length, items: waMessages.slice(0, 5) },
+      whatsapp: { count: waMessages.length, items: waMessages.slice(0, 12) },
       surveys: { count: surveys.length, items: surveys.slice(0, 8) },
       tasks: { count: tasks.length, items: tasks.slice(0, 8) },
       tickets: { count: tickets.length, items: tickets.slice(0, 8) },
@@ -1467,6 +1490,140 @@ router.put('/:id/recall', requireRole('admin', 'doctor', 'nurse'), (req: Request
     actorId: req.user!.id,
   });
   res.json({ ok: true, ...result });
+});
+
+/** Patient WhatsApp thread (normalized phone + conversation link). */
+router.get('/:id/whatsapp', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id, phone, full_name FROM patients WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  if (p.phone) {
+    try { ensurePatientConversation(req.tenantId!, p.phone, p.id); } catch { /* ignore */ }
+  }
+  const messages = listMessagesForPatient(req.tenantId!, p.id, p.phone || null, 120);
+  const conversation = db.prepare(`
+    SELECT id, phone, state, opted_out, patient_id, last_message_at, lgpd_consent_granted
+    FROM whatsapp_conversations
+    WHERE tenant_id = ? AND (patient_id = ? OR phone = ?)
+    ORDER BY last_message_at DESC LIMIT 1
+  `).get(req.tenantId, p.id, p.phone || '') as any;
+  const automations = db.prepare(`
+    SELECT id, key, name, enabled, message, last_run_at, last_sent_count
+    FROM wa_automations WHERE tenant_id = ? ORDER BY name
+  `).all(req.tenantId);
+  res.json({
+    phone: p.phone || null,
+    live: isLive(),
+    conversation: conversation || null,
+    messages,
+    automations,
+  });
+});
+
+/** Send WhatsApp message to this patient (dry-run when Meta not configured). */
+router.post('/:id/whatsapp/send', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id, phone, full_name, do_not_contact FROM patients WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  if (!p.phone) { res.status(400).json({ error: 'no_phone' }); return; }
+  if (p.do_not_contact) { res.status(409).json({ error: 'do_not_contact' }); return; }
+  const body = String(req.body?.body || '').trim();
+  if (!body) { res.status(400).json({ error: 'body_required' }); return; }
+  if (body.length > 4000) { res.status(400).json({ error: 'body_too_long' }); return; }
+
+  const conv = ensurePatientConversation(req.tenantId!, p.phone, p.id);
+  if (conv?.opted_out) {
+    res.status(409).json({ error: 'opted_out', message: 'This number has opted out (LGPD). Message not sent.' });
+    return;
+  }
+
+  const result = await sendTextMessage(p.phone, body, req.tenantId!);
+  try {
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'whatsapp', 'whatsapp_out', ?, ?, ?, datetime('now'))
+    `).run(
+      `pte_wa_${Date.now().toString(36)}`,
+      req.tenantId,
+      p.id,
+      body.slice(0, 120),
+      result.ok ? (result.dry_run ? 'dry_run' : 'sent') : 'failed',
+      JSON.stringify({ phone: p.phone, dry_run: !!result.dry_run, message_id: result.message_id || null }),
+    );
+  } catch { /* ignore */ }
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'patient_whatsapp_send',
+    resourceType: 'patient',
+    resourceId: p.id,
+    afterValue: { phone: p.phone, dry_run: result.dry_run, ok: result.ok },
+    legalBasis: 'consent_art7_I',
+  });
+  res.status(result.ok ? 200 : 502).json({
+    ...result,
+    phone: p.phone,
+    messages: listMessagesForPatient(req.tenantId!, p.id, p.phone, 120),
+  });
+});
+
+/** Run a WhatsApp automation for this single patient. */
+router.post('/:id/whatsapp/automations/:automationId/run', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id, phone FROM patients WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  if (p.phone) {
+    try { ensurePatientConversation(req.tenantId!, p.phone, p.id); } catch { /* ignore */ }
+  }
+  const locale = ((req.headers['accept-language'] as string) || 'pt-BR').slice(0, 5) as Locale;
+  const result = await runAutomationForPatient(
+    req.tenantId!,
+    req.params.automationId,
+    p.id,
+    locale === 'en' || locale === 'es' || locale === 'pt-BR' ? locale : 'pt-BR',
+  );
+  if (!result.ok && result.error === 'not_found') {
+    res.status(404).json(result); return;
+  }
+  if (!result.ok && result.error === 'disabled') {
+    res.status(409).json(result); return;
+  }
+  if (!result.ok && (result.error === 'no_phone' || result.error === 'do_not_contact' || result.error === 'marketing_blocked' || result.error === 'opted_out')) {
+    res.status(409).json(result); return;
+  }
+  if (!result.ok) {
+    res.status(400).json(result); return;
+  }
+  try {
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'whatsapp', 'whatsapp_automation', ?, ?, ?, datetime('now'))
+    `).run(
+      `pte_waauto_${Date.now().toString(36)}`,
+      req.tenantId,
+      p.id,
+      result.key || req.params.automationId,
+      result.sent ? 'sent' : 'skipped',
+      JSON.stringify(result),
+    );
+  } catch { /* ignore */ }
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'patient_whatsapp_automation_run',
+    resourceType: 'wa_automation',
+    resourceId: req.params.automationId,
+    afterValue: { patient_id: p.id, ...result },
+    legalBasis: 'consent_art7_I',
+  });
+  res.json({
+    ...result,
+    messages: listMessagesForPatient(req.tenantId!, p.id, p.phone || null, 120),
+  });
 });
 
 /** List unified patient documents (manual + intake + clinical + invoices + reports). */
