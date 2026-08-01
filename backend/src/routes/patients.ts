@@ -489,13 +489,15 @@ router.get('/:id/record', (req: Request, res: Response) => {
   `).all(req.params.id, req.tenantId) as any[]).map((e) => revealEncounterRow(e)!);
 
   const prescriptions = (db.prepare(`
-    SELECT pr.id, pr.created_at, pr.items, pr.sent_via_whatsapp, u.full_name AS practitioner_name
+    SELECT pr.id, pr.created_at, pr.items, pr.sent_via_whatsapp, pr.status, pr.cancelled_at,
+           u.full_name AS practitioner_name
     FROM prescriptions pr
     LEFT JOIN users u ON u.id = pr.practitioner_id
     WHERE pr.patient_id = ? AND pr.tenant_id = ?
     ORDER BY pr.created_at DESC LIMIT 30
   `).all(req.params.id, req.tenantId) as any[]).map((pr) => ({
     ...pr,
+    status: pr.status || 'active',
     items: revealPrescriptionItems(pr.items),
   }));
 
@@ -626,9 +628,10 @@ router.get('/:id/record', (req: Request, res: Response) => {
   for (const pr of prescriptions) {
     timeline.push({
       id: `rx-${pr.id}`, kind: 'prescription', at: pr.created_at,
-      title: 'prescription',
+      title: pr.status === 'cancelled' ? 'prescription_cancelled' : 'prescription',
       subtitle: pr.practitioner_name,
-      meta: { id: pr.id, sent_via_whatsapp: pr.sent_via_whatsapp },
+      status: pr.status || 'active',
+      meta: { id: pr.id, sent_via_whatsapp: pr.sent_via_whatsapp, status: pr.status || 'active' },
     });
   }
   for (const inv of invoices) {

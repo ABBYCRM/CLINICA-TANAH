@@ -64,16 +64,19 @@ export function Modal({ title, onClose, children, wide }: {
   );
 }
 
-export function ConfirmDialog({ name, onCancel, onConfirm, busy, notice }: {
+export function ConfirmDialog({ name, onCancel, onConfirm, busy, notice, title, body, confirmLabel }: {
   name?: string;
   onCancel: () => void;
   onConfirm: () => void;
   busy?: boolean;
   notice?: string;
+  title?: string;
+  body?: string;
+  confirmLabel?: string;
 }) {
   const { t } = useI18n();
   return (
-    <Modal title={t('crud.confirm_delete_title')} onClose={onCancel}>
+    <Modal title={title || t('crud.confirm_delete_title')} onClose={onCancel}>
       <div className="space-y-4">
         <div className="flex items-start gap-3">
           <div
@@ -87,7 +90,7 @@ export function ConfirmDialog({ name, onCancel, onConfirm, busy, notice }: {
           </div>
           <div className="text-sm text-[color:var(--ink-muted)]">
             {name && <div className="font-semibold text-[#3a342c] mb-1">{name}</div>}
-            {t('crud.confirm_delete_body')}
+            {body || t('crud.confirm_delete_body')}
             {notice && (
               <div
                 className="mt-2 text-xs text-[#5a4720] rounded-lg px-2.5 py-2"
@@ -101,7 +104,7 @@ export function ConfirmDialog({ name, onCancel, onConfirm, busy, notice }: {
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="btn-secondary">{t('common.cancel')}</button>
           <button type="button" onClick={onConfirm} disabled={busy} className="btn-danger" data-testid="confirm-delete">
-            {busy ? t('common.loading') : t('common.delete')}
+            {busy ? t('common.loading') : (confirmLabel || t('common.delete'))}
           </button>
         </div>
       </div>
@@ -109,11 +112,12 @@ export function ConfirmDialog({ name, onCancel, onConfirm, busy, notice }: {
   );
 }
 
-export function RowActions({ onEdit, onDelete, editTestId, deleteTestId }: {
+export function RowActions({ onEdit, onDelete, editTestId, deleteTestId, deleteTitle }: {
   onEdit?: () => void;
   onDelete?: () => void;
   editTestId?: string;
   deleteTestId?: string;
+  deleteTitle?: string;
 }) {
   const { t } = useI18n();
   return (
@@ -125,7 +129,7 @@ export function RowActions({ onEdit, onDelete, editTestId, deleteTestId }: {
         </button>
       )}
       {onDelete && (
-        <button type="button" onClick={onDelete} title={t('common.delete')} data-testid={deleteTestId}
+        <button type="button" onClick={onDelete} title={deleteTitle || t('common.delete')} data-testid={deleteTestId}
           className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600">
           <IconTrash />
         </button>

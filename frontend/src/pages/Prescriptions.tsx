@@ -5,84 +5,189 @@ import { Modal, ConfirmDialog, RowActions, FormError, FormActions } from '../com
 
 interface RxItem { medication: string; dosage: string; frequency: string; duration: string; instructions?: string; }
 
+type RxTab = 'active' | 'cancelled';
+
 function parseItems(v: any): RxItem[] {
+  if (Array.isArray(v)) return v;
   try { return JSON.parse(v); } catch { return []; }
+}
+
+function fmtWhen(v?: string | null, locale = 'pt-BR') {
+  if (!v) return '—';
+  const d = new Date(v.includes('T') || v.includes(' ') ? v.replace(' ', 'T') : `${v}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString(locale, {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
 }
 
 export default function Prescriptions() {
   const { t, locale } = useI18n();
+  const [tab, setTab] = useState<RxTab>('active');
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [counts, setCounts] = useState({ active: 0, cancelled: 0 });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
-  const [deleting, setDeleting] = useState<any | null>(null);
+  const [cancelling, setCancelling] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const load = () => {
     setLoading(true);
-    api.get('/api/clinical/prescriptions')
-      .then((d) => setPrescriptions(d.prescriptions))
-      .catch(console.error)
+    setError('');
+    api.get(`/api/clinical/prescriptions?status=${tab}`)
+      .then((d) => {
+        setPrescriptions(d.prescriptions || []);
+        setCounts(d.counts || { active: 0, cancelled: 0 });
+      })
+      .catch((e: any) => setError(e.message || t('errors.generic')))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [locale]);
+  useEffect(load, [locale, tab]);
 
-  const remove = async () => {
-    if (!deleting) return;
+  const cancelRx = async () => {
+    if (!cancelling) return;
     setBusy(true);
     try {
-      await api.del(`/api/clinical/prescriptions/${deleting.id}`);
-      setDeleting(null);
-      load();
+      await api.post(`/api/clinical/prescriptions/${cancelling.id}/cancel`, {
+        reason: t('prescriptions.cancel_default_reason'),
+      });
+      setCancelling(null);
+      if (tab !== 'cancelled') setTab('cancelled');
+      else load();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
-      setDeleting(null);
+      setError(e.body?.message || e.message || t('errors.generic'));
+      setCancelling(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreRx = async (p: any) => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.post(`/api/clinical/prescriptions/${p.id}/restore`, {});
+      if (tab !== 'active') setTab('active');
+      else load();
+    } catch (e: any) {
+      setError(e.body?.message || e.message || t('errors.generic'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4" data-testid="prescriptions-page">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">{t('prescriptions.title')}</h1>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-prescription">
+        <button
+          onClick={() => { setEditing(null); setShowForm(true); }}
+          className="btn-primary"
+          data-testid="new-prescription"
+        >
           + {t('prescriptions.new')}
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.35)]">
+        <button
+          type="button"
+          className={`crm-feed-tab ${tab === 'active' ? 'is-active' : ''}`}
+          data-testid="rx-tab-active"
+          onClick={() => setTab('active')}
+        >
+          {t('prescriptions.tab_active')}
+          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.active}</span>
+        </button>
+        <button
+          type="button"
+          className={`crm-feed-tab ${tab === 'cancelled' ? 'is-active' : ''}`}
+          data-testid="rx-tab-cancelled"
+          onClick={() => setTab('cancelled')}
+        >
+          {t('prescriptions.tab_cancelled')}
+          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.cancelled}</span>
+        </button>
+      </div>
+
+      {tab === 'cancelled' && (
+        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed max-w-3xl rounded-lg px-3 py-2"
+          style={{ background: 'linear-gradient(180deg,#f7f1e6,#efe6d8)', border: '1px solid rgba(176,183,192,0.45)' }}>
+          {t('prescriptions.retention_notice')}
+        </p>
+      )}
+
       {error && <FormError message={error} />}
 
       <div className="grid gap-3">
-        {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
-        {!loading && prescriptions.length === 0 && <div className="card p-6 text-center text-slate-400">{t('common.no_data')}</div>}
+        {loading && <div className="text-[color:var(--ink-muted)] py-6 text-center">{t('common.loading')}</div>}
+        {!loading && prescriptions.length === 0 && (
+          <div className="card p-6 text-center text-[color:var(--ink-muted)]">{t('common.no_data')}</div>
+        )}
         {prescriptions.map((p) => {
           const items = parseItems(p.items);
+          const cancelled = (p.status || 'active') === 'cancelled';
           return (
-            <div key={p.id} className="card p-4">
+            <div
+              key={p.id}
+              className={`card p-4 ${cancelled ? 'opacity-90' : ''}`}
+              data-testid={`rx-card-${p.id}`}
+              data-status={p.status || 'active'}
+            >
               <div className="flex items-center justify-between mb-2 gap-2">
-                <div>
-                  <div className="font-semibold">{p.patient_name}</div>
-                  <div className="text-xs text-slate-500">{p.practitioner_name} • {p.created_at}</div>
+                <div className="min-w-0">
+                  <div className="font-semibold text-[color:var(--ink)]">{p.patient_name}</div>
+                  <div className="text-xs text-[color:var(--ink-muted)]">
+                    {p.practitioner_name} • {fmtWhen(p.created_at, locale)}
+                  </div>
+                  {cancelled && (
+                    <div className="text-[11px] text-[#8b3a2a] mt-1">
+                      {t('prescriptions.cancelled_meta', {
+                        when: fmtWhen(p.cancelled_at, locale),
+                        by: p.cancelled_by_name || '—',
+                      })}
+                      {p.cancel_reason ? ` · ${p.cancel_reason}` : ''}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {p.sent_via_whatsapp ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  {cancelled ? (
+                    <span className="badge-red">{t('prescriptions.status_cancelled')}</span>
+                  ) : p.sent_via_whatsapp ? (
                     <span className="badge-green">✓ {t('prescriptions.send_via_whatsapp')}</span>
                   ) : (
                     <span className="badge-slate">PDF</span>
                   )}
-                  <RowActions
-                    onEdit={() => { setEditing(p); setShowForm(true); }}
-                    onDelete={() => setDeleting(p)}
-                  />
+                  {!cancelled && (
+                    <RowActions
+                      onEdit={() => { setEditing(p); setShowForm(true); }}
+                      onDelete={() => setCancelling(p)}
+                      deleteTitle={t('prescriptions.cancel_action')}
+                    />
+                  )}
+                  {cancelled && (
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      disabled={busy}
+                      onClick={() => restoreRx(p)}
+                      data-testid={`rx-restore-${p.id}`}
+                    >
+                      {t('prescriptions.restore')}
+                    </button>
+                  )}
                 </div>
               </div>
-              <ul className="space-y-1 text-sm">
+              <ul className={`space-y-1 text-sm ${cancelled ? 'line-through decoration-[rgba(90,40,30,0.35)]' : ''}`}>
                 {items.map((it, i) => (
-                  <li key={i} className="border-l-2 border-clinic-500 pl-3">
-                    <span className="font-medium">{it.medication}</span> — {it.dosage}, {it.frequency}, {it.duration}
+                  <li key={i} className="border-l-2 border-[color:var(--brass)] pl-3">
+                    <span className="font-medium">{it.medication}</span>
+                    {(it.dosage || it.frequency || it.duration) ? (
+                      <> — {[it.dosage, it.frequency, it.duration].filter(Boolean).join(', ')}</>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -95,15 +200,19 @@ export default function Prescriptions() {
         <PrescriptionForm
           initial={editing}
           onClose={() => { setShowForm(false); setEditing(null); }}
-          onSaved={() => { setShowForm(false); setEditing(null); load(); }}
+          onSaved={() => { setShowForm(false); setEditing(null); setTab('active'); load(); }}
         />
       )}
-      {deleting && (
+      {cancelling && (
         <ConfirmDialog
-          name={`${deleting.patient_name} — ${deleting.created_at}`}
+          title={t('prescriptions.cancel_title')}
+          body={t('prescriptions.cancel_body')}
+          confirmLabel={t('prescriptions.cancel_confirm')}
+          name={`${cancelling.patient_name} — ${fmtWhen(cancelling.created_at, locale)}`}
+          notice={t('prescriptions.cancel_notice')}
           busy={busy}
-          onCancel={() => setDeleting(null)}
-          onConfirm={remove}
+          onCancel={() => setCancelling(null)}
+          onConfirm={cancelRx}
         />
       )}
     </div>
@@ -145,7 +254,7 @@ function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; 
       }
       onSaved();
     } catch (err: any) {
-      setError(err.message || t('errors.generic'));
+      setError(err.body?.message || err.message || t('errors.generic'));
     } finally {
       setSaving(false);
     }
@@ -169,13 +278,13 @@ function PrescriptionForm({ initial, onClose, onSaved }: { initial: any | null; 
 
         <div className="space-y-3">
           {items.map((it, i) => (
-            <div key={i} className="rounded-xl border border-slate-200 p-3 space-y-2 bg-slate-50/60">
+            <div key={i} className="rounded-xl border border-[rgba(176,183,192,0.45)] p-3 space-y-2" style={{ background: 'linear-gradient(180deg,#fbf7f0,#f3ebe0)' }}>
               <div className="flex items-center justify-between gap-2">
                 <input className="input flex-1" placeholder={t('prescriptions.medication') + ' *'} value={it.medication}
                   onChange={(e) => setItem(i, 'medication', e.target.value)} required={i === 0} />
                 {items.length > 1 && (
                   <button type="button" onClick={() => setItems((arr) => arr.filter((_, idx) => idx !== i))}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors" aria-label="Remove item">
+                    className="rounded-lg p-1.5 text-[color:var(--ink-muted)] hover:bg-[#f8e8e2] hover:text-[#8b3a2a] transition-colors" aria-label="Remove item">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-4 h-4"><path d="M18 6 6 18M6 6l12 12" /></svg>
                   </button>
                 )}

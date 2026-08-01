@@ -151,21 +151,43 @@ router.delete('/encounters/:id', requireRole('admin'), (req: Request, res: Respo
 });
 
 // PRESCRIPTIONS
+// status: active (vigente) | cancelled (cancelada — retained under CFM; never hard-deleted)
 router.get('/prescriptions', requireRole('admin', 'doctor', 'nurse', 'pharmacist'), (req: Request, res: Response) => {
   const patientId = req.query.patient_id as string | undefined;
-  let sql = `SELECT pr.*, p.full_name AS patient_name, u.full_name AS practitioner_name
+  const statusFilter = String(req.query.status || 'active'); // active | cancelled | all
+  let sql = `SELECT pr.*, p.full_name AS patient_name, u.full_name AS practitioner_name,
+                    cu.full_name AS cancelled_by_name
              FROM prescriptions pr
              JOIN patients p ON p.id = pr.patient_id
              JOIN users u ON u.id = pr.practitioner_id
+             LEFT JOIN users cu ON cu.id = pr.cancelled_by
              WHERE pr.tenant_id = ?`;
   const args: any[] = [req.tenantId];
   if (patientId) { sql += ` AND pr.patient_id = ?`; args.push(patientId); }
+  if (statusFilter === 'active' || statusFilter === 'cancelled') {
+    sql += ` AND COALESCE(pr.status, 'active') = ?`;
+    args.push(statusFilter);
+  }
   sql += ` ORDER BY pr.created_at DESC LIMIT 200`;
   const rows = (db.prepare(sql).all(...args) as any[]).map((pr) => ({
     ...pr,
+    status: pr.status || 'active',
     items: revealPrescriptionItems(pr.items),
   }));
-  res.json({ prescriptions: rows });
+  const counts = db.prepare(`
+    SELECT
+      SUM(CASE WHEN COALESCE(status, 'active') = 'active' THEN 1 ELSE 0 END) AS active,
+      SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
+    FROM prescriptions WHERE tenant_id = ?
+    ${patientId ? 'AND patient_id = ?' : ''}
+  `).get(...(patientId ? [req.tenantId, patientId] : [req.tenantId])) as any;
+  res.json({
+    prescriptions: rows,
+    counts: {
+      active: Number(counts?.active || 0),
+      cancelled: Number(counts?.cancelled || 0),
+    },
+  });
 });
 
 router.post('/prescriptions', requireRole('doctor'), (req: Request, res: Response) => {
@@ -174,8 +196,8 @@ router.post('/prescriptions', requireRole('doctor'), (req: Request, res: Respons
   const d = parsed.data;
   const id = uuid();
   db.prepare(`
-    INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp)
-    VALUES (?,?,?,?,?,?,?)
+    INSERT INTO prescriptions (id, tenant_id, encounter_id, patient_id, practitioner_id, items, sent_via_whatsapp, status)
+    VALUES (?,?,?,?,?,?,?, 'active')
   `).run(id, req.tenantId, d.encounter_id, d.patient_id, d.practitioner_id, sealPrescriptionItems(d.items), d.send_via_whatsapp ? 1 : 0);
   logAudit({
     tenantId: req.tenantId,
@@ -183,13 +205,20 @@ router.post('/prescriptions', requireRole('doctor'), (req: Request, res: Respons
     action: 'create_prescription', resourceType: 'prescription', resourceId: id,
     legalBasis: 'health_protection_art7_VIII',
   });
-  res.status(201).json({ id, sent_via_whatsapp: d.send_via_whatsapp });
+  res.status(201).json({ id, sent_via_whatsapp: d.send_via_whatsapp, status: 'active' });
 });
 
-// Update prescription items (e.g. dosage correction) — doctor only
+// Update prescription items (e.g. dosage correction) — doctor only; only while active
 router.put('/prescriptions/:id', requireRole('doctor'), (req: Request, res: Response) => {
   const before = db.prepare(`SELECT * FROM prescriptions WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!before) { res.status(404).json({ error: 'not_found' }); return; }
+  if ((before.status || 'active') === 'cancelled') {
+    res.status(409).json({
+      error: 'prescription_cancelled',
+      message: 'Receita cancelada não pode ser editada. Restaure-a primeiro ou emita uma nova.',
+    });
+    return;
+  }
   const parsed = prescriptionSchema.pick({ items: true }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   db.prepare(`UPDATE prescriptions SET items = ? WHERE id = ? AND tenant_id = ?`)
@@ -203,14 +232,62 @@ router.put('/prescriptions/:id', requireRole('doctor'), (req: Request, res: Resp
   res.json({ ok: true });
 });
 
-// Cancel prescription — retain record (CFM); mark items as voided ciphertext
-router.delete('/prescriptions/:id', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
-  const p = db.prepare(`SELECT id FROM prescriptions WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+/**
+ * Cancel prescription (soft-delete) — CFM clinical retention.
+ * Record remains in the cancelled / retention archive; never hard-deleted.
+ * Prefer POST /cancel when a reason is provided (DELETE bodies are unreliable).
+ */
+function cancelPrescription(req: Request, res: Response) {
+  const p = db.prepare(`SELECT * FROM prescriptions WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
-  res.status(409).json({
-    error: 'clinical_retention',
-    message: 'Prescrições fazem parte do prontuário (retenção CFM). Não é permitido apagar.',
+  if ((p.status || 'active') === 'cancelled') {
+    res.json({ ok: true, status: 'cancelled', already: true });
+    return;
+  }
+  const reasonRaw = req.body?.reason ?? req.query.reason;
+  const reason = typeof reasonRaw === 'string' ? reasonRaw.slice(0, 500) : null;
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE prescriptions
+    SET status = 'cancelled', cancelled_at = ?, cancelled_by = ?, cancel_reason = ?
+    WHERE id = ? AND tenant_id = ?
+  `).run(now, req.user!.id, reason, req.params.id, req.tenantId);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'cancel_prescription', resourceType: 'prescription', resourceId: req.params.id,
+    beforeValue: { status: p.status || 'active' },
+    afterValue: { status: 'cancelled', reason },
+    legalBasis: 'health_protection_art7_VIII',
   });
+  res.json({ ok: true, status: 'cancelled', cancelled_at: now, clinical_retention: true });
+}
+
+router.post('/prescriptions/:id/cancel', requireRole('doctor', 'admin'), cancelPrescription);
+router.delete('/prescriptions/:id', requireRole('doctor', 'admin'), cancelPrescription);
+
+/** Restore a cancelled prescription to active (vigente). */
+router.post('/prescriptions/:id/restore', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT * FROM prescriptions WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  if ((p.status || 'active') !== 'cancelled') {
+    res.json({ ok: true, status: 'active', already: true });
+    return;
+  }
+  db.prepare(`
+    UPDATE prescriptions
+    SET status = 'active', cancelled_at = NULL, cancelled_by = NULL, cancel_reason = NULL
+    WHERE id = ? AND tenant_id = ?
+  `).run(req.params.id, req.tenantId);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'restore_prescription', resourceType: 'prescription', resourceId: req.params.id,
+    beforeValue: { status: 'cancelled' },
+    afterValue: { status: 'active' },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.json({ ok: true, status: 'active' });
 });
 
 export default router;
