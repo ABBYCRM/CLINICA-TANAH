@@ -9,49 +9,101 @@ function parseCodes(v: any): string[] {
   try { return v ? JSON.parse(v) : []; } catch { return []; }
 }
 
+type EncTab = 'active' | 'cancelled';
+
+function fmtWhen(v?: string | null, locale = 'pt-BR') {
+  if (!v) return '—';
+  const d = new Date(String(v).includes('T') || String(v).includes(' ') ? String(v).replace(' ', 'T') : `${v}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleString(locale, {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 export default function Encounters() {
   const { t, locale } = useI18n();
+  const [tab, setTab] = useState<EncTab>('active');
   const [encounters, setEncounters] = useState<any[]>([]);
+  const [counts, setCounts] = useState({ active: 0, cancelled: 0 });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
-  const [deleting, setDeleting] = useState<any | null>(null);
+  const [cancelling, setCancelling] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const load = () => {
     setLoading(true);
-    api.get('/api/clinical/encounters')
-      .then((d) => setEncounters(d.encounters))
-      .catch(console.error)
+    setError('');
+    api.get(`/api/clinical/encounters?status=${tab}`)
+      .then((d) => {
+        setEncounters(d.encounters || []);
+        setCounts(d.counts || { active: 0, cancelled: 0 });
+      })
+      .catch((e: any) => setError(e.message || t('errors.generic')))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [locale]);
+  useEffect(load, [locale, tab]);
 
-  const remove = async () => {
-    if (!deleting) return;
+  const cancelEnc = async () => {
+    if (!cancelling) return;
     setBusy(true);
     try {
-      await api.del(`/api/clinical/encounters/${deleting.id}`);
-      setDeleting(null);
-      load();
+      await api.post(`/api/clinical/encounters/${cancelling.id}/cancel`, {
+        reason: t('encounters.cancel_default_reason'),
+      });
+      setCancelling(null);
+      if (tab !== 'cancelled') setTab('cancelled');
+      else load();
     } catch (e: any) {
-      setError(e.message || t('errors.generic'));
-      setDeleting(null);
+      setError(e.body?.message || e.message || t('errors.generic'));
+      setCancelling(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreEnc = async (e: any) => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.post(`/api/clinical/encounters/${e.id}/restore`, {});
+      if (tab !== 'active') setTab('active');
+      else load();
+    } catch (err: any) {
+      setError(err.body?.message || err.message || t('errors.generic'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4" data-testid="encounters-page">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">{t('encounters.title')}</h1>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary" data-testid="new-encounter">
           + {t('encounters.new')}
         </button>
       </div>
+
+      <div className="flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.35)]">
+        <button type="button" className={`crm-feed-tab ${tab === 'active' ? 'is-active' : ''}`} data-testid="enc-tab-active" onClick={() => setTab('active')}>
+          {t('encounters.tab_active')}
+          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.active}</span>
+        </button>
+        <button type="button" className={`crm-feed-tab ${tab === 'cancelled' ? 'is-active' : ''}`} data-testid="enc-tab-cancelled" onClick={() => setTab('cancelled')}>
+          {t('encounters.tab_cancelled')}
+          <span className="ml-1.5 tabular-nums text-[color:var(--ink-muted)]">{counts.cancelled}</span>
+        </button>
+      </div>
+
+      {tab === 'cancelled' && (
+        <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed max-w-3xl rounded-lg px-3 py-2"
+          style={{ background: 'linear-gradient(180deg,#f7f1e6,#efe6d8)', border: '1px solid rgba(176,183,192,0.45)' }}>
+          {t('encounters.retention_notice')}
+        </p>
+      )}
 
       {error && <FormError message={error} />}
 
@@ -73,18 +125,31 @@ export default function Encounters() {
               {!loading && encounters.length === 0 && <tr><td colSpan={6} className="table-td text-center py-6 text-slate-400">{t('common.no_data')}</td></tr>}
               {encounters.map((e) => {
                 const codes = parseCodes(e.icd10_codes);
+                const cancelled = (e.status || 'active') === 'cancelled';
                 return (
-                  <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="table-td whitespace-nowrap">{e.started_at}</td>
+                  <tr key={e.id} className={`hover:bg-slate-50 transition-colors ${cancelled ? 'opacity-80' : ''}`} data-testid={`enc-row-${e.id}`}>
+                    <td className="table-td whitespace-nowrap">{fmtWhen(e.started_at, locale)}</td>
                     <td className="table-td">{e.patient_name}</td>
                     <td className="table-td">{e.practitioner_name}</td>
-                    <td className="table-td max-w-xs truncate">{e.assessment || '—'}</td>
+                    <td className={`table-td max-w-xs truncate ${cancelled ? 'line-through' : ''}`}>{e.assessment || '—'}</td>
                     <td className="table-td">{codes.length ? <span className="badge-blue">{codes.join(', ')}</span> : '—'}</td>
                     <td className="table-td">
-                      <RowActions
-                        onEdit={() => { setEditing(e); setShowForm(true); }}
-                        onDelete={() => setDeleting(e)}
-                      />
+                      <div className="flex items-center justify-end gap-2">
+                        {cancelled ? (
+                          <>
+                            <span className="badge-red text-[10px]">{t('encounters.status_cancelled')}</span>
+                            <button type="button" className="btn-secondary text-xs" disabled={busy} onClick={() => restoreEnc(e)} data-testid={`enc-restore-${e.id}`}>
+                              {t('encounters.restore')}
+                            </button>
+                          </>
+                        ) : (
+                          <RowActions
+                            onEdit={() => { setEditing(e); setShowForm(true); }}
+                            onDelete={() => setCancelling(e)}
+                            deleteTitle={t('encounters.cancel_action')}
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -98,15 +163,19 @@ export default function Encounters() {
         <EncounterForm
           initial={editing}
           onClose={() => { setShowForm(false); setEditing(null); }}
-          onSaved={() => { setShowForm(false); setEditing(null); load(); }}
+          onSaved={() => { setShowForm(false); setEditing(null); setTab('active'); load(); }}
         />
       )}
-      {deleting && (
+      {cancelling && (
         <ConfirmDialog
-          name={`${deleting.patient_name} — ${deleting.started_at}`}
+          title={t('encounters.cancel_title')}
+          body={t('encounters.cancel_body')}
+          confirmLabel={t('encounters.cancel_confirm')}
+          name={`${cancelling.patient_name} — ${fmtWhen(cancelling.started_at, locale)}`}
+          notice={t('encounters.cancel_notice')}
           busy={busy}
-          onCancel={() => setDeleting(null)}
-          onConfirm={remove}
+          onCancel={() => setCancelling(null)}
+          onConfirm={cancelEnc}
         />
       )}
     </div>
@@ -180,7 +249,7 @@ function EncounterForm({ initial, onClose, onSaved }: { initial: any | null; onC
       else await api.post('/api/clinical/encounters', payload);
       onSaved();
     } catch (err: any) {
-      setError(err.message || t('errors.generic'));
+      setError(err.body?.message || err.message || t('errors.generic'));
     } finally {
       setSaving(false);
     }
@@ -192,11 +261,12 @@ function EncounterForm({ initial, onClose, onSaved }: { initial: any | null; onC
         <FormError message={error} />
 
         {!initial && todayAppts.length > 0 && (
-          <div className="rounded-xl border border-clinic-100 bg-clinic-50/60 p-3 space-y-2" data-testid="today-appointments">
-            <div className="text-xs font-semibold uppercase tracking-wide text-clinic-800">
+          <div className="rounded-xl border border-[rgba(176,183,192,0.45)] p-3 space-y-2" data-testid="today-appointments"
+            style={{ background: 'linear-gradient(180deg,#fbf7f0,#f3ebe0)' }}>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink)]">
               {t('encounters.from_today')}
             </div>
-            <p className="text-xs text-clinic-700/80">{t('encounters.from_today_hint')}</p>
+            <p className="text-xs text-[color:var(--ink-muted)]">{t('encounters.from_today_hint')}</p>
             <div className="flex flex-wrap gap-2">
               {todayAppts.slice(0, 8).map((a) => (
                 <button
@@ -205,8 +275,8 @@ function EncounterForm({ initial, onClose, onSaved }: { initial: any | null; onC
                   onClick={() => pickToday(a)}
                   className={`rounded-lg border px-2.5 py-1.5 text-left text-sm transition-all ${
                     form.appointment_id === a.id
-                      ? 'border-clinic-500 bg-white text-clinic-900 shadow-sm ring-1 ring-clinic-200'
-                      : 'border-clinic-100 bg-white/80 text-slate-700 hover:border-clinic-300'
+                      ? 'border-[color:var(--brass-deep)] bg-white text-[color:var(--ink)] shadow-sm'
+                      : 'border-[rgba(176,183,192,0.45)] bg-white/80 text-[color:var(--ink)] hover:border-[color:var(--brass)]'
                   }`}
                   data-testid={`today-appt-${a.id}`}
                 >

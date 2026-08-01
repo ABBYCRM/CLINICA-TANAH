@@ -148,6 +148,10 @@ export function initSchema(): void {
       icd10_codes TEXT,                  -- JSON array of diagnosis codes
       cid10_codes TEXT,                  -- JSON array (CID-10 BR equivalent)
       notes TEXT,
+      status TEXT NOT NULL DEFAULT 'active', -- active | cancelled (CFM retention)
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      cancel_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_enc_patient ON encounters(patient_id);
@@ -160,6 +164,10 @@ export function initSchema(): void {
       items TEXT NOT NULL,               -- JSON: [{medication, dosage, frequency, duration, instructions}]
       pdf_path TEXT,                     -- optional generated PDF path
       sent_via_whatsapp INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active', -- active | cancelled (CFM retention — never hard-delete)
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      cancel_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -1213,6 +1221,15 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE body_scenarios ADD COLUMN execution_plan TEXT`,
     `ALTER TABLE body_scenarios ADD COLUMN photorealism INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE body_scenarios ADD COLUMN review_status TEXT DEFAULT 'pending_review'`,
+    // Prescription soft-cancel (CFM clinical retention — never hard-delete)
+    `ALTER TABLE prescriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE prescriptions ADD COLUMN cancelled_at TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN cancelled_by TEXT`,
+    `ALTER TABLE prescriptions ADD COLUMN cancel_reason TEXT`,
+    `ALTER TABLE encounters ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE encounters ADD COLUMN cancelled_at TEXT`,
+    `ALTER TABLE encounters ADD COLUMN cancelled_by TEXT`,
+    `ALTER TABLE encounters ADD COLUMN cancel_reason TEXT`,
   ]) {
     try { openDb().exec(sql); } catch { /* exists */ }
   }

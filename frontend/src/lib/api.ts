@@ -43,6 +43,9 @@ async function request(path: string, init: RequestInit = {}): Promise<any> {
   try { body = text ? JSON.parse(text) : null; } catch { body = { error: text || res.statusText }; }
   if (!res.ok) {
     const code = body?.error || res.statusText;
+    const message = (typeof body?.message === 'string' && body.message.trim())
+      ? body.message
+      : code;
     // Expired / rotated JWT — clear local session so the next navigation hits login
     if (res.status === 401 && (code === 'invalid_token' || code === 'unauthorized') && !path.includes('/auth/login')) {
       localStorage.removeItem('auth_token');
@@ -52,7 +55,7 @@ async function request(path: string, init: RequestInit = {}): Promise<any> {
         window.dispatchEvent(new CustomEvent('auth:session-expired', { detail: { code } }));
       }
     }
-    throw new ApiError(code, res.status, body);
+    throw new ApiError(message, res.status, body);
   }
   return body;
 }
