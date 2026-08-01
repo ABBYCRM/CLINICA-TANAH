@@ -36,6 +36,30 @@ import {
   type ScenarioAssumptions,
 } from '../services/scenarioEnvelope';
 
+function ageFromBirthDate(birth?: string | null): number | null {
+  if (!birth || !/^\d{4}-\d{2}-\d{2}/.test(birth)) return null;
+  const d = new Date(birth);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
+  return age > 10 && age < 110 ? age : null;
+}
+
+function hydrateLifestylePlan(row: any) {
+  if (!row) return row;
+  let params: any = {};
+  try { params = row.params_json ? JSON.parse(row.params_json) : {}; } catch { params = {}; }
+  return {
+    ...row,
+    params,
+    daily_calories: params.daily_calories ?? null,
+    deficit_kcal: params.deficit_kcal ?? null,
+    protein_g: params.protein_g ?? null,
+  };
+}
+
 const NUM = z.number().finite().optional().nullable();
 const measurementBodySchema = z.object({
   measured_at: z.string().optional().nullable(),
@@ -466,7 +490,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   const plans = db.prepare(`
     SELECT * FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
-  `).all(req.tenantId, patient.id) as any[];
+  `).all(req.tenantId, patient.id).map(hydrateLifestylePlan) as any[];
   const captures = db.prepare(`
     SELECT id, view_angle, status, content_type, notes, validated_at, created_at,
            CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image
@@ -660,18 +684,29 @@ router.post('/:patientId/plans', requireRole('doctor', 'nurse', 'admin'), (req: 
     summary: z.string().max(4000).optional().nullable(),
     weeks: z.number().int().positive().max(104).optional().nullable(),
     plan_type: z.enum(['nutrition', 'exercise']).default('nutrition'),
+    daily_calories: z.number().min(800).max(6000).optional().nullable(),
+    deficit_kcal: z.number().min(0).max(1500).optional().nullable(),
+    protein_g: z.number().min(0).max(400).optional().nullable(),
+    params: z.record(z.any()).optional().nullable(),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
   const id = uuid();
   const d = parsed.data;
+  const params = {
+    ...(d.params || {}),
+    daily_calories: d.daily_calories ?? d.params?.daily_calories ?? null,
+    deficit_kcal: d.deficit_kcal ?? d.params?.deficit_kcal ?? null,
+    protein_g: d.protein_g ?? d.params?.protein_g ?? null,
+  };
   db.prepare(`
-    INSERT INTO body_lifestyle_plans (id, tenant_id, patient_id, title, description, weeks, plan_type, summary)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO body_lifestyle_plans (id, tenant_id, patient_id, title, description, weeks, plan_type, summary, params_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, req.tenantId, patient.id, d.title, d.description ?? d.summary ?? null,
     d.weeks ?? null, d.plan_type, d.summary ?? d.description ?? null,
+    JSON.stringify(params),
   );
-  res.status(201).json({ plan: db.prepare(`SELECT * FROM body_lifestyle_plans WHERE id = ?`).get(id) });
+  res.status(201).json({ plan: hydrateLifestylePlan(db.prepare(`SELECT * FROM body_lifestyle_plans WHERE id = ?`).get(id)) });
 });
 
 /** Preview if/then envelope without generating images */
@@ -680,10 +715,10 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
   const latest = flattenMeasurement(latestMeasurement(req.tenantId!, patient.id));
-  const medications = db.prepare(`SELECT id, name, class_tag FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+  const medications = db.prepare(`SELECT id, name, class_tag, dosage FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
     .all(req.tenantId, patient.id) as any[];
-  const plans = db.prepare(`SELECT id, title, plan_type FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
-    .all(req.tenantId, patient.id) as any[];
+  const plans = db.prepare(`SELECT * FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+    .all(req.tenantId, patient.id).map(hydrateLifestylePlan) as any[];
   const horizon = Number(req.body?.horizon_weeks) || 12;
   const plan_config = (req.body?.plan_config || {}) as PlanConfig;
   if (!plan_config.medication_record_ids?.length && !plan_config.nutrition_plan_ids?.length && !plan_config.exercise_plan_ids?.length) {
@@ -701,11 +736,14 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
   };
   const execution_plan = computeScenarioEnvelope({
     horizon_weeks: horizon,
+    sex: patient.gender,
+    age_years: ageFromBirthDate(patient.birth_date),
     baseline: {
       height_cm: latest?.height_cm,
       weight_kg: latest?.weight_kg,
       waist_cm: latest?.waist_cm,
       body_fat_pct: latest?.body_fat_pct,
+      muscle_mass_kg: latest?.muscle_mass_kg,
       bmi: latest?.bmi,
     },
     medications,
@@ -882,10 +920,10 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
 
   const weeks = parsed.data.horizon_weeks || parsed.data.weeks || 12;
   const latestFlat = flattenMeasurement(latestMeasurement(req.tenantId!, patient.id));
-  const medications = db.prepare(`SELECT id, name, class_tag FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+  const medications = db.prepare(`SELECT id, name, class_tag, dosage FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
     .all(req.tenantId, patient.id) as any[];
-  const plans = db.prepare(`SELECT id, title, plan_type FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
-    .all(req.tenantId, patient.id) as any[];
+  const plans = db.prepare(`SELECT * FROM body_lifestyle_plans WHERE tenant_id = ? AND patient_id = ? AND status = 'active'`)
+    .all(req.tenantId, patient.id).map(hydrateLifestylePlan) as any[];
 
   const plan_config = (parsed.data.plan_config || {}) as PlanConfig;
   // Auto-select all active interventions if none chosen
@@ -906,11 +944,14 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
 
   const execution_plan = computeScenarioEnvelope({
     horizon_weeks: weeks,
+    sex: patient.gender,
+    age_years: ageFromBirthDate(patient.birth_date),
     baseline: {
       height_cm: latestFlat?.height_cm,
       weight_kg: latestFlat?.weight_kg,
       waist_cm: latestFlat?.waist_cm,
       body_fat_pct: latestFlat?.body_fat_pct,
+      muscle_mass_kg: latestFlat?.muscle_mass_kg,
       bmi: latestFlat?.bmi,
     },
     medications,

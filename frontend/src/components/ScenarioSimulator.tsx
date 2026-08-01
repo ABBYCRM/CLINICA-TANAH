@@ -119,6 +119,8 @@ export default function ScenarioSimulator({
   const [hydration, setHydration] = useState(true);
   const [recovery, setRecovery] = useState(true);
   const [comorbidity, setComorbidity] = useState(true);
+  const [dailyCalories, setDailyCalories] = useState('');
+  const [deficitKcal, setDeficitKcal] = useState('');
   const [envelope, setEnvelope] = useState<any | null>(null);
   const [pinned, setPinned] = useState<any | null>(null);
   const [busy, setBusy] = useState('');
@@ -145,7 +147,9 @@ export default function ScenarioSimulator({
     resistance_days_per_week: resistDays,
     cardio_days_per_week: cardioDays,
     protein_emphasis: protein,
-  }), [medIds, nutIds, exIds, medAdh, nutAdh, exAdh, resistDays, cardioDays, protein]);
+    daily_calories: dailyCalories ? Number(dailyCalories) : null,
+    deficit_kcal: deficitKcal ? Number(deficitKcal) : null,
+  }), [medIds, nutIds, exIds, medAdh, nutAdh, exAdh, resistDays, cardioDays, protein, dailyCalories, deficitKcal]);
 
   const assumptions = useMemo(() => ({
     sleep_adequate: sleep,
@@ -373,6 +377,17 @@ export default function ScenarioSimulator({
           </label>
         </div>
 
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_calories')}
+            <input className="input mt-1 w-full" type="number" min={800} max={6000} value={dailyCalories}
+              onChange={(e) => setDailyCalories(e.target.value)} placeholder={t('body.sim_calories_ph')} data-testid="sim-calories" />
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_deficit')}
+            <input className="input mt-1 w-full" type="number" min={0} max={1500} value={deficitKcal}
+              onChange={(e) => setDeficitKcal(e.target.value)} placeholder="500" data-testid="sim-deficit" />
+          </label>
+        </div>
+
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
           {([
             ['protein', protein, setProtein, t('body.sim_protein')],
@@ -439,6 +454,37 @@ export default function ScenarioSimulator({
               <span>→ {t('body.weight')}: <strong className="tabular-nums">{(envelope || pinned).projected.weight_kg ?? '—'}</strong> kg</span>
               <span>{t('body.waist')}: <strong className="tabular-nums">{(envelope || pinned).projected.waist_cm ?? '—'}</strong> cm</span>
               <span>IMC: <strong className="tabular-nums">{(envelope || pinned).projected.bmi ?? '—'}</strong></span>
+              {(envelope || pinned).projected.body_fat_pct != null && (
+                <span>%G: <strong className="tabular-nums">{(envelope || pinned).projected.body_fat_pct}</strong></span>
+              )}
+            </div>
+          )}
+          {(envelope || pinned)?.energy && (
+            <div className="text-xs text-[color:var(--ink-muted)] flex flex-wrap gap-3 pt-1">
+              <span>BMR {(envelope || pinned).energy.bmr_kcal ?? '—'}</span>
+              <span>TDEE {(envelope || pinned).energy.tdee_kcal ?? '—'}</span>
+              <span>{t('body.life_calories')} {(envelope || pinned).energy.intake_kcal ?? '—'}</span>
+              <span>{t('body.life_deficit')} {(envelope || pinned).energy.deficit_kcal_day ?? '—'} kcal/d</span>
+            </div>
+          )}
+          {(envelope || pinned)?.monthly_rates?.length > 0 && (
+            <ul className="text-xs text-[color:var(--ink-muted)] space-y-0.5 pt-1">
+              {(envelope || pinned).monthly_rates.map((r: any, i: number) => (
+                <li key={i} className="tabular-nums">{r.label}: {r.kg_per_month} kg/mês ({r.pct_bw_per_month}% PC/mês)</li>
+              ))}
+            </ul>
+          )}
+          {(envelope || pinned)?.rag_citations?.length > 0 && (
+            <div className="pt-2">
+              <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.sim_rag')}</div>
+              <ul className="space-y-1">
+                {(envelope || pinned).rag_citations.slice(0, 5).map((c: any) => (
+                  <li key={c.id} className="text-[11px] border-l-2 border-[color:var(--brass)]/50 pl-2">
+                    <span className="font-medium text-[color:var(--ink)]">{c.title}</span>
+                    <span className="block text-[color:var(--ink-muted)]">{c.source}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </section>

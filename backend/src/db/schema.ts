@@ -1277,6 +1277,7 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE body_measurements ADD COLUMN verified INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE body_lifestyle_plans ADD COLUMN plan_type TEXT NOT NULL DEFAULT 'nutrition'`,
     `ALTER TABLE body_lifestyle_plans ADD COLUMN summary TEXT`,
+    `ALTER TABLE body_lifestyle_plans ADD COLUMN params_json TEXT`,
     `ALTER TABLE body_medications ADD COLUMN class_tag TEXT`,
     `ALTER TABLE body_medications ADD COLUMN confirmation TEXT DEFAULT 'clinician_confirmed'`,
     `ALTER TABLE body_scenarios ADD COLUMN capture_session_id TEXT`,

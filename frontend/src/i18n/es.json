@@ -1524,7 +1524,7 @@
     "vitals_temp": "Temp.",
     "life_title": "Dieta y ejercicio",
     "life_intro": "Lenguaje neutro: check-in, tendencia, escenario — sin “falla” o “cuerpo perfecto”.",
-    "life_scope_banner": "Nutricionista crea dieta; profesional de ejercicio crea entrenamiento; médico puede ambos. Sin prescripción medicamentosa en este módulo.",
+    "life_scope_banner": "Calorías, déficit y entrenamiento alimentan el motor de composición (RAG + balance energético) de la simulación “después”. Solo ilustrativo — no es promesa clínica.",
     "life_empty": "Aún no hay planes activos.",
     "life_submit": "Enviar plan",
     "life_type": "Tipo",
@@ -1579,7 +1579,12 @@
     "sim_provenance": "Proveniencia del modelo",
     "sim_awaiting_gen": "Esperando generación",
     "sim_reviewer": "Checklist del revisor",
-    "sim_pending_review": "Pendiente de revisión"
+    "sim_pending_review": "Pendiente de revisión",
+    "life_calories": "Calorías/día (kcal)",
+    "life_deficit": "Déficit (kcal/día)",
+    "life_protein": "Proteína (g/día)",
+    "sim_calories_ph": "ej. 1800 (o use el plan)",
+    "sim_rag": "Fuentes RAG (educativo)"
   },
   "chart": {
     "allergy_alert": "Alerta de alergia:",
