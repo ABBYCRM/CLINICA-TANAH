@@ -97,8 +97,8 @@ export default function BodyProntuario({ patientId }: {
       api.get(path)
         .then((res) => {
           if (cancelled) return;
-          setLibraryItems(res.items || []);
-          setLibraryTotal(Number(res.total || res.count || 0));
+          setLibraryItems(Array.isArray(res?.items) ? res.items : []);
+          setLibraryTotal(Number(res?.total ?? res?.count ?? 0));
           setLibraryError('');
         })
         .catch((e) => {
@@ -278,6 +278,10 @@ export default function BodyProntuario({ patientId }: {
                 </span>
               </div>
 
+              {libraryError && (
+                <p className="text-sm text-[#8b3a2a]" data-testid="body-med-library-error">{libraryError}</p>
+              )}
+
               <div className="relative">
                 <input
                   className="input w-full"
@@ -299,10 +303,7 @@ export default function BodyProntuario({ patientId }: {
                     data-testid="body-med-library-results"
                     role="listbox"
                   >
-                    {libraryError && (
-                      <p className="px-3 py-2 text-sm text-[#8b3a2a]">{libraryError}</p>
-                    )}
-                    {!libraryError && !libraryItems.length && (
+                    {!libraryItems.length && (
                       <p className="px-3 py-2 text-sm text-[color:var(--ink-muted)]">{t('body.library_empty')}</p>
                     )}
                     {libraryItems.map((item) => {
