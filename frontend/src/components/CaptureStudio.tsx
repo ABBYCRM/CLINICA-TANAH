@@ -1,7 +1,7 @@
 /**
  * Standardized 4-view clinical capture — BodyPath parity, Clínica Tanah desk UI.
  * Front / Left / Right / Back · EXIF GPS stripped on server · immutable originals
- * Flat inset layout (no card-in-card) when nested in patient workspace.
+ * Mobile-safe: gallery + camera, client JPEG compress, no full-page reload on upload.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
@@ -9,6 +9,10 @@ import { useI18n } from '../hooks/useI18n';
 
 export const CAPTURE_VIEWS = ['front', 'left', 'right', 'back'] as const;
 export type CaptureView = (typeof CAPTURE_VIEWS)[number];
+
+const MAX_EDGE = 1600;
+const JPEG_QUALITY = 0.82;
+const MAX_BYTES = 8 * 1024 * 1024;
 
 function useAuthBlob(url: string | null, deps: any[]) {
   const [src, setSrc] = useState<string | null>(null);
@@ -38,21 +42,65 @@ function useAuthBlob(url: string | null, deps: any[]) {
   return src;
 }
 
-function fileToBase64(file: File): Promise<{ contentType: string; dataBase64: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('read_failed'));
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      const m = result.match(/^data:([^;]+);base64,(.+)$/);
-      if (!m) {
-        reject(new Error('invalid_data_url'));
-        return;
-      }
-      resolve({ contentType: m[1] || file.type || 'image/jpeg', dataBase64: m[2] });
-    };
-    reader.readAsDataURL(file);
-  });
+/** Decode image → resize → JPEG base64 (fixes HEIC/gallery + huge phone photos). */
+async function prepareUploadImage(file: File): Promise<{ contentType: string; dataBase64: string }> {
+  const type = (file.type || '').toLowerCase();
+  if (type && !type.startsWith('image/') && type !== 'application/octet-stream') {
+    throw new Error('invalid_type');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('decode_failed'));
+      el.src = objectUrl;
+    });
+    const w0 = img.naturalWidth || img.width;
+    const h0 = img.naturalHeight || img.height;
+    if (!w0 || !h0) throw new Error('decode_failed');
+    const scale = Math.min(1, MAX_EDGE / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0 * scale));
+    const h = Math.max(1, Math.round(h0 * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('decode_failed');
+    ctx.drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+    const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) throw new Error('encode_failed');
+    const approxBytes = Math.ceil((m[2].length * 3) / 4);
+    if (approxBytes > MAX_BYTES) throw new Error('too_large');
+    return { contentType: 'image/jpeg', dataBase64: m[2] };
+  } catch {
+    // Fallback: raw FileReader for JPEG/PNG that Image() rejected
+    if (file.size > MAX_BYTES) throw new Error('too_large');
+    const raw = await new Promise<{ contentType: string; dataBase64: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('read_failed'));
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const m = result.match(/^data:([^;]+);base64,(.+)$/);
+        if (!m) {
+          reject(new Error('invalid_data_url'));
+          return;
+        }
+        const ct = (m[1] || file.type || 'image/jpeg').toLowerCase();
+        if (ct.includes('heic') || ct.includes('heif')) {
+          reject(new Error('heic_unsupported'));
+          return;
+        }
+        resolve({ contentType: ct, dataBase64: m[2] });
+      };
+      reader.readAsDataURL(file);
+    });
+    return raw;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function QualityBadge({ verdict }: { verdict: string }) {
@@ -67,16 +115,21 @@ function QualityBadge({ verdict }: { verdict: string }) {
 export default function CaptureStudio({
   patientId,
   initialSession,
+  consentsOk = true,
+  onRequestConsents,
   onSessionChange,
   onGoScenarios,
 }: {
   patientId: string;
   initialSession?: any | null;
+  consentsOk?: boolean;
+  onRequestConsents?: () => void;
   onSessionChange?: (session: any) => void;
   onGoScenarios?: () => void;
 }) {
   const { t } = useI18n();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [session, setSession] = useState<any | null>(initialSession || null);
   const [view, setView] = useState<CaptureView>('front');
   const [busy, setBusy] = useState(false);
@@ -84,8 +137,19 @@ export default function CaptureStudio({
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
-    setSession(initialSession || null);
-  }, [initialSession?.id, initialSession?.updated_at, initialSession?.status]);
+    // Sync from parent only when session identity/status changes — avoid wiping in-flight uploads
+    setSession((prev: any) => {
+      if (!initialSession) return prev;
+      if (!prev) return initialSession;
+      if (prev.id !== initialSession.id) return initialSession;
+      if (initialSession.status === 'complete' && prev.status !== 'complete') return initialSession;
+      // Prefer richer local asset map if parent is stale
+      const localCount = Object.keys(prev.assets || {}).length;
+      const parentCount = Object.keys(initialSession.assets || {}).length;
+      if (parentCount >= localCount) return initialSession;
+      return prev;
+    });
+  }, [initialSession?.id, initialSession?.updated_at, initialSession?.status, initialSession?.views_complete]);
 
   const viewsComplete = useMemo(
     () => CAPTURE_VIEWS.every((v) => !!session?.assets?.[v]),
@@ -110,32 +174,28 @@ export default function CaptureStudio({
 
   const uploadFile = async (file: File | null | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith('image/') && file.type !== '') {
-      setStatus(t('body.capture_invalid_type'));
-      return;
-    }
-    if (file.size > 8 * 1024 * 1024) {
-      setStatus(t('body.capture_too_large'));
+    if (!consentsOk) {
+      setStatus(t('body.consent_required'));
+      onRequestConsents?.();
       return;
     }
     setBusy(true);
     setStatus('');
     try {
+      const prepared = await prepareUploadImage(file);
       const sess = await ensureSession();
-      const { contentType, dataBase64 } = await fileToBase64(file);
-      // BodyPath-compatible pre-upload handshake (token logged server-side; upload remains authenticated)
       try {
         await api.post(`/api/clinical/body/capture-sessions/${sess.id}/assets/sign`, {
           view,
-          content_type: contentType,
+          content_type: prepared.contentType,
         });
       } catch {
-        /* sign is optional handshake — continue upload */
+        /* optional handshake */
       }
       const updated = await api.post(`/api/clinical/body/capture-sessions/${sess.id}/assets`, {
         view,
-        content_type: contentType,
-        data_base64: dataBase64,
+        content_type: prepared.contentType,
+        data_base64: prepared.dataBase64,
       });
       setSession(updated);
       onSessionChange?.(updated);
@@ -145,10 +205,16 @@ export default function CaptureStudio({
         setView(CAPTURE_VIEWS[idx + 1]);
       }
     } catch (e: any) {
-      setStatus(e?.body?.message || e?.message || t('body.capture_upload_failed'));
+      const code = e?.message || e?.body?.error || '';
+      if (code === 'invalid_type' || code === 'invalid_data_url') setStatus(t('body.capture_invalid_type'));
+      else if (code === 'too_large') setStatus(t('body.capture_too_large'));
+      else if (code === 'heic_unsupported' || code === 'decode_failed') setStatus(t('body.capture_heic_hint'));
+      else if (e?.body?.error === 'consent_required') setStatus(t('body.consent_required'));
+      else setStatus(e?.body?.message || e?.message || t('body.capture_upload_failed'));
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
+      if (galleryRef.current) galleryRef.current.value = '';
+      if (cameraRef.current) cameraRef.current.value = '';
     }
   };
 
@@ -171,6 +237,23 @@ export default function CaptureStudio({
   };
 
   const quality = asset?.quality as Record<string, string> | null;
+  const locked = session?.status === 'complete';
+
+  if (!consentsOk) {
+    return (
+      <div className="space-y-3" data-testid="body-capture-studio">
+        <header className="px-0.5">
+          <h3 className="crm-record-panel-title !mb-0">{t('body.capture_title')}</h3>
+        </header>
+        <section className="crm-inset-panel space-y-3" data-testid="capture-consent-gate">
+          <p className="text-sm text-[#8b3a2a] leading-relaxed">{t('body.consent_required')}</p>
+          <button type="button" className="btn-primary text-sm" onClick={onRequestConsents} data-testid="capture-grant-consents">
+            {t('body.register_consents')}
+          </button>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3" data-testid="body-capture-studio">
@@ -181,7 +264,6 @@ export default function CaptureStudio({
         </p>
       </header>
 
-      {/* One surface: stage + meta — no nested raised cards */}
       <section className="crm-inset-panel space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {CAPTURE_VIEWS.map((v) => {
@@ -209,7 +291,7 @@ export default function CaptureStudio({
         <div className="grid lg:grid-cols-[minmax(0,1fr)_13.5rem] gap-3 items-start">
           <div className="space-y-3 min-w-0">
             <div
-              className={`relative aspect-[3/4] max-h-[440px] w-full mx-auto rounded-xl overflow-hidden border-2 border-dashed ${
+              className={`relative aspect-[3/4] max-h-[min(440px,70vh)] w-full mx-auto rounded-xl overflow-hidden border-2 border-dashed ${
                 dragOver ? 'border-[color:var(--brass)] bg-[#f3eadc]' : 'border-[rgba(176,183,192,0.65)] bg-gradient-to-b from-[#faf6ef] to-[#efe6d8]'
               }`}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -225,24 +307,31 @@ export default function CaptureStudio({
               <div className="absolute bottom-6 left-6 right-6 h-px bg-[rgba(139,110,60,0.45)] pointer-events-none" />
 
               {previewSrc ? (
-                <img
-                  src={previewSrc}
-                  alt={`${t('body.vista')} ${viewLabel(view)}`}
-                  className="w-full h-full object-contain relative z-[1]"
-                />
+                <button
+                  type="button"
+                  className="absolute inset-0 z-[1] p-0 border-0 bg-transparent"
+                  onClick={() => !locked && !busy && galleryRef.current?.click()}
+                  disabled={busy || locked}
+                  aria-label={t('body.choose_photo')}
+                >
+                  <img
+                    src={previewSrc}
+                    alt={`${t('body.vista')} ${viewLabel(view)}`}
+                    className="w-full h-full object-contain"
+                  />
+                </button>
               ) : (
                 <button
                   type="button"
                   className="absolute inset-0 flex flex-col items-center justify-center text-[color:var(--ink-muted)] gap-2 px-6 z-[1]"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={busy}
+                  onClick={() => galleryRef.current?.click()}
+                  disabled={busy || locked}
                 >
-                  <span
-                    className="w-10 h-10 rounded-full border-2 border-[color:var(--brass)] border-t-transparent animate-spin opacity-70"
-                    style={{ animationPlayState: busy ? 'running' : 'paused' }}
-                  />
+                  {busy && (
+                    <span className="w-10 h-10 rounded-full border-2 border-[color:var(--brass)] border-t-transparent animate-spin opacity-70" />
+                  )}
                   <p className="text-sm text-center font-medium text-[color:var(--ink)]">
-                    {t('body.capture_tap', { view: viewLabel(view) })}
+                    {busy ? t('body.capture_uploading') : t('body.capture_tap', { view: viewLabel(view) })}
                   </p>
                   <p className="text-xs text-center">{t('body.capture_pose_hint')}</p>
                 </button>
@@ -253,28 +342,49 @@ export default function CaptureStudio({
               <button
                 type="button"
                 className="btn-primary text-sm"
-                disabled={busy || session?.status === 'complete'}
-                onClick={() => fileRef.current?.click()}
+                disabled={busy || locked}
+                onClick={() => galleryRef.current?.click()}
                 data-testid="capture-choose-photo"
               >
                 {busy ? t('body.capture_uploading') : t('body.choose_photo')}
               </button>
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                disabled={busy || locked}
+                onClick={() => cameraRef.current?.click()}
+                data-testid="capture-take-photo"
+              >
+                {t('body.take_photo')}
+              </button>
+              {/* Gallery / files — no capture= so mobile can pick from library */}
               <input
-                ref={fileRef}
+                ref={galleryRef}
                 type="file"
-                accept="image/*,.heic,.heif"
+                accept="image/*,.heic,.heif,image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={(e) => void uploadFile(e.target.files?.[0])}
+                data-testid="capture-file-input"
+              />
+              {/* Camera — separate control; capture only here */}
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
                 capture="environment"
                 className="sr-only"
                 onChange={(e) => void uploadFile(e.target.files?.[0])}
+                data-testid="capture-camera-input"
               />
-              {session?.status === 'complete' && (
+              {locked && (
                 <span className="badge-green text-xs">{t('body.capture_locked')}</span>
               )}
             </div>
             {status && (
               <p
-                className={`text-sm ${/sucesso|success|conclu|valid/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
+                className={`text-sm ${/sucesso|success|conclu|valid|enviada/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
                 role="status"
+                data-testid="capture-status"
               >
                 {status}
               </p>
@@ -308,7 +418,7 @@ export default function CaptureStudio({
                   <button
                     type="button"
                     className="btn-secondary w-full text-sm"
-                    disabled={busy || session?.status === 'complete'}
+                    disabled={busy || locked}
                     onClick={validateSet}
                     data-testid="capture-validate-set"
                   >

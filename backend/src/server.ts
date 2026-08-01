@@ -186,6 +186,10 @@ app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 // Error handler
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled error:', err);
+  if (err?.type === 'entity.too.large' || err?.status === 413 || /entity too large/i.test(String(err?.message || ''))) {
+    res.status(413).json({ error: 'payload_too_large', message: 'Request body too large (max 12MB). Compress the image and retry.' });
+    return;
+  }
   res.status(500).json({ error: 'server_error', message: err.message });
 });
 

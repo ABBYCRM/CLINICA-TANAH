@@ -323,9 +323,19 @@ export default function BodyProntuario({ patientId }: {
           <CaptureStudio
             patientId={patientId}
             initialSession={activeSession}
+            consentsOk={!!consents.clinical_record?.granted && !!consents.image_processing?.granted}
+            onRequestConsents={() => grantConsents(['clinical_record', 'image_processing', 'generative_ai'])}
             onSessionChange={(s) => {
+              // Soft update only — full load() here re-mounted the studio and glitched mobile uploads
               setActiveSession(s);
-              load();
+              setData((prev: any) => (prev ? {
+                ...prev,
+                active_capture_session: s,
+                counts: {
+                  ...prev.counts,
+                  captures: Math.max(prev.counts?.captures || 0, Object.keys(s?.assets || {}).length),
+                },
+              } : prev));
             }}
             onGoScenarios={() => setTab('scenarios')}
           />
