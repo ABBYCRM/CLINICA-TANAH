@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { t as translate, setLocale as setI18nLocale, getLocale, type Locale, LOCALES, LOCALE_LABELS } from '../i18n';
+import { t as translate, tRaw, setLocale as setI18nLocale, getLocale, type Locale, LOCALES, LOCALE_LABELS } from '../i18n';
 
 /**
  * React hook to trigger re-render when locale changes.
@@ -16,6 +16,7 @@ export function useI18n() {
     locale,
     setLocale,
     t: (key: string, vars?: Record<string, string | number>) => translate(key, vars),
+    tRaw,
     locales: LOCALES,
     localeLabels: LOCALE_LABELS,
   };
