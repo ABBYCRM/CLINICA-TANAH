@@ -1,21 +1,55 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, apiErrorKey } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 
 export default function Dashboard() {
   const { t, locale } = useI18n();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
+    setError('');
     api.get('/api/dashboard')
-      .then(setData)
-      .catch(console.error)
+      .then((d) => {
+        setData({
+          todays_appointments: d.todays_appointments ?? 0,
+          patients_total: d.patients_total ?? 0,
+          low_stock: d.low_stock ?? 0,
+          pending_invoices: d.pending_invoices ?? 0,
+          expiring_batches: d.expiring_batches ?? 0,
+          open_lgpd_requests: d.open_lgpd_requests ?? 0,
+          monthly_revenue: d.monthly_revenue ?? 0,
+          upcoming_appointments: Array.isArray(d.upcoming_appointments) ? d.upcoming_appointments : [],
+        });
+      })
+      .catch((e) => {
+        console.error(e);
+        setData(null);
+        setError(t(apiErrorKey(e)));
+      })
       .finally(() => setLoading(false));
-  }, [locale]);
+  };
 
-  if (loading) return <div className="text-slate-500">{t('common.loading')}</div>;
-  if (!data) return <div className="text-rose-500">{t('errors.generic')}</div>;
+  useEffect(() => { load(); }, [locale]);
+
+  if (loading && !data) return <div className="text-slate-500" data-testid="dashboard-loading">{t('common.loading')}</div>;
+
+  if (error && !data) {
+    return (
+      <div className="space-y-4" data-testid="dashboard-error">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+        <button type="button" className="btn-primary" onClick={load} data-testid="dashboard-retry">
+          {t('common.retry')}
+        </button>
+      </div>
+    );
+  }
+
+  if (!data) return null;
 
   const cards = [
     { key: 'todays_appointments', label: t('dashboard.todays_appointments'), value: data.todays_appointments, color: 'bg-clinic-500', icon: '📅' },
@@ -23,11 +57,18 @@ export default function Dashboard() {
     { key: 'low_stock', label: t('dashboard.low_stock'), value: data.low_stock, color: 'bg-amber-500', icon: '⚠️' },
     { key: 'pending_invoices', label: t('dashboard.pending_invoices'), value: data.pending_invoices, color: 'bg-rose-500', icon: '📄' },
     { key: 'expiring_batches', label: t('dashboard.expiring_batches'), value: data.expiring_batches, color: 'bg-orange-500', icon: '⏰' },
-    { key: 'lgpd_requests_open', label: t('dashboard.lgpd_requests_open'), value: data.open_lgpd_requests, color: 'bg-purple-500', icon: '🔒' },
+    { key: 'lgpd_requests_open', label: t('dashboard.lgpd_requests_open'), value: data.open_lgpd_requests, color: 'bg-violet-600', icon: '🔒' },
   ];
 
+  const typeLabel = (type: string) => t(`appointments.types.${type}`) !== `appointments.types.${type}`
+    ? t(`appointments.types.${type}`)
+    : type;
+  const statusLabel = (status: string) => t(`appointments.statuses.${status}`) !== `appointments.statuses.${status}`
+    ? t(`appointments.statuses.${status}`)
+    : status;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="dashboard">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{t('dashboard.welcome')}</h1>
         <p className="text-slate-500 text-sm">{t('app.name')} — {t('app.address')}</p>
@@ -53,7 +94,7 @@ export default function Dashboard() {
             <div>
               <div className="text-sm text-slate-500">{t('dashboard.monthly_revenue')}</div>
               <div className="text-2xl font-bold text-slate-900">
-                {new Intl.NumberFormat(locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' }).format(data.monthly_revenue)}
+                {new Intl.NumberFormat(locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US', { style: 'currency', currency: 'BRL' }).format(Number(data.monthly_revenue) || 0)}
               </div>
             </div>
           </div>
@@ -84,9 +125,9 @@ export default function Dashboard() {
                   <td className="table-td">{a.scheduled_at}</td>
                   <td className="table-td">{a.patient_name}</td>
                   <td className="table-td">{a.practitioner_name}</td>
-                  <td className="table-td">{a.type}</td>
+                  <td className="table-td">{typeLabel(a.type)}</td>
                   <td className="table-td">
-                    <span className={`badge ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>{a.status}</span>
+                    <span className={`badge ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>{statusLabel(a.status)}</span>
                   </td>
                 </tr>
               ))}

@@ -19,10 +19,15 @@
     "invoices": "Invoices",
     "payroll": "Payroll",
     "employees": "Employees",
-    "whatsapp": "WhatsApp",
+    "whatsapp": "Marketing",
     "lgpd": "LGPD",
     "audit": "Audit",
-    "logout": "Logout"
+    "logout": "Logout",
+    "team": "Team",
+    "settings": "Settings",
+    "clinics": "Clinics",
+    "manual": "Manual",
+    "apps": "Apps"
   },
   "common": {
     "save": "Save",
@@ -53,7 +58,8 @@
     "price": "Price",
     "today": "Today",
     "no_data": "No data",
-    "language": "Language"
+    "language": "Language",
+    "retry": "Try again"
   },
   "auth": {
     "login": "Sign in",
@@ -61,7 +67,19 @@
     "email": "Email",
     "password": "Password",
     "sign_in": "Sign in to the system",
-    "invalid_credentials": "Invalid email or password"
+    "invalid_credentials": "Invalid email or password",
+    "welcome": "Welcome back",
+    "subtitle": "Access the clinic dashboard with your credentials",
+    "show_password": "Show password",
+    "hide_password": "Hide password",
+    "demo_accounts": "Demo accounts",
+    "demo_password_hint": "password for all: clinica2026",
+    "secure_notice": "Protected access · LGPD compliant",
+    "brand_title": "Clinical management, perfected",
+    "brand_subtitle": "Health records, scheduling, inventory and finance on a single secure platform.",
+    "feature_records": "Complete electronic health records",
+    "feature_whatsapp": "Smart scheduling via WhatsApp",
+    "feature_lgpd": "Native LGPD compliance"
   },
   "dashboard": {
     "welcome": "Welcome back",
@@ -89,12 +107,71 @@
     "address_city": "City",
     "address_state": "State",
     "health_insurance": "Insurance",
+    "filter_insurance_all": "Insurance: all",
+    "filter_insurance_none": "No insurance",
     "blood_type": "Blood type",
     "allergies": "Allergies",
     "chronic_conditions": "Chronic conditions",
     "lgpd_consent_required": "LGPD consent must be collected before proceeding.",
     "consent_checkbox": "I authorize the processing of my health data per LGPD.",
-    "saved": "Patient saved successfully"
+    "saved": "Patient saved successfully",
+    "social_name": "Social name",
+    "rg": "RG",
+    "rg_issuer": "Issuing body",
+    "gender": "Sex",
+    "gender_options": {
+      "female": "Female",
+      "male": "Male",
+      "other": "Other"
+    },
+    "marital_status": "Marital status",
+    "marital_options": {
+      "single": "Single",
+      "married": "Married",
+      "divorced": "Divorced",
+      "widowed": "Widowed",
+      "stable_union": "Stable union"
+    },
+    "occupation": "Occupation",
+    "education_level": "Education",
+    "nationality": "Nationality",
+    "birthplace": "Place of birth (city/state)",
+    "mother_name": "Mother's name",
+    "father_name": "Father's name",
+    "race_color": "Race/color (IBGE)",
+    "race_options": {
+      "branca": "White",
+      "preta": "Black",
+      "parda": "Mixed",
+      "amarela": "Asian",
+      "indigena": "Indigenous",
+      "not_informed": "Not informed"
+    },
+    "cns": "SUS card (CNS)",
+    "phone_secondary": "Secondary phone",
+    "referral_source": "How did you hear about us?",
+    "referral_options": {
+      "indicacao": "Referral",
+      "google": "Google",
+      "instagram": "Instagram",
+      "convenio": "Insurance",
+      "whatsapp": "WhatsApp",
+      "other": "Other"
+    },
+    "notes": "Administrative notes",
+    "section_id": "Identification",
+    "section_contact": "Contact",
+    "section_address": "Address",
+    "section_social": "Sociodemographic data",
+    "section_health": "Health & insurance",
+    "emergency_contact": "Emergency contact",
+    "emergency_name": "Contact name",
+    "emergency_phone": "Contact phone",
+    "medications_in_use": "Medications in use",
+    "address_complement": "Complement",
+    "health_insurance_number": "Insurance card no.",
+    "emergency_contact_name": "Emergency contact",
+    "emergency_contact_phone": "Emergency phone"
   },
   "appointments": {
     "title": "Appointments",
@@ -102,27 +179,65 @@
     "patient": "Patient",
     "practitioner": "Practitioner",
     "scheduled_at": "Date and time",
-    "duration": "Duration",
+    "duration": "Duration (min)",
     "type": "Type",
     "status": "Status",
     "source": "Source",
     "confirm": "Confirm",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "edit": "Edit Appointment",
+    "date": "Date",
+    "time": "Time",
+    "notes": "Notes",
+    "types": {
+      "consultation": "Consultation",
+      "return": "Follow-up",
+      "exam": "Exam",
+      "procedure": "Procedure",
+      "teleconsultation": "Teleconsultation"
+    },
+    "calendar": "Calendar",
+    "list_view": "List",
+    "today": "Today",
+    "slots_available": "free slots",
+    "no_slots_that_day": "No free slots that day",
+    "pick_slot": "Pick a time",
+    "patient_summary": "Patient clinical summary",
+    "recent_encounters": "Recent encounters",
+    "upcoming": "Upcoming appointments",
+    "prescriptions_count": "Prescriptions issued",
+    "mark_arrived": "Arrived",
+    "mark_completed": "Complete",
+    "mark_cancelled": "Cancel",
+    "load_free": "{{free}} free / {{booked}} booked"
   },
   "encounters": {
     "title": "Encounters",
     "new": "New Encounter",
-    "subjective": "Subjective",
-    "objective": "Objective",
+    "subjective": "Subjective (S)",
+    "objective": "Objective (O)",
     "assessment": "Assessment",
-    "plan": "Plan",
-    "icd10": "ICD-10"
+    "plan": "Plan (P)",
+    "icd10": "ICD-10",
+    "edit": "Edit Encounter",
+    "started_at": "Started at",
+    "notes": "Notes",
+    "icd10_hint": "Comma-separated codes",
+    "from_today": "Today's appointments",
+    "from_today_hint": "Tap to prefill patient, practitioner and time — the fastest daily workflow."
   },
   "prescriptions": {
     "title": "Prescriptions",
     "new": "New Prescription",
     "send_via_whatsapp": "Send via WhatsApp",
-    "sent": "Prescription sent"
+    "sent": "Prescription sent",
+    "medication": "Medication",
+    "dosage": "Dosage",
+    "frequency": "Frequency",
+    "duration": "Duration",
+    "instructions": "Instructions",
+    "add_item": "Add item",
+    "encounter": "Encounter"
   },
   "inventory": {
     "title": "Inventory",
@@ -132,16 +247,34 @@
     "category": "Category",
     "unit": "Unit",
     "anvisa_registry": "ANVISA registry",
-    "controlled": "Controlled",
-    "min_stock": "Min",
-    "max_stock": "Max",
+    "controlled": "Controlled (Portaria 344/98)",
+    "min_stock": "Min stock",
+    "max_stock": "Max stock",
     "current_stock": "Current",
     "batch": "Batch",
     "expiry_date": "Expiry",
     "expiring_soon": "Expires in {{days}} days",
     "expired": "EXPIRED",
     "low_stock_alert": "Low stock",
-    "alerts": "Alerts"
+    "alerts": "Alerts",
+    "edit_item": "Edit Item",
+    "new_batch": "New Batch",
+    "edit_batch": "Edit Batch",
+    "new_movement": "New Movement",
+    "movements": "Movements",
+    "movement_type": "Type",
+    "movement_in": "Stock in",
+    "movement_out": "Stock out",
+    "movement_adjust": "Adjustment",
+    "movement_discard": "Discard",
+    "select_item": "Select the item",
+    "select_batch": "Batch (empty = automatic FEFO)",
+    "batch_number": "Batch number",
+    "cost_per_unit": "Cost per unit",
+    "reason": "Reason",
+    "unit_cost": "Unit cost",
+    "sale_price": "Sale price",
+    "anvisa": "ANVISA registry"
   },
   "vendors": {
     "title": "Vendors",
@@ -152,13 +285,14 @@
     "phone": "Phone",
     "email": "Email",
     "contact_name": "Contact",
-    "anvisa_license": "ANVISA"
+    "anvisa_license": "ANVISA",
+    "edit": "Edit Vendor"
   },
   "accounting": {
     "title": "Accounting",
     "chart_of_accounts": "Chart of accounts",
-    "journal": "Journal",
-    "new_entry": "New entry",
+    "journal": "Journal Entries",
+    "new_entry": "New Entry",
     "debit": "Debit",
     "credit": "Credit",
     "balance": "Balance",
@@ -166,7 +300,24 @@
     "income_statement": "Income statement",
     "revenue": "Revenue",
     "expenses": "Expenses",
-    "net_income": "Net income"
+    "net_income": "Net income",
+    "accounts": "Chart of Accounts",
+    "new_account": "New Account",
+    "edit_account": "Edit Account",
+    "code": "Code",
+    "type": "Type",
+    "entry_date": "Date",
+    "description": "Description",
+    "add_line": "Add line",
+    "account": "Account",
+    "unbalanced": "Debits and credits must be equal",
+    "types": {
+      "asset": "Asset",
+      "liability": "Liability",
+      "equity": "Equity",
+      "revenue": "Revenue",
+      "expense": "Expense"
+    }
   },
   "invoices": {
     "title": "Invoices",
@@ -174,9 +325,17 @@
     "number": "Number",
     "issue_date": "Issue date",
     "due_date": "Due date",
-    "patient": "Patient",
+    "patient": "Patient (optional)",
     "status": "Status",
-    "mark_paid": "Mark as paid"
+    "mark_paid": "Mark as paid",
+    "edit": "Edit Invoice",
+    "add_line": "Add item",
+    "description": "Description",
+    "unit_price": "Unit price",
+    "tax_rate": "Tax %",
+    "status_draft": "Draft",
+    "status_issued": "Issued",
+    "status_cancelled": "Cancelled"
   },
   "payroll": {
     "title": "Payroll",
@@ -197,10 +356,16 @@
     "fgts": "FGTS",
     "approve": "Approve",
     "pay": "Pay",
-    "run_for_period": "Run payroll for period"
+    "run_for_period": "Run payroll for period",
+    "new_employee": "New Employee",
+    "edit_employee": "Edit Employee",
+    "delete_run": "Delete draft",
+    "weekly_hours": "Weekly hours",
+    "health_insurance_discount": "Health insurance discount",
+    "other_discounts": "Other discounts"
   },
   "whatsapp": {
-    "title": "WhatsApp",
+    "title": "WhatsApp Marketing",
     "inbox": "Inbox",
     "bot_status": "Bot",
     "active": "Active",
@@ -212,7 +377,80 @@
     "send": "Send",
     "type_message": "Type a message...",
     "live": "Live",
-    "dry_run": "Simulated"
+    "dry_run": "Simulated",
+    "send_as_clinic": "Send as clinic",
+    "simulate_patient": "Simulate patient",
+    "delete_conversation": "Delete conversation",
+    "test_connection": "Test connection",
+    "connection_ok": "Meta API reachable",
+    "connection_failed": "Meta connection failed",
+    "opted_out_error": "This number has opted out (LGPD). Message not sent.",
+    "new_chat": "New conversation",
+    "phone_number": "Number (e.g. +5511999999999)",
+    "tab_chat": "Chats",
+    "tab_campaigns": "Campaigns",
+    "tab_surveys": "Satisfaction",
+    "new_campaign": "New campaign",
+    "campaign_name": "Campaign name",
+    "campaign_message": "Message",
+    "campaign_hint": "Use {{name}} for the patient's first name. The opt-out notice (LGPD) is appended automatically.",
+    "dispatch": "Dispatch now",
+    "dispatched_toast": "Campaign dispatched: {{sent}} sent, {{failed}} failed",
+    "sent_count": "Sent",
+    "failed_count": "Failed",
+    "audience_info": "Dispatch to the selected segment. Patients without consent or with opt-out are excluded automatically.",
+    "survey_dispatch": "Dispatch surveys (7 days)",
+    "survey_dispatched": "{{count}} survey(s) sent",
+    "avg_score": "Average score",
+    "responses": "Responses",
+    "promoters": "Promoters",
+    "passives": "Passives",
+    "detractors": "Detractors",
+    "comment": "Comment",
+    "score": "Score",
+    "no_surveys": "No survey responses yet. Dispatch surveys to patients with completed appointments.",
+    "subtitle": "Campaigns, automations, templates and audiences — clinic messaging hub",
+    "tab_templates": "Templates",
+    "tab_automations": "Automations",
+    "tab_audience": "Audience",
+    "tab_analytics": "Analytics",
+    "audience_segment": "Audience segment",
+    "category": "Category",
+    "use_template": "Use approved template",
+    "cat_marketing": "Marketing",
+    "cat_utility": "Utility",
+    "cat_authentication": "Authentication",
+    "segment_all_consented": "All consented",
+    "segment_recent_30d": "Active (30 days)",
+    "segment_inactive_90d": "Inactive (90 days)",
+    "segment_birthday_month": "Birthdays this month",
+    "segment_upcoming_7d": "Upcoming (7 days)",
+    "segment_high_nps": "NPS promoters",
+    "templates_info": "Meta-style templates (marketing, utility, authentication). Use {{name}}, {{date}}, {{time}}.",
+    "new_template": "New template",
+    "mark_approved": "Mark as approved",
+    "tpl_status_draft": "Draft",
+    "tpl_status_pending": "Pending",
+    "tpl_status_approved": "Approved",
+    "tpl_status_rejected": "Rejected",
+    "automations_info": "Clinic automations: reminders, welcome, birthday, no-show, re-engagement, NPS and invoices. LGPD and opt-out aware.",
+    "enable": "Enable",
+    "disable": "Pause",
+    "run_now": "Run now",
+    "last_run": "Last run",
+    "automation_ran": "Automation ran: {{sent}} sent, {{failed}} failed",
+    "automation_disabled": "Enable the automation before running.",
+    "audience_hub_info": "Ready-made segments for campaigns and automations. Only consented patients without opt-out.",
+    "segment_preview": "Segment preview",
+    "opted_out_wa": "WhatsApp opt-out",
+    "with_phone": "With phone",
+    "analytics_info": "WhatsApp channel performance for the last 30 days.",
+    "outbound_30d": "Outbound (30d)",
+    "inbound_30d": "Inbound (30d)",
+    "delivery_rate": "Delivery rate",
+    "read_rate": "Read rate",
+    "templates_approved": "Approved templates",
+    "automations_on": "Automations on"
   },
   "lgpd": {
     "title": "LGPD — Data Protection",
@@ -226,13 +464,466 @@
     "request_access": "Request access",
     "request_deletion": "Request deletion",
     "fulfilled": "Fulfilled",
-    "open": "Open"
+    "open": "Open",
+    "new_request": "New Request",
+    "request_type": "Request type",
+    "subject": "Data subject",
+    "fulfill": "Fulfill",
+    "types": {
+      "access": "Access",
+      "rectification": "Rectification",
+      "deletion": "Deletion",
+      "portability": "Portability",
+      "opposition": "Opposition"
+    }
   },
   "errors": {
     "generic": "An error occurred. Please try again.",
     "validation_required": "Required field",
     "not_found": "Resource not found",
     "unauthorized": "Unauthorized",
-    "server_error": "Server error"
+    "server_error": "Server error",
+    "invalid_token": "Session expired or invalid. Please sign in again.",
+    "forbidden": "Access denied"
+  },
+  "crud": {
+    "edit": "Edit",
+    "confirm_delete_title": "Confirm deletion",
+    "confirm_delete_body": "This action cannot be undone.",
+    "deactivated_notice": "The record has history and was deactivated instead of deleted.",
+    "delete_error_clinical": "Patient has clinical records (CFM 20-year retention). Use the LGPD request flow instead.",
+    "new": "New"
+  },
+  "team": {
+    "title": "Team",
+    "new_user": "New User",
+    "edit_user": "Edit User",
+    "role": "Role",
+    "password": "Password",
+    "password_new_hint": "Leave blank to keep the current password",
+    "password_min": "Minimum 8 characters",
+    "council_number": "Professional registry (CRM/COREN/...)",
+    "council_state": "Registry state (UF)",
+    "cpf": "CPF",
+    "full_name": "Full name",
+    "cannot_delete_self": "You cannot remove your own user",
+    "show_inactive": "Show inactive",
+    "inactive": "Inactive"
+  },
+  "settings": {
+    "title": "Settings",
+    "api_tokens": "API Tokens",
+    "api_tokens_desc": "Programmatic access tokens for the CRM API. A read+write token controls the entire system — store it like a password.",
+    "token_name": "Token name",
+    "token_name_hint": "E.g.: BI integration, Backup script, Power BI",
+    "scope": "Scope",
+    "scope_read": "Read only",
+    "scope_read_write": "Read + write (full CRM)",
+    "expires_days": "Expires in (days)",
+    "expires_never": "No expiration",
+    "mint": "Mint token",
+    "minted_title": "Token minted — copy it now",
+    "minted_warning": "This is the only time the full token is shown. It cannot be recovered later.",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "usage_hint": "Use in the header: Authorization: Bearer <token>",
+    "last_used": "Last used",
+    "expires": "Expires",
+    "never": "Never",
+    "never_used": "Never used",
+    "revoke": "Revoke",
+    "revoked": "Revoked",
+    "active": "Active",
+    "no_tokens": "No tokens minted yet.",
+    "confirm_revoke": "Revoke token {{name}}? Integrations using it lose access immediately."
+  },
+  "clinics": {
+    "title": "Clinics",
+    "subtitle": "Manage clinics on this platform (multi-tenant).",
+    "new": "New clinic",
+    "slug": "Slug",
+    "staff": "Staff",
+    "patients": "Patients",
+    "switch": "View",
+    "viewing": "Active",
+    "admin_section": "Clinic administrator",
+    "superadmin_only": "Superadmin access only."
+  },
+  "pwa": {
+    "install_title": "Install Clínica Tanah",
+    "install_body": "Add the app to your home screen or Start menu for fast, fullscreen access — works offline.",
+    "install_cta": "Install app",
+    "ios_hint": "In Safari: tap Share, then “Add to Home Screen”.",
+    "ios_share": "Share → Add to Home Screen"
+  },
+  "apps": {
+    "title": "Apps",
+    "subtitle": "Save links to the tools and sites you use, and open them in one click.",
+    "label": "Name",
+    "label_placeholder": "e.g. ANVISA Portal",
+    "url": "URL",
+    "url_placeholder": "https://example.com",
+    "add": "Add",
+    "empty": "No apps saved yet. Add a link above to get started.",
+    "required": "Enter a name and a URL.",
+    "invalid_url": "Invalid URL. Use a valid http(s) address."
+  },
+  "manual": {
+    "title": "User manual",
+    "subtitle": "Quick guide to the Clínica Tanah CRM — modules, roles, and main workflows.",
+    "toc": "Contents",
+    "toc_start": "Getting started",
+    "toc_modules": "Modules table",
+    "toc_roles": "Roles table",
+    "toc_patients": "Patients",
+    "toc_appointments": "Appointments",
+    "toc_clinical": "Encounters & prescriptions",
+    "toc_inventory": "Inventory & vendors",
+    "toc_finance": "Finance",
+    "toc_marketing": "WhatsApp Marketing",
+    "toc_lgpd": "LGPD",
+    "toc_admin": "Team & clinics",
+    "toc_tips": "Tips",
+    "toc_howto": "Detailed step-by-step",
+    "col_module": "Module",
+    "col_purpose": "Purpose",
+    "col_how": "How to use",
+    "col_role": "Role",
+    "col_access": "What they can do",
+    "start_title": "Getting started",
+    "start_body": "The CRM is trilingual (PT / ES / EN) and multi-clinic. Use the sidebar to navigate. On small screens, open the menu from the top bar.",
+    "start_step1": "Sign in with your email and password.",
+    "start_step2": "Check the active clinic in the header (superadmins can switch under Clinics).",
+    "start_step3": "Pick the language in the sidebar footer (PT, ES, or EN).",
+    "start_step4": "Start on the Dashboard for today’s overview, then open the module you need.",
+    "modules_title": "Modules table",
+    "modules_intro": "What each screen is for.",
+    "roles_title": "Roles table (permissions)",
+    "roles_intro": "Access depends on the user’s role. Menus and actions change accordingly.",
+    "mod_dashboard_name": "Dashboard",
+    "mod_dashboard_purpose": "Day overview: appointments, patients, stock, invoices, LGPD.",
+    "mod_dashboard_how": "Open after login. Use the cards to prioritise follow-ups.",
+    "mod_patients_name": "Patients",
+    "mod_patients_purpose": "Full patient record (clinical ID, contact, LGPD consent).",
+    "mod_patients_how": "New Patient → fill identity + consent → Save. Search by name/CPF.",
+    "mod_appointments_name": "Appointments",
+    "mod_appointments_purpose": "Clinic schedule: book, confirm, cancel, no-show.",
+    "mod_appointments_how": "New appointment → patient + practitioner + time → Save. Update status through the day.",
+    "mod_encounters_name": "Encounters",
+    "mod_encounters_purpose": "Clinical notes / SOAP charting.",
+    "mod_encounters_how": "Create an encounter for the patient (link appointment if any). Record the visit.",
+    "mod_prescriptions_name": "Prescriptions",
+    "mod_prescriptions_purpose": "Medication prescriptions from the visit.",
+    "mod_prescriptions_how": "New prescription → patient / meds → Save. Doctors write; staff can view.",
+    "mod_inventory_name": "Inventory",
+    "mod_inventory_purpose": "Items, batches, expiry, stock movements.",
+    "mod_inventory_how": "Register items, receive batches, record usage. Watch low stock and expiry alerts.",
+    "mod_vendors_name": "Vendors",
+    "mod_vendors_purpose": "Suppliers for materials and medicines.",
+    "mod_vendors_how": "New vendor → tax/contact details → Save.",
+    "mod_accounting_name": "Accounting",
+    "mod_accounting_purpose": "Chart of accounts and journal entries.",
+    "mod_accounting_how": "Maintain accounts and post balanced debit/credit entries.",
+    "mod_invoices_name": "Invoices",
+    "mod_invoices_purpose": "Patient billing and payment tracking.",
+    "mod_invoices_how": "New invoice → lines → issue → mark paid when received.",
+    "mod_payroll_name": "Payroll",
+    "mod_payroll_purpose": "Employees and pay runs.",
+    "mod_payroll_how": "Add employees, run the period, approve, then pay.",
+    "mod_whatsapp_name": "Marketing (WhatsApp)",
+    "mod_whatsapp_purpose": "Inbox, campaigns, templates, automations, audience, NPS.",
+    "mod_whatsapp_how": "Use Chats daily; Campaigns/Automations for outreach; honour LGPD opt-out.",
+    "mod_lgpd_name": "LGPD",
+    "mod_lgpd_purpose": "Consents, data-subject requests, audit trail.",
+    "mod_lgpd_how": "Capture consent on intake; fulfil access/erasure requests in LGPD.",
+    "mod_team_name": "Team",
+    "mod_team_purpose": "Internal users and roles (admin).",
+    "mod_team_how": "New user → email, password, role → Save. Prefer deactivate over delete when history exists.",
+    "mod_settings_name": "Settings",
+    "mod_settings_purpose": "Clinic preferences and API tokens (admin).",
+    "mod_settings_how": "Update clinic details and mint API tokens for integrations.",
+    "mod_clinics_name": "Clinics",
+    "mod_clinics_purpose": "Multi-tenant: create and switch clinics (superadmin).",
+    "mod_clinics_how": "Create a clinic with an initial admin; switch context to operate another unit.",
+    "role_admin_name": "Admin",
+    "role_admin_access": "Broad access: team, settings, marketing, finance, operations.",
+    "role_doctor_name": "Doctor",
+    "role_doctor_access": "Patients, schedule, encounters, prescriptions; operational WhatsApp send.",
+    "role_nurse_name": "Nurse",
+    "role_nurse_access": "Patients, schedule, encounters, operational inventory.",
+    "role_receptionist_name": "Receptionist",
+    "role_receptionist_access": "Patients, schedule, invoices, WhatsApp/marketing, LGPD requests.",
+    "role_accountant_name": "Accountant",
+    "role_accountant_access": "Accounting, invoices, payroll, vendors.",
+    "role_pharmacist_name": "Pharmacist",
+    "role_pharmacist_access": "Inventory, batches, movements, vendors.",
+    "role_dpo_name": "DPO",
+    "role_dpo_access": "LGPD module and data-subject requests.",
+    "role_superadmin_name": "Superadmin",
+    "role_superadmin_access": "Everything an admin has, plus multi-clinic management.",
+    "patients_title": "How to manage patients",
+    "patients_body": "Every patient should have LGPD consent recorded for lawful processing and messaging.",
+    "patients_step1": "Open Patients → New Patient.",
+    "patients_step2": "Fill identity (name, birth date, CPF) and contact (WhatsApp as +55…).",
+    "patients_step3": "Tick LGPD consent and complete sociodemographic fields when available.",
+    "patients_step4": "Save. Use search to edit or open related clinical records.",
+    "appointments_title": "How to use the schedule",
+    "appointments_body": "Appointments can come from reception or the WhatsApp bot. Status drives the daily flow.",
+    "appointments_step1": "Open Appointments → new appointment.",
+    "appointments_step2": "Pick patient, practitioner, type, and available slot.",
+    "appointments_step3": "Confirm on the day; mark arrived / in progress / completed as care proceeds.",
+    "appointments_step4": "Use cancelled or no-show when needed — that feeds follow-up automations.",
+    "clinical_title": "Encounters and prescriptions",
+    "clinical_body": "Charting lives under Encounters; prescriptions under Prescriptions. Clinical retention follows CFM/LGPD rules.",
+    "clinical_step1": "In Encounters, document the visit (SOAP / notes).",
+    "clinical_step2": "In Prescriptions, issue meds for the patient.",
+    "clinical_step3": "Do not delete patients with clinical history — use the LGPD request flow instead.",
+    "inventory_title": "Inventory and vendors",
+    "inventory_body": "Batch and expiry tracking prevents stockouts and waste.",
+    "inventory_step1": "Register the item (name, unit, minimum stock).",
+    "inventory_step2": "Receive stock by batch with expiry; record usage/out movements.",
+    "inventory_step3": "Keep Vendors up to date for replenishment.",
+    "finance_title": "Finance (accounting, invoices, payroll)",
+    "finance_body": "Typical flow: care → invoice → receive → book; payroll runs by period.",
+    "finance_step1": "Create Invoices with line items; link the patient when relevant.",
+    "finance_step2": "Mark paid on receipt; watch pending items on the Dashboard.",
+    "finance_step3": "Post Accounting entries with matching debits and credits.",
+    "finance_step4": "In Payroll: employees → run period → approve → pay.",
+    "marketing_title": "WhatsApp Marketing",
+    "marketing_body": "Full hub: inbox, segmented campaigns, Meta-style templates, automations, and analytics. Only consented non-opted-out contacts are messaged.",
+    "marketing_step1": "Chats: serve patients or use the dry-run simulator.",
+    "marketing_step2": "Templates: create/approve marketing or utility copy with {{name}}.",
+    "marketing_step3": "Campaigns: pick a segment (consented, inactive, birthdays…) and dispatch.",
+    "marketing_step4": "Automations: enable 24h/2h reminders, NPS, welcome, etc., and run when needed.",
+    "marketing_step5": "Audience & Analytics: inspect segment sizes and last-30-day performance.",
+    "lgpd_title": "LGPD in practice",
+    "lgpd_body": "The CRM stores consent, marketing opt-out, and data-subject requests with an audit trail.",
+    "lgpd_step1": "Always capture consent when registering a patient.",
+    "lgpd_step2": "For access, correction, or erasure requests, open LGPD and fulfil them.",
+    "lgpd_step3": "Promo messages include an opt-out footer; SAIR/STOP stops campaigns.",
+    "admin_title": "Team, settings, and clinics",
+    "admin_body": "Admins manage users and preferences; superadmins manage multiple clinics.",
+    "admin_step1": "In Team, create users with the right role and a strong password.",
+    "admin_step2": "In Settings, update clinic data and API tokens if integrating systems.",
+    "admin_step3": "In Clinics (superadmin), add units and switch working context.",
+    "tips_title": "Quick tips",
+    "tip1": "Sessions last up to 24 hours; if you see “session expired”, sign in again.",
+    "tip2": "WhatsApp numbers need the country code (+55…) for the bot and campaigns.",
+    "tip3": "The Dashboard highlights low stock, expiring batches, and pending invoices.",
+    "tip4": "Install the PWA on phone or Windows from the browser for quick access.",
+    "tip5": "Come back to this Manual anytime — the contents jump to each section.",
+    "howto_title": "Detailed step-by-step",
+    "howto_intro": "Complete, step-by-step instructions for how to perform every task in the system. Button names may vary by language and by the user's role.",
+    "howto": [
+      {
+        "title": "Sign in (login)",
+        "steps": [
+          "Open the browser and go to the system address (the link provided by the clinic).",
+          "On the login screen, click the \"Email\" field and type your email.",
+          "Click the \"Password\" field and type your password; use the eye icon to reveal it if needed.",
+          "Click the \"Sign in\" button.",
+          "If you see \"invalid email or password\", check the details and try again (after many attempts access is locked for 15 minutes).",
+          "Once in, check the active clinic at the top and start from the Dashboard."
+        ]
+      },
+      {
+        "title": "Choose the language (PT / ES / EN)",
+        "steps": [
+          "Find the language buttons at the bottom of the left sidebar.",
+          "Click PT, ES or EN for the language you want.",
+          "The interface changes instantly and the preference is saved in the browser for next time."
+        ]
+      },
+      {
+        "title": "Switch the active clinic (superadmin only)",
+        "steps": [
+          "Open \"Clinics\" in the sidebar.",
+          "Find the clinic you want to work with in the list.",
+          "Select it to make it the active clinic (or use the selector at the top of the screen).",
+          "Confirm the active clinic name in the header before creating or editing data."
+        ]
+      },
+      {
+        "title": "Register a new patient",
+        "steps": [
+          "Open \"Patients\" in the sidebar.",
+          "Click \"+ New Patient\" in the top-right corner.",
+          "Under Identification, fill in Full name, Date of birth and CPF.",
+          "Under Contact, fill in the Phone in +55AREA-NUMBER format (required for WhatsApp) and the email.",
+          "Fill in the Address (ZIP code, street, number, neighborhood, city and state) when available.",
+          "Fill in health and sociodemographic data (insurance, blood type, allergies, conditions and medications) as applicable.",
+          "Tick the LGPD Consent checkbox — it is required to save.",
+          "Click \"Save\". The patient now appears in the list."
+        ]
+      },
+      {
+        "title": "Search, edit or delete a patient",
+        "steps": [
+          "Open \"Patients\" and type a name, phone, email or CPF in the search box.",
+          "Use the \"Insurance\" filter to narrow by health plan, or choose \"No insurance\".",
+          "To edit, click the pencil icon on the patient's row, adjust the fields and click \"Save\".",
+          "To delete, click the trash icon and confirm on \"Delete\".",
+          "Note: patients with clinical records cannot be deleted — use the LGPD flow when needed."
+        ]
+      },
+      {
+        "title": "Schedule an appointment",
+        "steps": [
+          "Open \"Appointments\" in the sidebar.",
+          "Click \"+ New Appointment\".",
+          "In the \"Patient\" field, click and select the patient from the list (or type to search).",
+          "In the \"Practitioner\" field, select the responsible doctor or professional.",
+          "In \"Date and time\", choose the date and time; if available slots appear, click one of the green buttons.",
+          "Adjust the type and duration if needed (default is 30 minutes).",
+          "Click \"Save\". The appointment now appears on the calendar."
+        ]
+      },
+      {
+        "title": "Update an appointment's status",
+        "steps": [
+          "Open \"Appointments\" and find the appointment on the calendar.",
+          "Open the appointment and change the status along the flow: confirmed, arrived, in progress or completed.",
+          "Use \"cancelled\" or \"no-show\" when the patient does not attend.",
+          "Save. No-show/cancelled statuses feed the follow-up automations."
+        ]
+      },
+      {
+        "title": "Record an encounter (SOAP note)",
+        "steps": [
+          "Open \"Encounters\" in the sidebar.",
+          "Create a new encounter and link it to the patient (and the appointment, if any).",
+          "Fill in the S (subjective), O (objective), A (assessment) and P (plan) fields.",
+          "Add ICD-10 diagnosis codes when applicable.",
+          "Save the encounter. Do not delete patients with clinical history."
+        ]
+      },
+      {
+        "title": "Issue a prescription",
+        "steps": [
+          "Open \"Prescriptions\" in the sidebar.",
+          "Create a new prescription linked to the patient (and the encounter, if any).",
+          "Add each medication with dosage, frequency, duration and instructions.",
+          "Save. When available, the prescription can be generated as PDF and sent via WhatsApp."
+        ]
+      },
+      {
+        "title": "Add an inventory item, batch and movement",
+        "steps": [
+          "Open \"Inventory\" in the sidebar.",
+          "Add the item with its name, unit, category and minimum stock.",
+          "Register a batch with batch number, expiry date and quantity.",
+          "Record outflows/usage as the item is consumed.",
+          "Track low-stock and expiring-batch alerts from the Dashboard."
+        ]
+      },
+      {
+        "title": "Add a vendor",
+        "steps": [
+          "Open \"Vendors\" in the sidebar.",
+          "Click \"+ New vendor\".",
+          "Fill in the legal name and CNPJ (required), plus the contact details.",
+          "Click \"Save\"."
+        ]
+      },
+      {
+        "title": "Issue an invoice",
+        "steps": [
+          "Open \"Invoices\" in the sidebar.",
+          "Create a new invoice and link it to the patient when applicable.",
+          "Add the line items and amounts and review the total.",
+          "Click \"Save\". Mark the invoice as paid when received; pending ones appear on the Dashboard."
+        ]
+      },
+      {
+        "title": "Run payroll",
+        "steps": [
+          "Open \"Payroll\" in the sidebar.",
+          "Add or update the employees.",
+          "Run the payroll for the desired period (month).",
+          "Review the INSS, IRRF and FGTS amounts, approve and record the payment."
+        ]
+      },
+      {
+        "title": "Handle conversations and use the WhatsApp simulator",
+        "steps": [
+          "Open \"Marketing\" (WhatsApp) in the sidebar.",
+          "Under \"Conversations\", select a number to see the history and reply.",
+          "Without Meta credentials, sending stays in simulation (dry-run) mode and nothing leaves the server.",
+          "Use the simulator to test the bot flow as if you were the patient."
+        ]
+      },
+      {
+        "title": "Create a template, campaign and automation",
+        "steps": [
+          "Under \"Templates\", create or edit a message using {{name}} and set the category (marketing or utility).",
+          "Under \"Campaigns\", choose the segment (consented, inactive, birthdays…) and send the blast.",
+          "Under \"Automations\", enable 24h/2h reminders, NPS, welcome and others, and run them whenever you want.",
+          "Respect opt-out: anyone replying STOP/SAIR stops receiving campaigns."
+        ]
+      },
+      {
+        "title": "Record consent and handle LGPD requests",
+        "steps": [
+          "Record LGPD consent on the patient's record when creating or editing it.",
+          "Open \"LGPD\" in the sidebar to see consents, opt-outs and the audit trail.",
+          "When you receive an access, rectification or deletion request, open a data-subject request.",
+          "Fulfil the request and record the response; everything is stored in the audit log."
+        ]
+      },
+      {
+        "title": "Create a team user (admin)",
+        "steps": [
+          "Open \"Team\" in the sidebar.",
+          "Click \"+ New user\".",
+          "Fill in email, a strong password and choose the role (doctor, reception, etc.).",
+          "Click \"Save\". Prefer deactivating rather than deleting when there is history."
+        ]
+      },
+      {
+        "title": "Generate an API token (admin)",
+        "steps": [
+          "Open \"Settings\" in the sidebar.",
+          "In the API tokens section, click to generate a new token.",
+          "Set the name, the scope (read or read/write) and the expiry.",
+          "Copy the displayed token — it is shown only once — and store it securely."
+        ]
+      },
+      {
+        "title": "Create and switch clinics (superadmin)",
+        "steps": [
+          "Open \"Clinics\" in the sidebar.",
+          "Click to create a new clinic and set the initial admin.",
+          "Use the top selector to switch the working context between clinics."
+        ]
+      },
+      {
+        "title": "Save a shortcut in the Apps module",
+        "steps": [
+          "Open \"Apps\" in the sidebar.",
+          "Type a name in the \"Name\" field and the address in the \"URL\" field (https:// is added automatically if missing).",
+          "Click \"+ Add\"; the shortcut appears as a card.",
+          "Click the card to open the site in a new tab; use the trash icon and confirm on \"Delete\" to remove it."
+        ]
+      },
+      {
+        "title": "Install the app (PWA)",
+        "steps": [
+          "In the browser (mobile or Windows), open the browser menu.",
+          "Choose \"Install app\" or \"Add to home screen\".",
+          "Confirm; the app then opens in its own window for quick access."
+        ]
+      }
+    ]
+  },
+  "picker": {
+    "change": "Change",
+    "patient_placeholder": "Search by name, CPF or phone…",
+    "patient_hint": "Type at least 2 characters. No need to scroll a list of hundreds of patients.",
+    "patient_results": "Results",
+    "patient_empty": "No patients found",
+    "patient_selected": "Patient selected",
+    "staff_placeholder": "Search practitioner…",
+    "required_patient_staff": "Select the patient and the practitioner.",
+    "required_patient": "Select the patient."
   }
 }
