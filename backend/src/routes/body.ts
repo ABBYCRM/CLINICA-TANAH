@@ -22,6 +22,7 @@ import {
   generateBodyScenarioImage,
   imageProvidersStatus,
   pollA2e,
+  retainBodyPhotoCopy,
 } from '../services/bodyImage';
 import {
   applySessionConsistency,
@@ -419,7 +420,7 @@ async function runGenerate(
   const assetsByView: Partial<Record<CaptureView, any>> = {};
   if (sessionId) {
     const assets = db.prepare(`
-      SELECT * FROM body_capture_assets WHERE session_id = ? AND tenant_id = ?
+      SELECT * FROM body_capture_assets WHERE session_id = ? AND tenant_id = ? AND deleted_at IS NULL
     `).all(sessionId, req.tenantId) as any[];
     for (const a of assets) {
       if (CAPTURE_VIEWS.includes(a.view) && a.image_path && fs.existsSync(a.image_path)) {
@@ -848,8 +849,8 @@ export function publicBodyAssetHandler(req: Request, res: Response): void {
     return;
   }
   const row = (
-    db.prepare(`SELECT * FROM body_capture_assets WHERE id = ?`).get(assetId)
-    || db.prepare(`SELECT * FROM body_captures WHERE id = ?`).get(assetId)
+    db.prepare(`SELECT * FROM body_capture_assets WHERE id = ? AND deleted_at IS NULL`).get(assetId)
+    || db.prepare(`SELECT * FROM body_captures WHERE id = ? AND status != 'retained'`).get(assetId)
   ) as any;
   if (!row?.image_path || !fs.existsSync(row.image_path)) {
     res.status(404).json({ error: 'not_found' });
@@ -901,8 +902,25 @@ function simulationsAllowed(consents: ReturnType<typeof consentMap>) {
 }
 
 function serializeSession(session: any, req: Request) {
+  if (session.deleted_at) {
+    return {
+      id: session.id,
+      patient_id: session.patient_id,
+      status: session.status,
+      validated_at: session.validated_at,
+      quality_summary: null,
+      created_at: session.created_at,
+      updated_at: session.updated_at,
+      deleted_at: session.deleted_at,
+      clinical_retention: true,
+      assets: {},
+      views_complete: false,
+    };
+  }
   const assetsRows = db.prepare(`
-    SELECT * FROM body_capture_assets WHERE session_id = ? ORDER BY created_at ASC
+    SELECT * FROM body_capture_assets
+    WHERE session_id = ? AND deleted_at IS NULL
+    ORDER BY created_at ASC
   `).all(session.id) as any[];
   const assets: Record<string, any> = {};
   for (const a of assetsRows) {
@@ -927,9 +945,47 @@ function serializeSession(session: any, req: Request) {
     quality_summary: session.quality_summary ? JSON.parse(session.quality_summary) : null,
     created_at: session.created_at,
     updated_at: session.updated_at,
+    deleted_at: null,
     assets,
     views_complete: CAPTURE_VIEWS.every((v) => !!assets[v]),
   };
+}
+
+function softDeleteCaptureAsset(opts: {
+  asset: any;
+  tenantId: string;
+  actorId: string;
+  reason?: string | null;
+}) {
+  const now = new Date().toISOString();
+  const retained = retainBodyPhotoCopy({
+    tenantId: opts.tenantId,
+    patientId: opts.asset.patient_id,
+    assetId: opts.asset.id,
+    view: opts.asset.view,
+    sourcePath: opts.asset.image_path,
+  });
+  db.prepare(`
+    UPDATE body_capture_assets
+       SET deleted_at = ?, deleted_by = ?, delete_reason = ?,
+           retained_path = COALESCE(?, retained_path)
+     WHERE id = ? AND deleted_at IS NULL
+  `).run(
+    now,
+    opts.actorId,
+    opts.reason || 'clinician_removed_from_active_chart',
+    retained,
+    opts.asset.id,
+  );
+  // Soft-hide mirrored legacy front capture if same id
+  if (opts.asset.view === 'front') {
+    db.prepare(`
+      UPDATE body_captures
+         SET status = 'retained', notes = COALESCE(notes, '') || ' | soft_deleted'
+       WHERE id = ? AND tenant_id = ?
+    `).run(opts.asset.id, opts.tenantId);
+  }
+  return { retained_path: retained, deleted_at: now };
 }
 
 function latestFrontAsset(tenantId: string, patientId: string) {
@@ -937,6 +993,7 @@ function latestFrontAsset(tenantId: string, patientId: string) {
     SELECT a.* FROM body_capture_assets a
     JOIN body_capture_sessions s ON s.id = a.session_id
     WHERE a.tenant_id = ? AND a.patient_id = ? AND a.view = 'front'
+      AND a.deleted_at IS NULL AND s.deleted_at IS NULL
     ORDER BY CASE s.status WHEN 'complete' THEN 0 ELSE 1 END, a.created_at DESC
     LIMIT 1
   `).get(tenantId, patientId) as any;
@@ -1018,7 +1075,10 @@ router.post('/capture-sessions/:sessionId/assets', requireRole('doctor', 'nurse'
       height = excluded.height,
       quality_json = excluded.quality_json,
       metrics_json = excluded.metrics_json,
-      created_at = datetime('now')
+      created_at = datetime('now'),
+      deleted_at = NULL,
+      deleted_by = NULL,
+      delete_reason = NULL
   `).run(
     assetId, req.tenantId, session.id, session.patient_id, parsed.data.view,
     imagePath, analyzed.contentType, analyzed.sha256, analyzed.width, analyzed.height,
@@ -1053,7 +1113,9 @@ router.post('/capture-sessions/:sessionId/validate', requireRole('doctor', 'nurs
     .get(req.params.sessionId, req.tenantId) as any;
   if (!session) { res.status(404).json({ error: 'not_found' }); return; }
 
-  const assets = db.prepare(`SELECT * FROM body_capture_assets WHERE session_id = ?`).all(session.id) as any[];
+  const assets = db.prepare(`
+    SELECT * FROM body_capture_assets WHERE session_id = ? AND deleted_at IS NULL
+  `).all(session.id) as any[];
   const missing = CAPTURE_VIEWS.filter((v) => !assets.some((a) => a.view === v));
   if (missing.length) {
     res.status(400).json({ error: 'incomplete_set', missing, message: 'All four views required: front, left, right, back.' });
@@ -1113,6 +1175,7 @@ router.get('/:patientId/capture-sessions/:sessionId/assets/:view/image', require
     SELECT a.* FROM body_capture_assets a
     JOIN body_capture_sessions s ON s.id = a.session_id
     WHERE a.session_id = ? AND a.patient_id = ? AND a.tenant_id = ? AND a.view = ?
+      AND a.deleted_at IS NULL AND s.deleted_at IS NULL
   `).get(req.params.sessionId, req.params.patientId, req.tenantId, view) as any;
   if (!row?.image_path || !fs.existsSync(row.image_path)) {
     res.status(404).json({ error: 'not_found' });
@@ -1122,6 +1185,122 @@ router.get('/:patientId/capture-sessions/:sessionId/assets/:view/image', require
   res.setHeader('Cache-Control', 'private, max-age=60');
   res.setHeader('X-Content-SHA256', row.sha256 || '');
   fs.createReadStream(row.image_path).pipe(res);
+});
+
+/** Soft-delete one view — file retained for CFM/LGPD clinical archive. */
+router.delete('/capture-sessions/:sessionId/assets/:view', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const view = req.params.view as CaptureView;
+  if (!CAPTURE_VIEWS.includes(view)) { res.status(400).json({ error: 'invalid_view' }); return; }
+  const session = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.sessionId, req.tenantId) as any;
+  if (!session || session.deleted_at) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const parsed = z.object({
+    reason: z.string().max(500).optional().nullable(),
+  }).safeParse(req.body || {});
+  const reason = parsed.success ? (parsed.data.reason || null) : null;
+
+  const asset = db.prepare(`
+    SELECT * FROM body_capture_assets
+    WHERE session_id = ? AND tenant_id = ? AND view = ? AND deleted_at IS NULL
+  `).get(session.id, req.tenantId, view) as any;
+  if (!asset) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const result = softDeleteCaptureAsset({
+    asset,
+    tenantId: req.tenantId!,
+    actorId: req.user!.id,
+    reason,
+  });
+  db.prepare(`UPDATE body_capture_sessions SET updated_at = datetime('now') WHERE id = ?`).run(session.id);
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'soft_delete_body_capture_asset',
+    resourceType: 'body_capture_asset',
+    resourceId: asset.id,
+    afterValue: {
+      session_id: session.id,
+      view,
+      clinical_retention: true,
+      retained_path: result.retained_path,
+      original_path_kept: asset.image_path,
+      reason: reason || 'clinician_removed_from_active_chart',
+    },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+
+  const fresh = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ?`).get(session.id);
+  res.json({
+    ok: true,
+    clinical_retention: true,
+    view,
+    deleted_at: result.deleted_at,
+    session: serializeSession(fresh, req),
+  });
+});
+
+/** Soft-delete entire capture session — all assets retained on disk. */
+router.delete('/capture-sessions/:sessionId', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  const session = db.prepare(`SELECT * FROM body_capture_sessions WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.sessionId, req.tenantId) as any;
+  if (!session) { res.status(404).json({ error: 'not_found' }); return; }
+  if (session.deleted_at) {
+    res.json({ ok: true, clinical_retention: true, status: 'already_deleted' });
+    return;
+  }
+
+  const parsed = z.object({
+    reason: z.string().max(500).optional().nullable(),
+  }).safeParse(req.body || {});
+  const reason = parsed.success ? (parsed.data.reason || null) : null;
+  const now = new Date().toISOString();
+
+  const assets = db.prepare(`
+    SELECT * FROM body_capture_assets WHERE session_id = ? AND deleted_at IS NULL
+  `).all(session.id) as any[];
+  const retained: string[] = [];
+  for (const asset of assets) {
+    const r = softDeleteCaptureAsset({
+      asset,
+      tenantId: req.tenantId!,
+      actorId: req.user!.id,
+      reason: reason || 'session_removed_from_active_chart',
+    });
+    if (r.retained_path) retained.push(r.retained_path);
+  }
+
+  db.prepare(`
+    UPDATE body_capture_sessions
+       SET deleted_at = ?, deleted_by = ?, delete_reason = ?, updated_at = datetime('now')
+     WHERE id = ?
+  `).run(now, req.user!.id, reason || 'session_removed_from_active_chart', session.id);
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'soft_delete_body_capture_session',
+    resourceType: 'body_capture_session',
+    resourceId: session.id,
+    afterValue: {
+      patient_id: session.patient_id,
+      clinical_retention: true,
+      assets_retained: assets.length,
+      retained_copies: retained.length,
+      reason: reason || 'session_removed_from_active_chart',
+    },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+
+  res.json({
+    ok: true,
+    clinical_retention: true,
+    deleted_at: now,
+    assets_retained: assets.length,
+  });
 });
 
 function latestMeasurement(tenantId: string, patientId: string) {
@@ -1173,10 +1352,25 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     ORDER BY created_at DESC LIMIT 50
   `).all(req.tenantId, patient.id) as any[];
   const sessions = db.prepare(`
-    SELECT * FROM body_capture_sessions WHERE tenant_id = ? AND patient_id = ?
+    SELECT * FROM body_capture_sessions
+    WHERE tenant_id = ? AND patient_id = ? AND deleted_at IS NULL
     ORDER BY created_at DESC LIMIT 20
   `).all(req.tenantId, patient.id) as any[];
   const capture_sessions = sessions.map((s) => serializeSession(s, req));
+  // Prefer richest non-empty active session for clinical UI
+  const active_capture_session = (() => {
+    const ranked = [...capture_sessions]
+      .filter((s: any) => !s.deleted_at && Object.keys(s.assets || {}).length > 0)
+      .sort((a: any, b: any) => {
+        const ac = Object.keys(a.assets || {}).length;
+        const bc = Object.keys(b.assets || {}).length;
+        if (bc !== ac) return bc - ac;
+        const at = Date.parse(a.updated_at || a.created_at || 0);
+        const bt = Date.parse(b.updated_at || b.created_at || 0);
+        return bt - at;
+      });
+    return ranked[0] || capture_sessions.find((s: any) => !s.deleted_at) || null;
+  })();
   const scenarios = db.prepare(`
     SELECT id, capture_id, capture_session_id, title, goal, weeks, horizon_weeks, status, provider, image_url,
            CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
@@ -1236,18 +1430,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     plans,
     captures,
     capture_sessions,
-    active_capture_session: (() => {
-      // Prefer the session with the most assets (newest open with photos beats a stale empty complete).
-      const ranked = [...capture_sessions].sort((a: any, b: any) => {
-        const ac = Object.keys(a.assets || {}).length;
-        const bc = Object.keys(b.assets || {}).length;
-        if (bc !== ac) return bc - ac;
-        const at = Date.parse(a.updated_at || a.created_at || 0);
-        const bt = Date.parse(b.updated_at || b.created_at || 0);
-        return bt - at;
-      });
-      return ranked[0] || null;
-    })(),
+    active_capture_session,
     scenarios: parsedScenarios,
     anatomical: latestPlan ? {
       anatomicalEnvelope: latestPlan.anatomicalEnvelope || null,

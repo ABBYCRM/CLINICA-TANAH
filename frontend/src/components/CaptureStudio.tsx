@@ -124,7 +124,7 @@ export default function CaptureStudio({
   initialSession?: any | null;
   consentsOk?: boolean;
   onRequestConsents?: () => void;
-  onSessionChange?: (session: any) => void;
+  onSessionChange?: (session: any | null) => void;
   onGoScenarios?: () => void;
 }) {
   const { t } = useI18n();
@@ -142,11 +142,19 @@ export default function CaptureStudio({
       if (!initialSession) return prev;
       if (!prev) return initialSession;
       if (prev.id !== initialSession.id) return initialSession;
-      if (initialSession.status === 'complete' && prev.status !== 'complete') return initialSession;
-      // Prefer richer local asset map if parent is stale
+      // Same session: prefer the newer updated_at so soft-deletes are not overwritten
+      // by a stale richer parent snapshot.
+      const localTs = Date.parse(prev.updated_at || prev.created_at || 0) || 0;
+      const parentTs = Date.parse(initialSession.updated_at || initialSession.created_at || 0) || 0;
+      if (localTs > parentTs) return prev;
+      if (parentTs > localTs) return initialSession;
       const localCount = Object.keys(prev.assets || {}).length;
       const parentCount = Object.keys(initialSession.assets || {}).length;
-      if (parentCount >= localCount) return initialSession;
+      if (parentCount !== localCount) {
+        // Equal timestamps: prefer fewer assets (soft-delete) over resurrecting
+        return parentCount < localCount ? initialSession : prev;
+      }
+      if (initialSession.status === 'complete' && prev.status !== 'complete') return initialSession;
       return prev;
     });
   }, [initialSession?.id, initialSession?.updated_at, initialSession?.status, initialSession?.views_complete]);
@@ -169,7 +177,7 @@ export default function CaptureStudio({
   const viewLabel = (v: CaptureView) => t(`body.views.${v}`);
 
   const ensureSession = async () => {
-    if (session) return session;
+    if (session && session.status !== 'complete' && !session.deleted_at) return session;
     const created = await api.post(`/api/clinical/body/${patientId}/capture-sessions`, {});
     setSession(created);
     onSessionChange?.(created);
@@ -235,6 +243,71 @@ export default function CaptureStudio({
       setStatus(t('body.capture_validated'));
     } catch (e: any) {
       setStatus(e?.body?.message || e?.message || t('body.capture_validate_failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteCurrentPhoto = async () => {
+    if (!session?.assets?.[view]) return;
+    const ok = window.confirm(
+      `${t('body.capture_delete_confirm', { view: viewLabel(view) })}\n\n${t('body.capture_delete_retention')}`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setStatus('');
+    try {
+      const res = await api.del(`/api/clinical/body/capture-sessions/${session.id}/assets/${view}`);
+      const updated = res?.session || { ...session, assets: { ...(session.assets || {}) } };
+      if (res?.session) {
+        setSession(res.session);
+        onSessionChange?.(res.session);
+      } else {
+        const nextAssets = { ...(session.assets || {}) };
+        delete nextAssets[view];
+        const next = { ...session, assets: nextAssets, views_complete: false };
+        setSession(next);
+        onSessionChange?.(next);
+      }
+      setStatus(t('body.capture_deleted', { view: viewLabel(view) }));
+    } catch (e: any) {
+      setStatus(e?.body?.message || e?.message || t('body.capture_delete_failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteAllPhotos = async () => {
+    if (!session || captureReadyCount === 0) return;
+    const ok = window.confirm(
+      `${t('body.capture_delete_all_confirm')}\n\n${t('body.capture_delete_retention')}`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setStatus('');
+    try {
+      await api.del(`/api/clinical/body/capture-sessions/${session.id}`);
+      setSession(null);
+      onSessionChange?.(null);
+      setStatus(t('body.capture_session_deleted'));
+    } catch (e: any) {
+      setStatus(e?.body?.message || e?.message || t('body.capture_delete_failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startNewSession = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const created = await api.post(`/api/clinical/body/${patientId}/capture-sessions`, {});
+      setSession(created);
+      onSessionChange?.(created);
+      setView('front');
+      setStatus(t('body.capture_new_session_ready'));
+    } catch (e: any) {
+      setStatus(e?.body?.message || e?.message || t('errors.generic'));
     } finally {
       setBusy(false);
     }
@@ -361,6 +434,17 @@ export default function CaptureStudio({
               >
                 {t('body.take_photo')}
               </button>
+              {asset && (
+                <button
+                  type="button"
+                  className="btn-danger text-sm"
+                  disabled={busy}
+                  onClick={() => void deleteCurrentPhoto()}
+                  data-testid="capture-delete-photo"
+                >
+                  {t('body.capture_delete_photo')}
+                </button>
+              )}
               {/* Gallery / files — no capture= so mobile can pick from library */}
               <input
                 ref={galleryRef}
@@ -384,9 +468,14 @@ export default function CaptureStudio({
                 <span className="badge-green text-xs">{t('body.capture_locked')}</span>
               )}
             </div>
+            {asset && (
+              <p className="text-[11px] text-[color:var(--ink-muted)] leading-relaxed" data-testid="capture-retention-hint">
+                {t('body.capture_delete_retention')}
+              </p>
+            )}
             {status && (
               <p
-                className={`text-sm ${/sucesso|success|conclu|valid|enviada/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
+                className={`text-sm ${/sucesso|success|concluída|conclu|enviada|retid|removida|ready|aberta|opened/i.test(status) && !/cannot|falh|fail|erro|error|invalid/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
                 role="status"
                 data-testid="capture-status"
               >
@@ -440,11 +529,36 @@ export default function CaptureStudio({
                       ? t('body.tabs.scenarios')
                       : t('body.continue_partial_scenarios', { count: captureReadyCount })}
                   </button>
+                  <button
+                    type="button"
+                    className="btn-danger w-full text-sm"
+                    disabled={busy}
+                    onClick={() => void deleteAllPhotos()}
+                    data-testid="capture-delete-all"
+                  >
+                    {t('body.capture_delete_all')}
+                  </button>
                   {!viewsComplete && (
                     <p className="text-[11px] text-[color:var(--ink-muted)] leading-relaxed">
                       {t('body.partial_gen_hint')}
                     </p>
                   )}
+                </div>
+              )}
+              {(locked || !session) && (
+                <div className="mt-3 space-y-1.5">
+                  <button
+                    type="button"
+                    className="btn-secondary w-full text-sm"
+                    disabled={busy}
+                    onClick={() => void startNewSession()}
+                    data-testid="capture-new-session"
+                  >
+                    {t('body.capture_new_session')}
+                  </button>
+                  <p className="text-[11px] text-[color:var(--ink-muted)] leading-relaxed">
+                    {t('body.capture_new_session_hint')}
+                  </p>
                 </div>
               )}
             </div>

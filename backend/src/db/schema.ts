@@ -1298,6 +1298,14 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE body_scenarios ADD COLUMN review_signature TEXT`,
     `ALTER TABLE body_scenarios ADD COLUMN review_comment TEXT`,
     `ALTER TABLE body_scenarios ADD COLUMN output_views TEXT`,
+    // Body capture soft-delete (CFM/LGPD clinical retention — never hard-delete files)
+    `ALTER TABLE body_capture_assets ADD COLUMN deleted_at TEXT`,
+    `ALTER TABLE body_capture_assets ADD COLUMN deleted_by TEXT`,
+    `ALTER TABLE body_capture_assets ADD COLUMN delete_reason TEXT`,
+    `ALTER TABLE body_capture_assets ADD COLUMN retained_path TEXT`,
+    `ALTER TABLE body_capture_sessions ADD COLUMN deleted_at TEXT`,
+    `ALTER TABLE body_capture_sessions ADD COLUMN deleted_by TEXT`,
+    `ALTER TABLE body_capture_sessions ADD COLUMN delete_reason TEXT`,
     // Prescription soft-cancel (CFM clinical retention — never hard-delete)
     `ALTER TABLE prescriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE prescriptions ADD COLUMN cancelled_at TEXT`,

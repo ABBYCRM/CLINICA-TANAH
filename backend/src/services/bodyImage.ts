@@ -32,6 +32,39 @@ export function bodyUploadsDir(tenantId: string, patientId: string): string {
   return dir;
 }
 
+/** CFM/LGPD clinical retention copies — never purged by soft-delete. */
+export function bodyRetainedDir(tenantId: string, patientId: string): string {
+  const dir = path.join(bodyUploadsDir(tenantId, patientId), 'retained');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * Copy a capture file into the retained/ archive. Returns retained path or null.
+ * Never deletes or overwrites the original.
+ */
+export function retainBodyPhotoCopy(opts: {
+  tenantId: string;
+  patientId: string;
+  assetId: string;
+  view: string;
+  sourcePath: string;
+}): string | null {
+  if (!opts.sourcePath || !fs.existsSync(opts.sourcePath)) return null;
+  const ext = path.extname(opts.sourcePath) || '.jpg';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dest = path.join(
+    bodyRetainedDir(opts.tenantId, opts.patientId),
+    `${opts.assetId}-${opts.view}-${stamp}${ext}`,
+  );
+  try {
+    fs.copyFileSync(opts.sourcePath, dest);
+    return dest;
+  } catch {
+    return null;
+  }
+}
+
 export function calcBmi(heightCm?: number | null, weightKg?: number | null): number | null {
   if (!heightCm || !weightKg || heightCm <= 0 || weightKg <= 0) return null;
   const m = heightCm / 100;
