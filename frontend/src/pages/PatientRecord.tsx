@@ -101,7 +101,19 @@ export default function PatientRecord() {
   const [consentBusy, setConsentBusy] = useState<string | null>(null);
   const [stageBusy, setStageBusy] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskCategory, setTaskCategory] = useState('follow_up');
+  const [taskPriority, setTaskPriority] = useState('normal');
+  const [taskDueAt, setTaskDueAt] = useState('');
+  const [taskAssignee, setTaskAssignee] = useState('');
+  const [taskAutomationId, setTaskAutomationId] = useState('');
+  const [taskLinkMode, setTaskLinkMode] = useState<'reference' | 'trigger_on_create' | 'trigger_on_complete'>('reference');
+  const [taskRunNow, setTaskRunNow] = useState(false);
   const [taskBusy, setTaskBusy] = useState(false);
+  const [taskMsg, setTaskMsg] = useState('');
+  const [taskFilter, setTaskFilter] = useState<'open' | 'all'>('open');
+  const [teamUsers, setTeamUsers] = useState<any[]>([]);
+  const [automations, setAutomations] = useState<any[]>([]);
   const [docTitle, setDocTitle] = useState('');
   const [docBusy, setDocBusy] = useState(false);
   const [recallDays, setRecallDays] = useState('90');
@@ -122,6 +134,20 @@ export default function PatientRecord() {
   };
 
   useEffect(load, [id, locale]);
+
+  useEffect(() => {
+    if (tab !== 'tasks') return;
+    let cancelled = false;
+    Promise.all([
+      api.get('/api/users').catch(() => ({ users: [] })),
+      api.get('/api/whatsapp/automations').catch(() => ({ automations: [] })),
+    ]).then(([usersRes, autoRes]) => {
+      if (cancelled) return;
+      setTeamUsers(usersRes.users || usersRes || []);
+      setAutomations(autoRes.automations || []);
+    });
+    return () => { cancelled = true; };
+  }, [tab, id]);
 
   const patient = data?.patient;
   const workspace = data?.workspace || {};
@@ -267,13 +293,41 @@ export default function PatientRecord() {
     }
   };
 
+  const resetTaskForm = () => {
+    setTaskTitle('');
+    setTaskDescription('');
+    setTaskCategory('follow_up');
+    setTaskPriority('normal');
+    setTaskDueAt('');
+    setTaskAssignee('');
+    setTaskAutomationId('');
+    setTaskLinkMode('reference');
+    setTaskRunNow(false);
+  };
+
   const createTask = async () => {
     if (!id || !taskTitle.trim()) return;
     setTaskBusy(true);
+    setTaskMsg('');
     try {
-      await api.post(`/api/patients/${id}/tasks`, { title: taskTitle.trim(), category: 'follow_up' });
-      setTaskTitle('');
+      const res = await api.post(`/api/patients/${id}/tasks`, {
+        title: taskTitle.trim(),
+        description: taskDescription.trim() || null,
+        category: taskCategory,
+        priority: taskPriority,
+        due_at: taskDueAt || null,
+        assigned_to: taskAssignee || null,
+        related_automation_id: taskAutomationId || null,
+        automation_link_mode: taskAutomationId ? taskLinkMode : null,
+        run_automation_now: !!(taskAutomationId && (taskRunNow || taskLinkMode === 'trigger_on_create')),
+      });
+      resetTaskForm();
       setTab('tasks');
+      setTaskMsg(
+        res?.trigger?.sent
+          ? t('patients.workspace.task_created_sent')
+          : t('patients.workspace.task_created'),
+      );
       load();
     } catch (e: any) {
       setError(e.message || t('errors.generic'));
@@ -289,6 +343,26 @@ export default function PatientRecord() {
       load();
     } catch (e: any) {
       setError(e.message || t('errors.generic'));
+    }
+  };
+
+  const runTaskAutomation = async (taskId: string) => {
+    if (!id) return;
+    setTaskBusy(true);
+    try {
+      const res = await api.post(`/api/patients/${id}/tasks/${taskId}/run-automation`, {});
+      setTaskMsg(
+        res?.trigger?.sent
+          ? t('patients.workspace.automation_sent')
+          : (res?.trigger?.error
+            ? t('patients.workspace.automation_failed', { error: res.trigger.error })
+            : t('patients.workspace.automation_ran')),
+      );
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setTaskBusy(false);
     }
   };
 
@@ -606,10 +680,139 @@ export default function PatientRecord() {
           )}
 
           {tab === 'tasks' && (
-            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-3" data-testid="workspace-tasks">
-              <h3 className="font-semibold text-sm">{t('patients.workspace.tasks_heading')}</h3>
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-4" data-testid="workspace-tasks">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold text-sm">{t('patients.workspace.tasks_heading')}</h3>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    className={`crm-feed-tab ${taskFilter === 'open' ? 'is-active' : ''}`}
+                    onClick={() => setTaskFilter('open')}
+                    data-testid="tasks-filter-open"
+                  >
+                    {t('patients.workspace.task_filter_open')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`crm-feed-tab ${taskFilter === 'all' ? 'is-active' : ''}`}
+                    onClick={() => setTaskFilter('all')}
+                    data-testid="tasks-filter-all"
+                  >
+                    {t('patients.workspace.task_filter_all')}
+                  </button>
+                </div>
+              </div>
+
+              <section className="crm-inset-panel space-y-2" data-testid="workspace-task-form">
+                <h4 className="font-display text-base text-[color:var(--ink)]">{t('patients.workspace.create_task')}</h4>
+                <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">{t('patients.workspace.task_form_hint')}</p>
+
+                <label className="text-xs text-[color:var(--ink-muted)] block">
+                  {t('patients.workspace.task_title')}
+                  <input
+                    className="input mt-1 w-full"
+                    value={taskTitle}
+                    onChange={(e) => setTaskTitle(e.target.value)}
+                    placeholder={t('patients.workspace.task_placeholder')}
+                    data-testid="task-title"
+                  />
+                </label>
+
+                <label className="text-xs text-[color:var(--ink-muted)] block">
+                  {t('patients.workspace.task_description')}
+                  <textarea
+                    className="input mt-1 w-full"
+                    rows={2}
+                    value={taskDescription}
+                    onChange={(e) => setTaskDescription(e.target.value)}
+                    data-testid="task-description"
+                  />
+                </label>
+
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <label className="text-xs text-[color:var(--ink-muted)]">
+                    {t('patients.workspace.task_category')}
+                    <select className="input mt-1 w-full" value={taskCategory} onChange={(e) => setTaskCategory(e.target.value)} data-testid="task-category">
+                      {['follow_up', 'scheduling', 'recall', 'recall_followup', 'service_recovery', 'no_show', 'billing_followup', 'clinical', 'admin'].map((c) => (
+                        <option key={c} value={c}>{t(`patients.workspace.task_cat_${c}`)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs text-[color:var(--ink-muted)]">
+                    {t('patients.inspector.priority')}
+                    <select className="input mt-1 w-full" value={taskPriority} onChange={(e) => setTaskPriority(e.target.value)} data-testid="task-priority">
+                      {['low', 'normal', 'high', 'urgent'].map((p) => (
+                        <option key={p} value={p}>{t(`patients.workspace.task_priority_${p}`)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <label className="text-xs text-[color:var(--ink-muted)]">
+                    {t('patients.workspace.task_due')}
+                    <input className="input mt-1 w-full" type="datetime-local" value={taskDueAt} onChange={(e) => setTaskDueAt(e.target.value)} data-testid="task-due" />
+                  </label>
+                  <label className="text-xs text-[color:var(--ink-muted)]">
+                    {t('patients.workspace.task_assignee')}
+                    <select className="input mt-1 w-full" value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} data-testid="task-assignee">
+                      <option value="">{t('patients.workspace.task_assignee_none')}</option>
+                      {teamUsers.filter((u: any) => u.active !== false).map((u: any) => (
+                        <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-[rgba(176,183,192,0.4)] bg-[#f7f1e6] px-3 py-2.5">
+                  <label className="text-xs text-[color:var(--ink-muted)] block">
+                    {t('patients.workspace.task_automation')}
+                    <select
+                      className="input mt-1 w-full"
+                      value={taskAutomationId}
+                      onChange={(e) => setTaskAutomationId(e.target.value)}
+                      data-testid="task-automation"
+                    >
+                      <option value="">{t('patients.workspace.task_automation_none')}</option>
+                      {automations.map((a: any) => (
+                        <option key={a.id} value={a.id}>
+                          {a.key}{a.enabled ? '' : ` (${t('patients.workspace.task_automation_disabled')})`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {taskAutomationId && (
+                    <>
+                      <label className="text-xs text-[color:var(--ink-muted)] block">
+                        {t('patients.workspace.task_link_mode')}
+                        <select className="input mt-1 w-full" value={taskLinkMode} onChange={(e) => setTaskLinkMode(e.target.value as any)} data-testid="task-link-mode">
+                          <option value="reference">{t('patients.workspace.task_link_reference')}</option>
+                          <option value="trigger_on_create">{t('patients.workspace.task_link_on_create')}</option>
+                          <option value="trigger_on_complete">{t('patients.workspace.task_link_on_complete')}</option>
+                        </select>
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={taskRunNow || taskLinkMode === 'trigger_on_create'} onChange={(e) => setTaskRunNow(e.target.checked)} data-testid="task-run-now" />
+                        {t('patients.workspace.task_run_now')}
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-primary text-sm"
+                  disabled={taskBusy || !taskTitle.trim()}
+                  onClick={createTask}
+                  data-testid="task-submit"
+                >
+                  {taskBusy ? '…' : t('patients.workspace.action_task')}
+                </button>
+                {taskMsg && <p className="text-sm text-[color:var(--ink-muted)]" data-testid="task-msg">{taskMsg}</p>}
+              </section>
+
               {tickets.filter((tk: any) => tk.status === 'open').map((tk: any) => (
-                <div key={tk.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2">
+                <div key={tk.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2" data-testid={`ticket-${tk.id}`}>
                   <div className="min-w-0">
                     <div className="text-sm font-medium">{tk.title}</div>
                     <div className="text-xs text-[color:var(--ink-muted)]">{tk.description}</div>
@@ -620,21 +823,67 @@ export default function PatientRecord() {
                   </button>
                 </div>
               ))}
-              {tasks.length === 0 && tickets.length === 0 && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
-              {tasks.map((task: any) => (
-                <div key={task.id} className="crm-timeline-card flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">{task.title}</div>
-                    <div className="text-xs text-[color:var(--ink-muted)]">{task.category} · {fmtDateTime(task.created_at, locale)}</div>
+
+              {(() => {
+                const visible = tasks.filter((task: any) => taskFilter === 'all' || task.status === 'open');
+                if (!visible.length && !tickets.some((tk: any) => tk.status === 'open')) {
+                  return (
+                    <p className="text-sm text-[color:var(--ink-muted)]" data-testid="tasks-empty">
+                      {t('patients.workspace.tasks_empty')}
+                    </p>
+                  );
+                }
+                return visible.map((task: any) => (
+                  <div key={task.id} className="crm-timeline-card space-y-1.5" data-testid={`task-${task.id}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{task.title}</div>
+                        {task.description && (
+                          <div className="text-xs text-[color:var(--ink-muted)] mt-0.5">{task.description}</div>
+                        )}
+                        <div className="text-[11px] text-[color:var(--ink-muted)] mt-1">
+                          {(() => {
+                            const ck = `patients.workspace.task_cat_${task.category}`;
+                            const ct = t(ck);
+                            return ct !== ck ? ct : task.category;
+                          })()}
+                          {' · '}{task.priority}
+                          {task.due_at ? ` · ${t('patients.workspace.task_due')}: ${fmtDateTime(task.due_at, locale)}` : ''}
+                          {task.assigned_to_name ? ` · ${task.assigned_to_name}` : ''}
+                          {task.automation_key || task.automation_key_resolved
+                            ? ` · ${t('patients.workspace.task_automation')}: ${task.automation_key || task.automation_key_resolved}`
+                            : ''}
+                        </div>
+                      </div>
+                      <span className={`badge ${task.status === 'open' ? 'badge-yellow' : 'badge-green'}`}>
+                        {(() => {
+                          const sk = `patients.workspace.task_status_${task.status}`;
+                          const st = t(sk);
+                          return st !== sk ? st : task.status;
+                        })()}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {task.status === 'open' && (
+                        <button type="button" className="btn-secondary text-xs" onClick={() => resolveTask(task.id)} data-testid={`task-resolve-${task.id}`}>
+                          {t('patients.workspace.resolve')}
+                        </button>
+                      )}
+                      {(task.related_automation_id || task.automation_key) && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          disabled={taskBusy}
+                          onClick={() => runTaskAutomation(task.id)}
+                          data-testid={`task-run-auto-${task.id}`}
+                        >
+                          {t('patients.workspace.task_run_automation')}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className={`badge ${task.status === 'open' ? 'badge-yellow' : 'badge-green'}`}>{task.status}</span>
-                  {task.status === 'open' && (
-                    <button type="button" className="btn-secondary text-xs" onClick={() => resolveTask(task.id)}>
-                      {t('patients.workspace.resolve')}
-                    </button>
-                  )}
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           )}
 
@@ -681,8 +930,13 @@ export default function PatientRecord() {
 
           {tab !== 'audit' && tab !== 'clinical' && (
           <div className="p-4 space-y-5">
-            {grouped.length === 0 && (
+            {grouped.length === 0 && tab !== 'tasks' && (
               <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>
+            )}
+            {tab === 'tasks' && grouped.length > 0 && (
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
+                {t('patients.workspace.task_timeline')}
+              </h4>
             )}
             {grouped.map(([month, items]) => (
               <div key={month}>
@@ -763,9 +1017,18 @@ export default function PatientRecord() {
 
           <div className="crm-record-panel space-y-2">
             <h2 className="crm-record-panel-title">{t('patients.workspace.create_task')}</h2>
-            <input className="input" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder={t('patients.workspace.task_placeholder')} />
-            <button type="button" className="btn-primary w-full text-sm" disabled={taskBusy || !taskTitle.trim()} onClick={createTask}>
+            <input className="input" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder={t('patients.workspace.task_placeholder')} data-testid="rail-task-title" />
+            <button
+              type="button"
+              className="btn-primary w-full text-sm"
+              disabled={taskBusy || !taskTitle.trim()}
+              onClick={createTask}
+              data-testid="rail-task-submit"
+            >
               {taskBusy ? '…' : t('patients.workspace.action_task')}
+            </button>
+            <button type="button" className="btn-secondary w-full text-xs" onClick={() => selectWorkspaceTab('tasks')}>
+              {t('patients.workspace.task_open_full_form')}
             </button>
           </div>
 

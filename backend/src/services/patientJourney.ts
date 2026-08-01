@@ -386,13 +386,18 @@ export function createPatientTask(args: {
   createdBy?: string | null;
   relatedTicketId?: string | null;
   relatedAppointmentId?: string | null;
+  relatedAutomationId?: string | null;
+  automationKey?: string | null;
+  automationLinkMode?: string | null;
+  source?: string | null;
 }): string {
   const id = `task_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   db.prepare(`
     INSERT INTO patient_tasks
       (id, tenant_id, patient_id, title, description, category, priority, status,
-       due_at, assigned_to, created_by, related_ticket_id, related_appointment_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)
+       due_at, assigned_to, created_by, related_ticket_id, related_appointment_id,
+       related_automation_id, automation_key, automation_link_mode, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     args.tenantId,
@@ -406,6 +411,10 @@ export function createPatientTask(args: {
     args.createdBy ?? null,
     args.relatedTicketId ?? null,
     args.relatedAppointmentId ?? null,
+    args.relatedAutomationId ?? null,
+    args.automationKey ?? null,
+    args.automationLinkMode ?? null,
+    args.source || 'manual',
   );
   appendTimelineEvent({
     tenantId: args.tenantId,
@@ -414,7 +423,12 @@ export function createPatientTask(args: {
     title: 'task_created',
     subtitle: args.title,
     status: args.priority || 'normal',
-    meta: { task_id: id, category: args.category || 'follow_up' },
+    meta: {
+      task_id: id,
+      category: args.category || 'follow_up',
+      automation_id: args.relatedAutomationId || null,
+      automation_key: args.automationKey || null,
+    },
   });
   return id;
 }

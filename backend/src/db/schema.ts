@@ -759,7 +759,18 @@ function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_ptasks_patient ON patient_tasks(patient_id, status);
     CREATE INDEX IF NOT EXISTS idx_ptasks_tenant ON patient_tasks(tenant_id, status);
-
+  `);
+  for (const sql of [
+    `ALTER TABLE patient_tasks ADD COLUMN related_automation_id TEXT`,
+    `ALTER TABLE patient_tasks ADD COLUMN automation_key TEXT`,
+    `ALTER TABLE patient_tasks ADD COLUMN automation_link_mode TEXT`,
+    `ALTER TABLE patient_tasks ADD COLUMN triggered_at TEXT`,
+    `ALTER TABLE patient_tasks ADD COLUMN trigger_result TEXT`,
+    `ALTER TABLE patient_tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+  ]) {
+    try { openDb().exec(sql); } catch { /* exists */ }
+  }
+  openDb().exec(`
     CREATE TABLE IF NOT EXISTS service_tickets (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,

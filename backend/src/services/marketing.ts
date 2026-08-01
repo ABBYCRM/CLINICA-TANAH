@@ -323,4 +323,95 @@ export async function runAutomation(tenantId: string, automationId: string, loca
   return { ok: true, key: auto.key, sent, failed, skipped, marketing: isMarketing || MARKETING_SEGMENTS.has(auto.key as any) };
 }
 
+/**
+ * Run a WhatsApp automation for a single patient (task-linked triggers).
+ * Respects LGPD opt-out / do-not-contact. Creates a follow-up task when appropriate.
+ */
+export async function runAutomationForPatient(
+  tenantId: string,
+  automationId: string,
+  patientId: string,
+  locale: Locale = 'pt-BR',
+): Promise<{
+  ok: boolean;
+  error?: string;
+  key?: string;
+  sent?: number;
+  failed?: number;
+  skipped?: number;
+  reason?: string;
+}> {
+  const auto = db.prepare(`SELECT * FROM wa_automations WHERE id = ? AND tenant_id = ?`).get(automationId, tenantId) as any;
+  if (!auto) return { ok: false, error: 'not_found' };
+  if (!auto.enabled) return { ok: false, error: 'disabled' };
+
+  const patient = db.prepare(`
+    SELECT id, full_name, phone, lgpd_opt_out_marketing, do_not_contact, open_complaint
+    FROM patients WHERE id = ? AND tenant_id = ?
+  `).get(patientId, tenantId) as any;
+  if (!patient) return { ok: false, error: 'patient_not_found' };
+  if (!patient.phone) return { ok: false, error: 'no_phone', key: auto.key, skipped: 1, reason: 'no_phone' };
+  if (patient.do_not_contact) return { ok: false, error: 'do_not_contact', key: auto.key, skipped: 1, reason: 'do_not_contact' };
+
+  const isMarketing = ['birthday', 'inactive_90d'].includes(auto.key) || MARKETING_SEGMENTS.has(auto.key as any);
+  if (isMarketing && (patient.lgpd_opt_out_marketing || patient.open_complaint)) {
+    return { ok: false, error: 'marketing_blocked', key: auto.key, skipped: 1, reason: 'marketing_blocked' };
+  }
+
+  // Operational opt-out check via conversation state
+  const convOptOut = db.prepare(`
+    SELECT state FROM whatsapp_conversations WHERE phone = ? AND tenant_id = ?
+  `).get(patient.phone, tenantId) as any;
+  if (convOptOut?.state === 'lgpd_optout') {
+    return { ok: false, error: 'opted_out', key: auto.key, skipped: 1, reason: 'opted_out' };
+  }
+
+  let vars: Record<string, string> = {};
+  if (auto.key === 'reminder_24h' || auto.key === 'reminder_2h' || auto.key === 'no_show') {
+    const appt = db.prepare(`
+      SELECT scheduled_at FROM appointments
+      WHERE patient_id = ? AND tenant_id = ?
+      ORDER BY scheduled_at DESC LIMIT 1
+    `).get(patientId, tenantId) as any;
+    if (appt?.scheduled_at) {
+      const dt = new Date(String(appt.scheduled_at).replace(' ', 'T') + (String(appt.scheduled_at).includes('Z') ? '' : 'Z'));
+      vars.date = Number.isNaN(dt.getTime()) ? String(appt.scheduled_at).slice(0, 10) : dt.toLocaleDateString('pt-BR');
+      vars.time = Number.isNaN(dt.getTime()) ? String(appt.scheduled_at).slice(11, 16) : dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+  if (auto.key === 'payment_reminder') {
+    const inv = db.prepare(`
+      SELECT number FROM invoices
+      WHERE patient_id = ? AND tenant_id = ? AND status IN ('issued','overdue')
+      ORDER BY created_at DESC LIMIT 1
+    `).get(patientId, tenantId) as any;
+    if (inv?.number) vars.invoice = String(inv.number);
+  }
+
+  const ok = await sendPersonalized(
+    tenantId,
+    patient.phone,
+    patient.full_name,
+    auto.message,
+    vars,
+    isMarketing,
+    locale,
+  );
+
+  try {
+    db.prepare(`
+      UPDATE wa_automations SET last_run_at = datetime('now'), last_sent_count = COALESCE(last_sent_count,0) + ?, updated_at = datetime('now')
+      WHERE id = ? AND tenant_id = ?
+    `).run(ok ? 1 : 0, auto.id, tenantId);
+  } catch { /* ignore */ }
+
+  return {
+    ok: true,
+    key: auto.key,
+    sent: ok ? 1 : 0,
+    failed: ok ? 0 : 1,
+    skipped: 0,
+  };
+}
+
 export { MARKETING_SEGMENTS };

@@ -545,10 +545,16 @@ router.get('/:id/record', (req: Request, res: Response) => {
   `).all(req.params.id, req.tenantId) as any[];
 
   const tasks = db.prepare(`
-    SELECT id, title, description, category, priority, status, due_at, assigned_to,
-           related_ticket_id, created_at, resolved_at
-    FROM patient_tasks WHERE patient_id = ? AND tenant_id = ?
-    ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC LIMIT 40
+    SELECT t.id, t.title, t.description, t.category, t.priority, t.status, t.due_at, t.assigned_to,
+           t.related_ticket_id, t.related_automation_id, t.automation_key, t.automation_link_mode,
+           t.triggered_at, t.trigger_result, t.source, t.created_at, t.resolved_at,
+           u.full_name AS assigned_to_name,
+           a.key AS automation_key_resolved, a.message AS automation_message, a.enabled AS automation_enabled
+    FROM patient_tasks t
+    LEFT JOIN users u ON u.id = t.assigned_to
+    LEFT JOIN wa_automations a ON a.id = t.related_automation_id
+    WHERE t.patient_id = ? AND t.tenant_id = ?
+    ORDER BY CASE t.status WHEN 'open' THEN 0 ELSE 1 END, t.created_at DESC LIMIT 40
   `).all(req.params.id, req.tenantId) as any[];
 
   const tickets = db.prepare(`
@@ -1182,39 +1188,155 @@ router.put('/:id/lifecycle', requireRole('admin', 'doctor', 'nurse', 'receptioni
   res.json({ ok: true, lifecycle_stage: stage });
 });
 
-/** Create follow-up / service task on patient workspace. */
-router.post('/:id/tasks', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+/** Create follow-up / service task on patient workspace (optionally linked to automation). */
+router.post('/:id/tasks', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
   const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
   const title = String(req.body?.title || '').trim();
   if (!title) { res.status(400).json({ error: 'title_required' }); return; }
+
+  const category = String(req.body?.category || 'follow_up');
+  const priority = String(req.body?.priority || 'normal');
+  const dueAt = req.body?.due_at ? String(req.body.due_at) : null;
+  const assignedTo = req.body?.assigned_to ? String(req.body.assigned_to) : null;
+  const description = req.body?.description ? String(req.body.description) : null;
+  const relatedAppointmentId = req.body?.related_appointment_id ? String(req.body.related_appointment_id) : null;
+  let relatedAutomationId = req.body?.related_automation_id ? String(req.body.related_automation_id) : null;
+  let automationKey = req.body?.automation_key ? String(req.body.automation_key) : null;
+  const automationLinkMode = req.body?.automation_link_mode
+    ? String(req.body.automation_link_mode)
+    : (relatedAutomationId ? 'reference' : null);
+  const runNow = !!req.body?.run_automation_now
+    || automationLinkMode === 'trigger_on_create';
+
+  if (relatedAutomationId) {
+    const auto = db.prepare(`SELECT id, key, enabled FROM wa_automations WHERE id = ? AND tenant_id = ?`)
+      .get(relatedAutomationId, req.tenantId) as any;
+    if (!auto) { res.status(400).json({ error: 'automation_not_found' }); return; }
+    automationKey = auto.key;
+  } else if (automationKey) {
+    const auto = db.prepare(`SELECT id, key FROM wa_automations WHERE key = ? AND tenant_id = ?`)
+      .get(automationKey, req.tenantId) as any;
+    if (auto) relatedAutomationId = auto.id;
+  }
+
   const taskId = createPatientTask({
     tenantId: req.tenantId!,
     patientId: req.params.id,
     title,
-    description: req.body?.description ? String(req.body.description) : null,
-    category: String(req.body?.category || 'follow_up'),
-    priority: String(req.body?.priority || 'normal'),
-    dueAt: req.body?.due_at ? String(req.body.due_at) : null,
-    assignedTo: req.body?.assigned_to ? String(req.body.assigned_to) : null,
+    description,
+    category,
+    priority,
+    dueAt,
+    assignedTo,
     createdBy: req.user!.id,
+    relatedAppointmentId,
+    relatedAutomationId,
+    automationKey,
+    automationLinkMode,
+    source: relatedAutomationId ? 'manual_linked' : 'manual',
   });
-  res.status(201).json({ ok: true, id: taskId });
+
+  let trigger: any = null;
+  if (runNow && relatedAutomationId) {
+    const { runAutomationForPatient } = await import('../services/marketing');
+    const locale = (req.headers['accept-language'] || 'pt-BR').toString().slice(0, 5) as any;
+    trigger = await runAutomationForPatient(req.tenantId!, relatedAutomationId, req.params.id, locale);
+    db.prepare(`
+      UPDATE patient_tasks
+      SET triggered_at = datetime('now'), trigger_result = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(JSON.stringify(trigger), taskId);
+  }
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'create_patient_task', resourceType: 'patient_task', resourceId: taskId,
+    afterValue: { patient_id: req.params.id, category, automation_id: relatedAutomationId, run: runNow },
+    legalBasis: 'contract_art7_V',
+  });
+
+  const task = db.prepare(`SELECT * FROM patient_tasks WHERE id = ?`).get(taskId);
+  res.status(201).json({ ok: true, id: taskId, task, trigger });
 });
 
-router.patch('/:id/tasks/:taskId', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+router.patch('/:id/tasks/:taskId', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
   const task = db.prepare(`
     SELECT * FROM patient_tasks WHERE id = ? AND patient_id = ? AND tenant_id = ?
   `).get(req.params.taskId, req.params.id, req.tenantId) as any;
   if (!task) { res.status(404).json({ error: 'not_found' }); return; }
+
+  const title = req.body?.title != null ? String(req.body.title).trim() : task.title;
+  if (!title) { res.status(400).json({ error: 'title_required' }); return; }
+  const description = req.body?.description !== undefined
+    ? (req.body.description ? String(req.body.description) : null)
+    : task.description;
+  const category = req.body?.category != null ? String(req.body.category) : task.category;
+  const priority = req.body?.priority != null ? String(req.body.priority) : task.priority;
+  const dueAt = req.body?.due_at !== undefined
+    ? (req.body.due_at ? String(req.body.due_at) : null)
+    : task.due_at;
+  const assignedTo = req.body?.assigned_to !== undefined
+    ? (req.body.assigned_to ? String(req.body.assigned_to) : null)
+    : task.assigned_to;
   const status = req.body?.status ? String(req.body.status) : task.status;
-  const resolvedAt = status === 'done' || status === 'cancelled' ? new Date().toISOString() : null;
+
+  let relatedAutomationId = req.body?.related_automation_id !== undefined
+    ? (req.body.related_automation_id ? String(req.body.related_automation_id) : null)
+    : task.related_automation_id;
+  let automationKey = req.body?.automation_key !== undefined
+    ? (req.body.automation_key ? String(req.body.automation_key) : null)
+    : task.automation_key;
+  const automationLinkMode = req.body?.automation_link_mode !== undefined
+    ? (req.body.automation_link_mode ? String(req.body.automation_link_mode) : null)
+    : task.automation_link_mode;
+
+  if (req.body?.related_automation_id) {
+    const auto = db.prepare(`SELECT id, key FROM wa_automations WHERE id = ? AND tenant_id = ?`)
+      .get(relatedAutomationId, req.tenantId) as any;
+    if (!auto) { res.status(400).json({ error: 'automation_not_found' }); return; }
+    automationKey = auto.key;
+  }
+
+  const becomingDone = status === 'done' || status === 'cancelled';
+  const resolvedAt = becomingDone
+    ? (task.resolved_at || new Date().toISOString())
+    : (status === 'open' ? null : task.resolved_at);
+
   db.prepare(`
-    UPDATE patient_tasks SET status = ?, resolved_at = COALESCE(?, resolved_at),
+    UPDATE patient_tasks SET
+      title = ?, description = ?, category = ?, priority = ?, due_at = ?, assigned_to = ?,
+      status = ?, resolved_at = ?,
+      related_automation_id = ?, automation_key = ?, automation_link_mode = ?,
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(status, resolvedAt, task.id);
-  if (status === 'done') {
+  `).run(
+    title, description, category, priority, dueAt, assignedTo,
+    status, resolvedAt,
+    relatedAutomationId, automationKey, automationLinkMode,
+    task.id,
+  );
+
+  let trigger: any = null;
+  const shouldTriggerOnComplete = becomingDone
+    && status === 'done'
+    && relatedAutomationId
+    && (automationLinkMode === 'trigger_on_complete' || !!req.body?.run_automation_now)
+    && !task.triggered_at;
+
+  if (shouldTriggerOnComplete || (!!req.body?.run_automation_now && relatedAutomationId && !becomingDone)) {
+    const { runAutomationForPatient } = await import('../services/marketing');
+    const locale = (req.headers['accept-language'] || 'pt-BR').toString().slice(0, 5) as any;
+    trigger = await runAutomationForPatient(req.tenantId!, relatedAutomationId, req.params.id, locale);
+    db.prepare(`
+      UPDATE patient_tasks
+      SET triggered_at = datetime('now'), trigger_result = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(JSON.stringify(trigger), task.id);
+  }
+
+  if (status === 'done' && task.status !== 'done') {
     db.prepare(`
       INSERT INTO patient_timeline_events
         (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
@@ -1223,11 +1345,51 @@ router.patch('/:id/tasks/:taskId', requireRole('admin', 'doctor', 'nurse', 'rece
       `pte_tr_${Date.now().toString(36)}`,
       req.tenantId,
       req.params.id,
-      task.title,
-      JSON.stringify({ task_id: task.id }),
+      title,
+      JSON.stringify({ task_id: task.id, automation_id: relatedAutomationId }),
     );
   }
-  res.json({ ok: true, status });
+
+  res.json({
+    ok: true,
+    status,
+    trigger,
+    task: db.prepare(`SELECT * FROM patient_tasks WHERE id = ?`).get(task.id),
+  });
+});
+
+/** Trigger linked automation for an existing task (patient-scoped). */
+router.post('/:id/tasks/:taskId/run-automation', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
+  const task = db.prepare(`
+    SELECT * FROM patient_tasks WHERE id = ? AND patient_id = ? AND tenant_id = ?
+  `).get(req.params.taskId, req.params.id, req.tenantId) as any;
+  if (!task) { res.status(404).json({ error: 'not_found' }); return; }
+  const automationId = String(req.body?.automation_id || task.related_automation_id || '').trim();
+  if (!automationId) { res.status(400).json({ error: 'automation_required' }); return; }
+
+  const { runAutomationForPatient } = await import('../services/marketing');
+  const locale = (req.headers['accept-language'] || 'pt-BR').toString().slice(0, 5) as any;
+  const trigger = await runAutomationForPatient(req.tenantId!, automationId, req.params.id, locale);
+  const auto = db.prepare(`SELECT key FROM wa_automations WHERE id = ? AND tenant_id = ?`).get(automationId, req.tenantId) as any;
+  db.prepare(`
+    UPDATE patient_tasks SET
+      related_automation_id = COALESCE(related_automation_id, ?),
+      automation_key = COALESCE(automation_key, ?),
+      triggered_at = datetime('now'),
+      trigger_result = ?,
+      updated_at = datetime('now')
+    WHERE id = ?
+  `).run(automationId, auto?.key || null, JSON.stringify(trigger), task.id);
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'run_task_automation', resourceType: 'patient_task', resourceId: task.id,
+    afterValue: { patient_id: req.params.id, automation_id: automationId, result: trigger },
+    legalBasis: 'contract_art7_V',
+  });
+
+  res.json({ ok: true, trigger });
 });
 
 /** Open manual service-recovery ticket. */
