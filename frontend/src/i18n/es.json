@@ -433,7 +433,18 @@
     "notes": "Notas",
     "icd10_hint": "Códigos separados por comas",
     "from_today": "Citas de hoy",
-    "from_today_hint": "Toque para rellenar paciente, profesional y hora — el flujo más rápido del día."
+    "from_today_hint": "Toque para rellenar paciente, profesional y hora — el flujo más rápido del día.",
+    "tab_active": "Vigentes",
+    "tab_cancelled": "Anulados (retención)",
+    "status_cancelled": "Anulado",
+    "cancel_action": "Anular atención",
+    "cancel_title": "Anular atención",
+    "cancel_body": "La atención se marcará como anulada y permanecerá en el archivo de retención clínica. No se elimina.",
+    "cancel_confirm": "Anular atención",
+    "cancel_notice": "Retención clínica: el registro queda en Anulados y puede restaurarse si es necesario.",
+    "cancel_default_reason": "Anulado por el equipo clínico",
+    "restore": "Restaurar (hacer vigente)",
+    "retention_notice": "Archivo de retención clínica: las atenciones anuladas no se eliminan — permanecen auditables en la historia."
   },
   "prescriptions": {
     "title": "Recetas",

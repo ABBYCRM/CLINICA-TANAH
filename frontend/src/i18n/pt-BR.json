@@ -433,7 +433,18 @@
     "notes": "Notas",
     "icd10_hint": "Códigos separados por vírgula",
     "from_today": "Consultas de hoje",
-    "from_today_hint": "Toque para pré-preencher paciente, profissional e horário — o caminho mais rápido no dia a dia."
+    "from_today_hint": "Toque para pré-preencher paciente, profissional e horário — o caminho mais rápido no dia a dia.",
+    "tab_active": "Vigentes",
+    "tab_cancelled": "Anulados (retenção)",
+    "status_cancelled": "Anulado",
+    "cancel_action": "Anular atendimento",
+    "cancel_title": "Anular atendimento",
+    "cancel_body": "O atendimento será marcado como anulado e permanecerá no arquivo de retenção clínica (CFM). Não é apagado.",
+    "cancel_confirm": "Anular atendimento",
+    "cancel_notice": "Retenção CFM / Lei 13.787: o registro fica em Anulados e pode ser restaurado se necessário.",
+    "cancel_default_reason": "Anulado pela equipe clínica",
+    "restore": "Restaurar (tornar vigente)",
+    "retention_notice": "Arquivo de retenção clínica: atendimentos anulados não são excluídos — permanecem auditáveis no prontuário."
   },
   "prescriptions": {
     "title": "Receitas",

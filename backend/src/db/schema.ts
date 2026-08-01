@@ -148,6 +148,10 @@ export function initSchema(): void {
       icd10_codes TEXT,                  -- JSON array of diagnosis codes
       cid10_codes TEXT,                  -- JSON array (CID-10 BR equivalent)
       notes TEXT,
+      status TEXT NOT NULL DEFAULT 'active', -- active | cancelled (CFM retention)
+      cancelled_at TEXT,
+      cancelled_by TEXT,
+      cancel_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_enc_patient ON encounters(patient_id);
@@ -1222,6 +1226,10 @@ export function seedMarketingDefaults(tenantId: string): void {
     `ALTER TABLE prescriptions ADD COLUMN cancelled_at TEXT`,
     `ALTER TABLE prescriptions ADD COLUMN cancelled_by TEXT`,
     `ALTER TABLE prescriptions ADD COLUMN cancel_reason TEXT`,
+    `ALTER TABLE encounters ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE encounters ADD COLUMN cancelled_at TEXT`,
+    `ALTER TABLE encounters ADD COLUMN cancelled_by TEXT`,
+    `ALTER TABLE encounters ADD COLUMN cancel_reason TEXT`,
   ]) {
     try { openDb().exec(sql); } catch { /* exists */ }
   }
