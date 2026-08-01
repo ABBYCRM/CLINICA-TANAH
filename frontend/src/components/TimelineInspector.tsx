@@ -80,10 +80,10 @@ export default function TimelineInspector({
       .then(setPayload)
       .catch((e: any) => {
         setPayload(null);
-        setError(e?.body?.message || e?.message || t('errors.generic'));
+        setError(e?.body?.message || e?.message || 'Error');
       })
       .finally(() => setLoading(false));
-  }, [patientId, eventId, t]);
+  }, [patientId, eventId]);
 
   useEffect(load, [load]);
 

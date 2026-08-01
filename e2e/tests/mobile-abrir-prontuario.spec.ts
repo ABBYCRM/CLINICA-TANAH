@@ -73,7 +73,12 @@ test.describe('Mobile Abrir prontuário', () => {
   test('inspector Abrir prontuário closes drawer and shows chart', async () => {
     await openFirstPatient(page);
     await page.getByTestId('workspace-tab-overview').click();
-    await page.locator('[data-testid^="timeline-"]').first().click();
+    // Prefer clinical timeline cards (encounter/prescription) — they always expose goto_clinical
+    const clinicalCard = page.locator(
+      '[data-testid="timeline-encounter"], [data-testid="timeline-prescription"], [data-testid="timeline-appointment"]',
+    ).first();
+    await expect(clinicalCard).toBeVisible({ timeout: 10_000 });
+    await clinicalCard.click();
     await expect(page.getByTestId('timeline-inspector')).toBeVisible({ timeout: 10_000 });
     const goto = page.getByTestId('inspector-action-goto_clinical');
     await expect(goto).toBeVisible({ timeout: 10_000 });
