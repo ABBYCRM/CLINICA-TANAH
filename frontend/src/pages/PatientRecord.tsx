@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import { useAuth } from '../hooks/useAuth';
 import { ConfirmDialog, FormError } from '../components/crud';
 import { PatientForm } from '../components/PatientForm';
 import BodyProntuario from '../components/BodyProntuario';
+import TimelineInspector from '../components/TimelineInspector';
 
 type WorkspaceTab =
   | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'whatsapp'
@@ -87,6 +88,7 @@ export default function PatientRecord() {
   const { t, locale } = useI18n();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -147,6 +149,20 @@ export default function PatientRecord() {
       return tt !== tk ? tt : item.title;
     }
     return item.title;
+  };
+
+  const openEventId = searchParams.get('event');
+
+  const openEvent = (eventId: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('event', eventId);
+    setSearchParams(next, { replace: false });
+  };
+
+  const closeEvent = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('event');
+    setSearchParams(next, { replace: true });
   };
 
   const filteredTimeline = useMemo(() => {
@@ -503,11 +519,17 @@ export default function PatientRecord() {
               <div className="text-xs font-semibold uppercase tracking-wide text-[#4a453c] mb-2">{t('patients.workspace.upcoming')}</div>
               <div className="space-y-1.5">
                 {upcoming.slice(0, 3).map((a: any) => (
-                  <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <button
+                    key={a.id}
+                    type="button"
+                    className="w-full flex flex-wrap items-center justify-between gap-2 text-sm text-left rounded-lg px-2 py-1.5 hover:bg-[rgba(255,255,255,0.55)] transition-colors"
+                    onClick={() => openEvent(`appt-${a.id}`)}
+                    data-testid={`upcoming-appt-${a.id}`}
+                  >
                     <span className="font-medium">{fmtDateTime(a.scheduled_at, locale)}</span>
                     <span className="text-[color:var(--ink-muted)]">{a.practitioner_name}</span>
                     <span className={`badge ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>{a.status}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -625,24 +647,41 @@ export default function PatientRecord() {
               <div key={month}>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--ink-muted)] mb-2">{month}</div>
                 <ul className="space-y-2">
-                  {items.map((item: any) => (
-                    <li key={item.id} className="crm-timeline-card flex gap-3" data-testid={`timeline-${item.kind}`}>
-                      <span className="crm-timeline-icon"><KindIcon kind={item.kind} /></span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-sm text-[#3a342c]">{titleFor(item)}</span>
-                          {item.status && <span className="badge-slate text-[10px]">{item.status}</span>}
-                          {item.kind === 'survey' && item.meta?.score != null && (
-                            <span className={`badge ${item.meta.score >= 9 ? 'badge-green' : item.meta.score <= 6 ? 'badge-red' : 'badge-yellow'}`}>
-                              {item.meta.score}/10
-                            </span>
-                          )}
-                        </div>
-                        {item.subtitle && <div className="text-sm text-[color:var(--ink-muted)] mt-0.5 break-words">{item.subtitle}</div>}
-                        <div className="text-[11px] text-[color:var(--ink-muted)] mt-1">{fmtDateTime(item.at, locale)}</div>
-                      </div>
-                    </li>
-                  ))}
+                  {items.map((item: any) => {
+                    const selected = openEventId === item.id;
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className={`crm-timeline-card flex gap-3 w-full text-left cursor-pointer transition-all ${
+                            selected ? 'is-selected ring-2 ring-[color:var(--brass-deep)]' : 'hover:brightness-[0.985]'
+                          }`}
+                          data-testid={`timeline-${item.kind}`}
+                          data-event-id={item.id}
+                          aria-pressed={selected}
+                          onClick={() => openEvent(item.id)}
+                        >
+                          <span className="crm-timeline-icon"><KindIcon kind={item.kind} /></span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-sm text-[#3a342c]">{titleFor(item)}</span>
+                              {item.status && <span className="badge-slate text-[10px]">{item.status}</span>}
+                              {item.kind === 'survey' && item.meta?.score != null && (
+                                <span className={`badge ${item.meta.score >= 9 ? 'badge-green' : item.meta.score <= 6 ? 'badge-red' : 'badge-yellow'}`}>
+                                  {item.meta.score}/10
+                                </span>
+                              )}
+                            </div>
+                            {item.subtitle && <div className="text-sm text-[color:var(--ink-muted)] mt-0.5 break-words">{item.subtitle}</div>}
+                            <div className="text-[11px] text-[color:var(--ink-muted)] mt-1 flex items-center justify-between gap-2">
+                              <span>{fmtDateTime(item.at, locale)}</span>
+                              <span className="text-[10px] uppercase tracking-wide opacity-70">{t('patients.inspector.open_hint')}</span>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ))}
@@ -722,13 +761,44 @@ export default function PatientRecord() {
               ['invoices', t('patients.assoc.invoices'), associations.invoices],
               ['consents', t('patients.assoc.consents'), associations.consents],
             ].map(([key, label, assoc]: any) => (
-              <div key={key} className="flex items-center justify-between text-sm px-1 py-1.5 rounded-lg hover:bg-[#efe6d8]">
+              <button
+                key={key}
+                type="button"
+                className="w-full flex items-center justify-between text-sm px-1 py-1.5 rounded-lg hover:bg-[#efe6d8] text-left"
+                onClick={() => {
+                  const tabMap: Record<string, WorkspaceTab> = {
+                    appointments: 'appointments',
+                    whatsapp: 'whatsapp',
+                    surveys: 'surveys',
+                    tasks: 'tasks',
+                    tickets: 'tasks',
+                    documents: 'documents',
+                    invoices: 'billing',
+                    consents: 'privacy',
+                  };
+                  const nextTab = tabMap[key];
+                  if (nextTab) setTab(nextTab);
+                  const first = assoc?.items?.[0];
+                  if (!first?.id) return;
+                  const prefix: Record<string, string> = {
+                    appointments: 'appt-',
+                    whatsapp: 'wa-',
+                    surveys: 'survey-',
+                    tasks: 'task-',
+                    tickets: 'ticket-',
+                    documents: 'doc-',
+                    invoices: 'inv-',
+                    consents: 'consent-',
+                  };
+                  if (prefix[key]) openEvent(`${prefix[key]}${first.id}`);
+                }}
+              >
                 <span className="flex items-center gap-2">
                   <span className="w-1 h-4 rounded-full bg-[#9CA3AF]" />
                   {label}
                 </span>
                 <span className="font-semibold text-[#3a342c]">{assoc?.count ?? 0}</span>
-              </div>
+              </button>
             ))}
           </div>
         </aside>
@@ -747,6 +817,20 @@ export default function PatientRecord() {
           busy={deleteBusy}
           onCancel={() => setDeleting(false)}
           onConfirm={remove}
+        />
+      )}
+
+      {openEventId && id && (
+        <TimelineInspector
+          patientId={id}
+          eventId={openEventId}
+          eventTitle={titleFor(timeline.find((x: any) => x.id === openEventId) || { title: openEventId, kind: 'unknown' })}
+          eventList={filteredTimeline}
+          onClose={closeEvent}
+          onOpenEvent={openEvent}
+          onNavigateTab={(tabId) => setTab(tabId as WorkspaceTab)}
+          onEditPatient={() => setShowForm(true)}
+          onChanged={load}
         />
       )}
     </div>

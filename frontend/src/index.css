@@ -427,6 +427,16 @@ h1, h2, .font-display {
     border: 1px solid var(--edge-soft);
     box-shadow: var(--shadow-raised);
   }
+  button.crm-timeline-card {
+    appearance: none;
+    font: inherit;
+    color: inherit;
+  }
+  .crm-timeline-card.is-selected {
+    border-color: var(--brass-deep);
+    box-shadow: var(--shadow-raised), 0 0 0 1px rgba(139, 115, 85, 0.35);
+    background: linear-gradient(180deg, #fbf7f0, #f3ebe0);
+  }
   .crm-timeline-icon {
     @apply inline-flex items-center justify-center w-8 h-8 rounded-full shrink-0;
     color: var(--ink);
