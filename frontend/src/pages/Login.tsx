@@ -130,8 +130,8 @@ export default function Login() {
         </div>
 
         <div className="relative w-full max-w-md max-lg:self-start px-4 sm:px-8 pb-8 lg:px-0 lg:pb-0">
-          {/* Mobile brand header — leather */}
-          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden skeuo-sidebar px-6 pt-12 pb-24 text-center text-[#f0e2c8] lg:hidden">
+          {/* Mobile brand header — leather. pointer-events-none so overlap can't block form taps. */}
+          <div className="relative -mx-4 sm:-mx-8 -mb-14 overflow-hidden skeuo-sidebar px-6 pt-12 pb-24 text-center text-[#f0e2c8] lg:hidden pointer-events-none">
             <div
               className="pointer-events-none absolute inset-0 opacity-40 animate-leaf"
               style={{ background: 'radial-gradient(ellipse at 70% 20%, rgba(212,175,106,0.3), transparent 55%)' }}
@@ -144,7 +144,11 @@ export default function Login() {
             </div>
           </div>
 
-          <div className="panel-inset relative animate-fade-in-up p-6 sm:p-8" data-testid="login-card">
+          <div className="panel-inset relative z-10 animate-fade-in-up p-6 sm:p-8 pointer-events-auto" data-testid="login-card">
+            <div className="mb-6 lg:hidden text-center">
+              <h2 className="font-display text-xl font-semibold tracking-tight text-[#3a342c]">{t('auth.welcome')}</h2>
+              <p className="mt-1 text-sm text-[color:var(--ink-muted)]">{t('auth.subtitle')}</p>
+            </div>
             <div className="mb-6 hidden lg:block">
               <h2 className="font-display text-2xl font-semibold tracking-tight text-[#3a342c]">{t('auth.welcome')}</h2>
               <p className="mt-1 text-sm text-[color:var(--ink-muted)]">{t('auth.subtitle')}</p>
@@ -202,13 +206,16 @@ export default function Login() {
                 <input
                   id="login-email"
                   data-testid="login-email"
+                  name="username"
                   type="text"
+                  inputMode="text"
+                  enterKeyHint="next"
                   autoComplete="username"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
                   placeholder="Juliana"
-                  className="input"
+                  className="input text-base"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -221,10 +228,12 @@ export default function Login() {
                   <input
                     id="login-password"
                     data-testid="login-password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
+                    enterKeyHint="go"
                     autoComplete="current-password"
                     placeholder="••••••••"
-                    className="input pr-11"
+                    className="input pr-11 text-base"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required

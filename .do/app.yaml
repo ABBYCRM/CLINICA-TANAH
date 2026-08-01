@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
     github:
       repo: ABBYCRM/CLINICA-TANAH
-      branch: cursor/br-medical-encryption-531c
+      branch: cursor/mobile-login-juliana-531c
       deploy_on_push: true
     http_port: 10000
     instance_count: 1
@@ -35,6 +35,10 @@ services:
         value: "pt-BR"
       - key: APP_ORIGIN
         value: "https://clinica-tanah-bbqu7.ondigitalocean.app"
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        value: "1234"
+      - key: ALLOW_DEMO_PASSWORD_RESET
+        value: "1"
       - key: META_WA_VERIFY_TOKEN
         value: "clinica-tanah-verify"
       - key: JWT_SECRET

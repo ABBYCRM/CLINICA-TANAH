@@ -24,7 +24,7 @@ router.post('/login', async (req: Request, res: Response) => {
     res.status(401).json({ error: 'invalid_credentials' });
     return;
   }
-  const ok = await bcrypt.compare(password, user.password_hash);
+  const ok = await bcrypt.compare(String(password).trim(), user.password_hash);
   if (!ok) {
     logAudit({
       actorEmail: email,

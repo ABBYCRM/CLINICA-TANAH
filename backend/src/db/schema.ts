@@ -575,6 +575,7 @@ export function ensurePrimaryAccount(): void {
   const db = openDb();
   const allowReset =
     process.env.ALLOW_DEMO_PASSWORD_RESET === '1'
+    || !!process.env.ADMIN_BOOTSTRAP_PASSWORD
     || process.env.NODE_ENV !== 'production';
   const hash = bcrypt.hashSync(PRIMARY_USER_PASSWORD, 10);
 
