@@ -14,7 +14,7 @@ mkdirSync(SHOT, { recursive: true });
 async function signIn(page: Page) {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('Juliana');
-  await page.getByTestId('login-password').fill('1234');
+  await page.getByTestId('login-password').fill('12345678');
   await page.getByTestId('login-submit').click();
   await page.waitForURL(/\/$/, { timeout: 20_000 });
 }

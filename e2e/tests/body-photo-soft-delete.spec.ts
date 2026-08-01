@@ -8,7 +8,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 const ADMIN = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 
 async function signIn(page: import('@playwright/test').Page) {
   await page.goto('/login');

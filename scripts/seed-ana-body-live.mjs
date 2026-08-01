@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SEED_DIR = path.join(root, 'backend/src/data/seed-body-ana');
 const BASE = (process.env.BASE_URL || 'http://127.0.0.1:3120').replace(/\/$/, '');
 const USER = process.env.ADMIN_USER || 'Juliana';
-const PASS = process.env.ADMIN_PASSWORD || '1234';
+const PASS = process.env.ADMIN_PASSWORD || '12345678';
 const VIEWS = ['front', 'left', 'right', 'back'];
 
 async function api(pathname, { method = 'GET', token, body, headers } = {}) {

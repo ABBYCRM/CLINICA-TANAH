@@ -22,7 +22,7 @@ test('security headers are present', async ({ request, baseURL }) => {
 
 test('admin security posture + encrypted patient CPF round-trip', async ({ request, baseURL }) => {
   const login = await request.post(`${baseURL}/api/auth/login`, {
-    data: { email: 'Juliana', password: '1234' },
+    data: { email: 'Juliana', password: '12345678' },
   });
   expect(login.status()).toBe(200);
   const { token } = await login.json();

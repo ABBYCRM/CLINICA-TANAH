@@ -4,7 +4,7 @@
 import { test, expect } from '@playwright/test';
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 
 async function login(request: import('@playwright/test').APIRequestContext, baseURL: string) {
   const res = await request.post(`${baseURL}/api/auth/login`, {
@@ -81,7 +81,7 @@ test('public intake session → pixel → submit creates patient with consent pr
 test('Forms admin page shows link and embed code', async ({ page }) => {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('Juliana');
-  await page.getByTestId('login-password').fill('1234');
+  await page.getByTestId('login-password').fill('12345678');
   await page.getByTestId('login-submit').click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 

@@ -14,7 +14,7 @@ import path from 'node:path';
 test.skip(({ isMobile }) => !isMobile, 'Mobile-only');
 
 const ADMIN = 'Juliana';
-const PASS = '1234';
+const PASS = '12345678';
 const SHOT = '/opt/cursor/artifacts/screenshots/mobile-harmonize';
 mkdirSync(SHOT, { recursive: true });
 

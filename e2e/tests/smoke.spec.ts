@@ -4,7 +4,7 @@
 import { test, expect } from '@playwright/test';
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 
 async function login(request: import('@playwright/test').APIRequestContext, baseURL: string) {
   const res = await request.post(`${baseURL}/api/auth/login`, {

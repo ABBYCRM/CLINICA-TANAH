@@ -36,7 +36,7 @@ services:
       - key: APP_ORIGIN
         value: "https://clinica-tanah-bbqu7.ondigitalocean.app"
       - key: ADMIN_BOOTSTRAP_PASSWORD
-        value: "1234"
+        value: "12345678"
       - key: ALLOW_DEMO_PASSWORD_RESET
         value: "1"
       - key: META_WA_VERIFY_TOKEN

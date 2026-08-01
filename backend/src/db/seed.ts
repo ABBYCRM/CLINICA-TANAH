@@ -68,7 +68,7 @@ db.prepare(`
 `).run(DEFAULT_TENANT_ID);
 const T = DEFAULT_TENANT_ID;
 
-// Single staff login: Juliana / 1234
+// Single staff login: Juliana / 12345678
 const passwordHash = bcrypt.hashSync(PRIMARY_USER_PASSWORD, 10);
 db.prepare(`
   INSERT INTO users (id, tenant_id, email, password_hash, full_name, role, cpf, council_number, council_state, active, is_superadmin)

@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const ADMIN = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 const REPORT_DIR = '/opt/cursor/artifacts/contrast';
 
 mkdirSync(REPORT_DIR, { recursive: true });

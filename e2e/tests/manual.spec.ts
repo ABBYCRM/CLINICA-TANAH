@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 
 async function signIn(page: Page) {
   await page.goto('/login');

@@ -586,7 +586,7 @@ export const PRIMARY_USER_ID = 'u_juliana';
 export const PRIMARY_USER_EMAIL = 'juliana@clinica-tanah.com.br';
 export const PRIMARY_USER_NAME = 'Juliana';
 /** Demo/e2e default only — never force-reset in production unless ALLOW_DEMO_PASSWORD_RESET=1 */
-export const PRIMARY_USER_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '1234';
+export const PRIMARY_USER_PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || '12345678';
 
 /**
  * Ensure the primary admin account exists.

@@ -8,7 +8,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 const SHOT_DIR = '/opt/cursor/artifacts/screenshots/pages';
 
 mkdirSync(SHOT_DIR, { recursive: true });

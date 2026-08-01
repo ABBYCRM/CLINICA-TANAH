@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 test.skip(({ isMobile }) => !isMobile, 'Mobile-only checks');
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 
 async function signIn(page: import('@playwright/test').Page) {
   await page.goto('/login');

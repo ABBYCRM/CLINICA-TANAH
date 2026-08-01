@@ -11,7 +11,7 @@ mkdirSync(SHOT, { recursive: true });
 async function signIn(page: Page) {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('Juliana');
-  await page.getByTestId('login-password').fill('1234');
+  await page.getByTestId('login-password').fill('12345678');
   await page.getByTestId('login-submit').click();
   await page.waitForURL(/\/$/, { timeout: 20_000 });
 }
@@ -65,7 +65,7 @@ test.describe('Sim generate CTA visibility', () => {
 
     const pwd = page.getByTestId('sim-step-password');
     await expect(gen).toBeDisabled();
-    await pwd.fill('1234');
+    await pwd.fill('12345678');
     await expect(gen).toBeEnabled();
 
     await expect(gen).toHaveText(/Gerar imagem|Generate image|Generar imagen/i);

@@ -5,7 +5,7 @@
 import { test, expect } from '@playwright/test';
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '1234';
+const PASSWORD = '12345678';
 
 async function fillCredentials(page: import('@playwright/test').Page, email = ADMIN_EMAIL, password = PASSWORD) {
   await page.getByTestId('login-email').fill(email);
