@@ -1,8 +1,21 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useI18n } from '../hooks/useI18n';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+type FieldOpt = { value: string; label: string };
+type FieldDef = {
+  key: string;
+  type: string;
+  required?: boolean;
+  section: string;
+  label: string;
+  placeholder?: string;
+  help?: string;
+  options?: FieldOpt[];
+};
+type ConsentBox = { key: string; required: boolean; label: string };
 
 type FormMeta = {
   name: string;
@@ -12,30 +25,32 @@ type FormMeta = {
   policy_version: string;
   kind?: string;
   emergency_notice?: boolean;
+  fields?: FieldDef[];
+  consent_boxes?: ConsentBox[];
+  sections?: string[];
+  section_titles?: Record<string, string>;
 };
 
-type ClinicMeta = {
-  name: string;
-  address?: string | null;
-  phone?: string | null;
-};
+type ClinicMeta = { name: string; address?: string | null; phone?: string | null };
 
-const CHRONIC_OPTS = [
-  'hypertension', 'diabetes', 'thyroid', 'asthma_copd', 'heart_disease',
-  'kidney_disease', 'liver_disease', 'cancer', 'obesity', 'anxiety_depression', 'none',
-] as const;
-
-const RED_FLAG_OPTS = [
-  'chest_pain', 'shortness_of_breath', 'severe_bleeding', 'high_fever',
-  'neuro_deficit', 'severe_allergic_reaction', 'sudden_severe_pain', 'none',
-] as const;
-
-function toggleIn(list: string[], key: string, exclusiveNone = true): string[] {
+function toggleIn(list: string[], key: string): string[] {
   if (key === 'none') return list.includes('none') ? [] : ['none'];
   const withoutNone = list.filter((x) => x !== 'none');
   if (withoutNone.includes(key)) return withoutNone.filter((x) => x !== key);
-  return exclusiveNone ? [...withoutNone, key] : [...list, key];
+  return [...withoutNone, key];
 }
+
+const SECTION_FALLBACK: Record<string, string> = {
+  identity: 'Identificação',
+  guardian: 'Responsável legal',
+  insurance: 'Convênio',
+  clinical: 'Clínico',
+  history: 'Antecedentes',
+  ros: 'Sistemas',
+  lifestyle: 'Hábitos',
+  safety: 'Alertas',
+  consent: 'Consentimentos',
+};
 
 export default function PublicIntake() {
   const { slug = '' } = useParams();
@@ -45,6 +60,8 @@ export default function PublicIntake() {
 
   const [form, setForm] = useState<FormMeta | null>(null);
   const [clinic, setClinic] = useState<ClinicMeta | null>(null);
+  const [fields, setFields] = useState<FieldDef[]>([]);
+  const [consentBoxes, setConsentBoxes] = useState<ConsentBox[]>([]);
   const [pixelToken, setPixelToken] = useState('');
   const [pixelUrl, setPixelUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -52,38 +69,16 @@ export default function PublicIntake() {
   const [done, setDone] = useState(false);
   const [urgentHint, setUrgentHint] = useState(false);
   const [error, setError] = useState('');
-
-  const [fullName, setFullName] = useState('');
-  const [birthDate, setBirthDate] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [cpf, setCpf] = useState('');
-  const [city, setCity] = useState('');
-  const [stateUf, setStateUf] = useState('SP');
-  const [gender, setGender] = useState('');
-  const [notes, setNotes] = useState('');
-
-  const [chiefComplaint, setChiefComplaint] = useState('');
-  const [symptomDuration, setSymptomDuration] = useState('');
-  const [allergies, setAllergies] = useState('');
-  const [medications, setMedications] = useState('');
-  const [chronic, setChronic] = useState<string[]>([]);
-  const [surgeries, setSurgeries] = useState('');
-  const [familyHx, setFamilyHx] = useState('');
-  const [pregnancy, setPregnancy] = useState('na');
-  const [smoking, setSmoking] = useState('never');
-  const [alcohol, setAlcohol] = useState('never');
-  const [redFlags, setRedFlags] = useState<string[]>([]);
-  const [urgency, setUrgency] = useState('routine');
-  const [additionalNotes, setAdditionalNotes] = useState('');
-
-  const [consentLgpd, setConsentLgpd] = useState(false);
-  const [consentWhatsapp, setConsentWhatsapp] = useState(false);
-  const [consentMarketing, setConsentMarketing] = useState(false);
-  const [consentCalls, setConsentCalls] = useState(false);
-  const [selfAttested, setSelfAttested] = useState(false);
+  const [values, setValues] = useState<Record<string, string | string[]>>({});
+  const [consents, setConsents] = useState<Record<string, boolean>>({});
 
   const isTriage = form?.kind === 'pre_triage' || slug === 'pre-triagem-paciente';
+
+  const sections = useMemo(() => {
+    const order = form?.sections || ['identity', 'guardian', 'insurance', 'clinical', 'history', 'ros', 'lifestyle', 'safety'];
+    const present = new Set(fields.map((f) => f.section));
+    return order.filter((s) => present.has(s));
+  }, [form?.sections, fields]);
 
   useEffect(() => {
     if (!slug) return;
@@ -92,12 +87,25 @@ export default function PublicIntake() {
       setLoading(true);
       setError('');
       try {
-        const metaRes = await fetch(`${API_BASE}/api/public/forms/${encodeURIComponent(slug)}`);
+        const metaRes = await fetch(`${API_BASE}/api/public/forms/${encodeURIComponent(slug)}`, {
+          headers: { 'Accept-Language': locale },
+        });
         const meta = await metaRes.json();
         if (!metaRes.ok) throw new Error(meta.error || 'not_found');
         if (cancelled) return;
         setForm(meta.form);
         setClinic(meta.clinic);
+        const flds: FieldDef[] = meta.form?.fields || [];
+        setFields(flds);
+        setConsentBoxes(meta.form?.consent_boxes || []);
+        const init: Record<string, string | string[]> = {};
+        for (const f of flds) {
+          init[f.key] = f.type === 'checkbox_group' ? [] : (f.key === 'state' ? 'SP' : '');
+        }
+        setValues(init);
+        const cInit: Record<string, boolean> = {};
+        for (const c of meta.form?.consent_boxes || []) cInit[c.key] = false;
+        setConsents(cInit);
 
         const sessRes = await fetch(`${API_BASE}/api/public/forms/${encodeURIComponent(slug)}/session`, {
           method: 'POST',
@@ -117,49 +125,54 @@ export default function PublicIntake() {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [slug, locale]);
+
+  const setVal = (key: string, v: string | string[]) => setValues((prev) => ({ ...prev, [key]: v }));
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!form || !pixelToken) return;
+
+    // Client-side required checks for checkbox groups
+    for (const f of fields) {
+      if (!f.required) continue;
+      const v = values[f.key];
+      if (f.type === 'checkbox_group') {
+        if (!Array.isArray(v) || v.length === 0) {
+          setError(`${f.label}: ${t('public_form.required_field')}`);
+          return;
+        }
+      } else if (!String(v || '').trim()) {
+        setError(`${f.label}: ${t('public_form.required_field')}`);
+        return;
+      }
+    }
+    for (const c of consentBoxes) {
+      if (c.required && !consents[c.key]) {
+        setError(c.label);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setError('');
     try {
-      const cpfDigits = cpf.replace(/\D/g, '');
       const body: Record<string, unknown> = {
         pixel_token: pixelToken,
-        full_name: fullName.trim(),
-        birth_date: birthDate,
-        phone: phone.trim(),
-        email: email.trim() || null,
-        cpf: cpfDigits || null,
-        city: city.trim() || null,
-        state: stateUf.trim().toUpperCase() || null,
-        notes: notes.trim() || null,
-        consent_lgpd: consentLgpd,
-        consent_whatsapp: consentWhatsapp,
-        consent_marketing: consentMarketing,
-        consent_calls: consentCalls,
-        self_attested: selfAttested,
+        ...Object.fromEntries(
+          Object.entries(values).map(([k, v]) => [k, Array.isArray(v) ? v : (String(v).trim() || null)]),
+        ),
+        consent_lgpd: !!consents.consent_lgpd,
+        consent_privacy_ack: !!consents.consent_privacy_ack,
+        consent_whatsapp: !!consents.consent_whatsapp,
+        consent_marketing: !!consents.consent_marketing,
+        consent_calls: !!consents.consent_calls,
+        consent_telehealth_image: !!consents.consent_telehealth_image,
+        self_attested: !!consents.self_attested,
       };
-      if (isTriage) {
-        Object.assign(body, {
-          gender: gender || null,
-          chief_complaint: chiefComplaint.trim(),
-          symptom_duration: symptomDuration || null,
-          allergies: allergies.trim() || null,
-          current_medications: medications.trim() || null,
-          chronic_conditions: chronic,
-          prior_surgeries: surgeries.trim() || null,
-          family_history: familyHx.trim() || null,
-          pregnancy_status: pregnancy || null,
-          smoking,
-          alcohol,
-          red_flags: redFlags,
-          urgency_self: urgency,
-          additional_notes: additionalNotes.trim() || null,
-        });
-      }
+      // normalize CPF digits for backend
+      if (typeof body.cpf === 'string') body.cpf = body.cpf.replace(/\D/g, '') || null;
+
       const res = await fetch(`${API_BASE}/api/public/forms/${encodeURIComponent(slug)}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept-Language': locale },
@@ -197,6 +210,7 @@ export default function PublicIntake() {
       className={`min-h-screen bg-[var(--paper)] text-[var(--ink)] ${embed ? 'py-4 px-3' : 'py-10 px-4'}`}
       data-testid="public-intake"
       data-kind={form?.kind || 'cadastro'}
+      data-embed={embed ? '1' : '0'}
       style={{
         backgroundImage:
           'radial-gradient(ellipse at top, rgba(201,162,90,0.12), transparent 55%), linear-gradient(180deg, #f7efdc 0%, #f2e6cc 40%, #ead9b8 100%)',
@@ -208,7 +222,7 @@ export default function PublicIntake() {
           data-testid="consent-pixel" />
       ) : null}
 
-      <div className={`mx-auto ${embed ? 'max-w-lg' : 'max-w-xl'}`}>
+      <div className={`mx-auto ${embed ? 'max-w-xl' : 'max-w-2xl'}`}>
         {!embed && (
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -248,6 +262,9 @@ export default function PublicIntake() {
                 {form?.description && (
                   <p className="text-sm text-[var(--ink-muted)] mt-2">{form.description}</p>
                 )}
+                <p className="text-[11px] text-[var(--ink-muted)] mt-2">
+                  {t('public_form.legal_basis_hint')}
+                </p>
               </div>
 
               {isTriage && (
@@ -260,164 +277,106 @@ export default function PublicIntake() {
                 <div className="rounded-lg border border-[var(--clay)]/40 bg-[var(--clay)]/10 px-3 py-2 text-sm text-[var(--clay)]">{error}</div>
               )}
 
-              <fieldset className="space-y-3">
-                <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_identity')}</legend>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.full_name')} *</span>
-                    <input required className="input mt-1 w-full" value={fullName} onChange={(e) => setFullName(e.target.value)} data-testid="pf-name" autoComplete="name" />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.birth_date')} *</span>
-                    <input required type="date" className="input mt-1 w-full" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} data-testid="pf-birth" />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.phone')} *</span>
-                    <input required className="input mt-1 w-full" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+55 11 99999-0000" data-testid="pf-phone" autoComplete="tel" />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.email')}</span>
-                    <input type="email" className="input mt-1 w-full" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="pf-email" autoComplete="email" />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.cpf')}</span>
-                    <input className="input mt-1 w-full" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" data-testid="pf-cpf" inputMode="numeric" />
-                  </label>
-                  {isTriage && (
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.gender')}</span>
-                      <select className="input mt-1 w-full" value={gender} onChange={(e) => setGender(e.target.value)} data-testid="pf-gender">
-                        <option value="">—</option>
-                        <option value="F">{t('public_form.gender_F')}</option>
-                        <option value="M">{t('public_form.gender_M')}</option>
-                        <option value="O">{t('public_form.gender_O')}</option>
-                        <option value="N">{t('public_form.gender_N')}</option>
-                      </select>
-                    </label>
-                  )}
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.city')}</span>
-                    <input className="input mt-1 w-full" value={city} onChange={(e) => setCity(e.target.value)} data-testid="pf-city" />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.state')}</span>
-                    <input className="input mt-1 w-full" maxLength={2} value={stateUf} onChange={(e) => setStateUf(e.target.value.toUpperCase())} data-testid="pf-state" />
-                  </label>
-                  {!isTriage && (
-                    <label className="block sm:col-span-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.notes')}</span>
-                      <textarea className="input mt-1 w-full" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="pf-notes" />
-                    </label>
-                  )}
-                </div>
-              </fieldset>
-
-              {isTriage && (
-                <>
-                  <fieldset className="space-y-3" data-testid="pf-triage-clinical">
-                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_clinical')}</legend>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.chief_complaint')} *</span>
-                      <textarea required className="input mt-1 w-full" rows={3} value={chiefComplaint} onChange={(e) => setChiefComplaint(e.target.value)} data-testid="pf-complaint" />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.symptom_duration')} *</span>
-                      <select required className="input mt-1 w-full" value={symptomDuration} onChange={(e) => setSymptomDuration(e.target.value)} data-testid="pf-duration">
-                        <option value="">—</option>
-                        {(['lt_24h', 'd1_7', 'w1_4', 'm1_3', 'gt_3m'] as const).map((k) => (
-                          <option key={k} value={k}>{t(`public_form.duration_${k}`)}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.allergies')}</span>
-                      <textarea className="input mt-1 w-full" rows={2} value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder={t('public_form.allergies_ph')} data-testid="pf-allergies" />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.medications')}</span>
-                      <textarea className="input mt-1 w-full" rows={2} value={medications} onChange={(e) => setMedications(e.target.value)} data-testid="pf-meds" />
-                    </label>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-2">{t('public_form.chronic')}</div>
-                      <div className="grid sm:grid-cols-2 gap-1.5">
-                        {CHRONIC_OPTS.map((k) => (
-                          <label key={k} className="flex gap-2 items-center text-sm cursor-pointer">
-                            <input type="checkbox" checked={chronic.includes(k)}
-                              onChange={() => setChronic((prev) => toggleIn(prev, k))} />
-                            {t(`public_form.chronic_${k}`)}
+              {sections.map((section) => {
+                const sectionFields = fields.filter((f) => f.section === section);
+                if (!sectionFields.length) return null;
+                return (
+                  <fieldset key={section} className="space-y-3" data-testid={`pf-section-${section}`}>
+                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+                      {form?.section_titles?.[section] || SECTION_FALLBACK[section] || section}
+                    </legend>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      {sectionFields.map((f) => {
+                        const span = f.type === 'textarea' || f.type === 'checkbox_group' || f.key === 'full_name' || f.key === 'address_street'
+                          ? 'sm:col-span-2'
+                          : '';
+                        if (f.type === 'checkbox_group') {
+                          const selected = Array.isArray(values[f.key]) ? (values[f.key] as string[]) : [];
+                          return (
+                            <div key={f.key} className={span}>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-2">
+                                {f.label}{f.required ? ' *' : ''}
+                              </div>
+                              {f.help && <p className="text-[11px] text-[var(--ink-muted)] mb-2">{f.help}</p>}
+                              <div className="grid sm:grid-cols-2 gap-1.5">
+                                {(f.options || []).map((o) => (
+                                  <label key={o.value} className="flex gap-2 items-start text-sm cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5"
+                                      checked={selected.includes(o.value)}
+                                      onChange={() => setVal(f.key, toggleIn(selected, o.value))}
+                                    />
+                                    <span>{o.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        if (f.type === 'select') {
+                          return (
+                            <label key={f.key} className={`block ${span}`}>
+                              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+                                {f.label}{f.required ? ' *' : ''}
+                              </span>
+                              <select
+                                className="input mt-1 w-full"
+                                required={!!f.required}
+                                value={String(values[f.key] || '')}
+                                onChange={(e) => setVal(f.key, e.target.value)}
+                                data-testid={`pf-${f.key}`}
+                              >
+                                <option value="">—</option>
+                                {(f.options || []).map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                              {f.help && <span className="block text-[11px] text-[var(--ink-muted)] mt-1">{f.help}</span>}
+                            </label>
+                          );
+                        }
+                        if (f.type === 'textarea') {
+                          return (
+                            <label key={f.key} className={`block ${span}`}>
+                              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+                                {f.label}{f.required ? ' *' : ''}
+                              </span>
+                              <textarea
+                                className="input mt-1 w-full"
+                                rows={3}
+                                required={!!f.required}
+                                value={String(values[f.key] || '')}
+                                placeholder={f.placeholder}
+                                onChange={(e) => setVal(f.key, e.target.value)}
+                                data-testid={`pf-${f.key}`}
+                              />
+                              {f.help && <span className="block text-[11px] text-[var(--ink-muted)] mt-1">{f.help}</span>}
+                            </label>
+                          );
+                        }
+                        return (
+                          <label key={f.key} className={`block ${span}`}>
+                            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">
+                              {f.label}{f.required ? ' *' : ''}
+                            </span>
+                            <input
+                              className="input mt-1 w-full"
+                              type={f.type === 'date' ? 'date' : f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : f.type === 'tel' ? 'tel' : 'text'}
+                              required={!!f.required}
+                              value={String(values[f.key] || '')}
+                              placeholder={f.placeholder}
+                              onChange={(e) => setVal(f.key, e.target.value)}
+                              data-testid={`pf-${f.key}`}
+                            />
+                            {f.help && <span className="block text-[11px] text-[var(--ink-muted)] mt-1">{f.help}</span>}
                           </label>
-                        ))}
-                      </div>
-                    </div>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.surgeries')}</span>
-                      <textarea className="input mt-1 w-full" rows={2} value={surgeries} onChange={(e) => setSurgeries(e.target.value)} />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.family_history')}</span>
-                      <textarea className="input mt-1 w-full" rows={2} value={familyHx} onChange={(e) => setFamilyHx(e.target.value)} />
-                    </label>
-                  </fieldset>
-
-                  <fieldset className="space-y-3">
-                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_lifestyle')}</legend>
-                    <div className="grid sm:grid-cols-3 gap-3">
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.pregnancy')}</span>
-                        <select className="input mt-1 w-full" value={pregnancy} onChange={(e) => setPregnancy(e.target.value)}>
-                          {(['na', 'no', 'yes', 'breastfeeding', 'unknown'] as const).map((k) => (
-                            <option key={k} value={k}>{t(`public_form.pregnancy_${k}`)}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.smoking')}</span>
-                        <select className="input mt-1 w-full" value={smoking} onChange={(e) => setSmoking(e.target.value)}>
-                          {(['never', 'former', 'current'] as const).map((k) => (
-                            <option key={k} value={k}>{t(`public_form.smoking_${k}`)}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.alcohol')}</span>
-                        <select className="input mt-1 w-full" value={alcohol} onChange={(e) => setAlcohol(e.target.value)}>
-                          {(['never', 'social', 'frequent'] as const).map((k) => (
-                            <option key={k} value={k}>{t(`public_form.alcohol_${k}`)}</option>
-                          ))}
-                        </select>
-                      </label>
+                        );
+                      })}
                     </div>
                   </fieldset>
-
-                  <fieldset className="space-y-3" data-testid="pf-triage-safety">
-                    <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.section_safety')}</legend>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-2">{t('public_form.red_flags')} *</div>
-                      <div className="grid sm:grid-cols-2 gap-1.5">
-                        {RED_FLAG_OPTS.map((k) => (
-                          <label key={k} className="flex gap-2 items-center text-sm cursor-pointer">
-                            <input type="checkbox" checked={redFlags.includes(k)}
-                              onChange={() => setRedFlags((prev) => toggleIn(prev, k))} />
-                            {t(`public_form.flag_${k}`)}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.urgency')} *</span>
-                      <select required className="input mt-1 w-full" value={urgency} onChange={(e) => setUrgency(e.target.value)} data-testid="pf-urgency">
-                        {(['routine', 'soon', 'urgent'] as const).map((k) => (
-                          <option key={k} value={k}>{t(`public_form.urgency_${k}`)}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">{t('public_form.additional_notes')}</span>
-                      <textarea className="input mt-1 w-full" rows={2} value={additionalNotes} onChange={(e) => setAdditionalNotes(e.target.value)} />
-                    </label>
-                  </fieldset>
-                </>
-              )}
+                );
+              })}
 
               <div className="rounded-lg border border-[var(--edge-soft)] bg-[var(--paper-mid)]/50 p-4 space-y-3 text-sm">
                 <p className="text-[var(--ink-muted)] leading-relaxed">{form?.consent_text}</p>
@@ -428,26 +387,19 @@ export default function PublicIntake() {
                     {t('privacy.page_title')}
                   </a>
                 </p>
-                <label className="flex gap-2 items-start cursor-pointer">
-                  <input type="checkbox" className="mt-1" checked={selfAttested} onChange={(e) => setSelfAttested(e.target.checked)} required data-testid="pf-self" />
-                  <span>{t('public_form.self_attested')} *</span>
-                </label>
-                <label className="flex gap-2 items-start cursor-pointer">
-                  <input type="checkbox" className="mt-1" checked={consentLgpd} onChange={(e) => setConsentLgpd(e.target.checked)} required data-testid="pf-lgpd" />
-                  <span>{t('public_form.consent_lgpd')} *</span>
-                </label>
-                <label className="flex gap-2 items-start cursor-pointer">
-                  <input type="checkbox" className="mt-1" checked={consentWhatsapp} onChange={(e) => setConsentWhatsapp(e.target.checked)} data-testid="pf-wa" />
-                  <span>{t('public_form.consent_whatsapp')}</span>
-                </label>
-                <label className="flex gap-2 items-start cursor-pointer">
-                  <input type="checkbox" className="mt-1" checked={consentMarketing} onChange={(e) => setConsentMarketing(e.target.checked)} data-testid="pf-mkt" />
-                  <span>{t('public_form.consent_marketing')}</span>
-                </label>
-                <label className="flex gap-2 items-start cursor-pointer">
-                  <input type="checkbox" className="mt-1" checked={consentCalls} onChange={(e) => setConsentCalls(e.target.checked)} data-testid="pf-calls" />
-                  <span>{t('public_form.consent_calls')}</span>
-                </label>
+                {consentBoxes.map((c) => (
+                  <label key={c.key} className="flex gap-2 items-start cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={!!consents[c.key]}
+                      required={c.required}
+                      onChange={(e) => setConsents((prev) => ({ ...prev, [c.key]: e.target.checked }))}
+                      data-testid={`pf-${c.key}`}
+                    />
+                    <span>{c.label}{c.required ? ' *' : ''}</span>
+                  </label>
+                ))}
               </div>
 
               <button type="submit" className="btn-primary w-full py-3" disabled={submitting} data-testid="pf-submit">
