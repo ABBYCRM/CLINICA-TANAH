@@ -229,7 +229,7 @@ export default function ScenarioSimulator({
         ))}
       </nav>
 
-      <section className="crm-record-panel space-y-3">
+      <section className="crm-inset-panel space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.sim_baseline')}</h4>
           {session?.assets?.front ? (
@@ -271,7 +271,7 @@ export default function ScenarioSimulator({
         </div>
       </section>
 
-      <section className="crm-record-panel space-y-3">
+      <section className="crm-inset-panel space-y-3">
         <h4 className="font-display text-base text-[color:var(--ink)]">1. {t('body.sim_interventions')}</h4>
 
         <div>
@@ -325,7 +325,7 @@ export default function ScenarioSimulator({
         </div>
       </section>
 
-      <section className="crm-record-panel space-y-3">
+      <section className="crm-inset-panel space-y-3">
         <h4 className="font-display text-base text-[color:var(--ink)]">2. {t('body.sim_horizon_habits')}</h4>
         <div className="flex flex-wrap gap-1.5">
           {HORIZONS.map((w) => (
@@ -417,7 +417,7 @@ export default function ScenarioSimulator({
       </section>
 
       {(envelope || pinned) && (
-        <section className="crm-record-panel space-y-2">
+        <section className="crm-inset-panel space-y-2">
           <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.sim_envelope')}</h4>
           {(envelope || pinned)?.blockers?.length > 0 && (
             <ul className="text-sm text-[#8b3a2a] list-disc pl-4">
@@ -455,7 +455,7 @@ export default function ScenarioSimulator({
           </div>
         </section>
 
-        <aside className="crm-record-panel space-y-4" data-testid="sim-inspector">
+        <aside className="crm-inset-panel space-y-4" data-testid="sim-inspector">
           <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.sim_inspector')}</h4>
 
           <div>

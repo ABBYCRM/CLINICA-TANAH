@@ -244,6 +244,10 @@ export default function PublicIntake() {
                 <p className="text-[var(--ink-muted)] leading-relaxed">{form?.consent_text}</p>
                 <p className="text-[11px] text-[var(--ink-muted)]">
                   {t('public_form.policy_version')}: <span className="font-mono">{form?.policy_version}</span>
+                  {' · '}
+                  <a href="/privacidade" target="_blank" rel="noreferrer" className="underline font-medium text-[color:var(--ink)]" data-testid="pf-privacy-link">
+                    {t('privacy.page_title')}
+                  </a>
                 </p>
 
                 <label className="flex gap-2 items-start cursor-pointer">

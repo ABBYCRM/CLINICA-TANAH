@@ -4,8 +4,16 @@ import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 import { encryptionStatus } from '../services/phiCrypto';
+import { buildLgpdPolicy } from '../services/lgpdPolicy';
+import { fulfillDataRequest } from '../services/lgpdFulfillment';
 
 const router = Router();
+
+/** Authenticated staff policy (same document as public). */
+router.get('/policy', authenticate, (_req, res) => {
+  res.json(buildLgpdPolicy());
+});
+
 router.use(authenticate);
 
 router.get('/consents', requireRole('admin','dpo'), (req: Request, res: Response) => {
@@ -35,8 +43,6 @@ router.get('/data-requests', requireRole('admin','dpo','receptionist'), (req: Re
   res.json({ requests: db.prepare(sql).all(...args) });
 });
 
-// Staff registers a data-subject request on behalf of the subject
-// (e.g. patient calls the reception asking for deletion — LGPD art. 18)
 router.post('/data-requests', requireRole('admin','dpo','receptionist'), (req: Request, res: Response) => {
   const { request_type, subject_type, subject_id, notes } = req.body ?? {};
   const types = ['access','rectification','deletion','portability','opposition'];
@@ -60,13 +66,22 @@ router.post('/data-requests', requireRole('admin','dpo','receptionist'), (req: R
 });
 
 router.put('/data-requests/:id/fulfill', requireRole('admin','dpo'), (req: Request, res: Response) => {
-  const existing = db.prepare(`SELECT id FROM lgpd_data_requests WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
-  if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
-  db.prepare(`UPDATE lgpd_data_requests SET status = 'fulfilled', fulfilled_at = datetime('now'), handled_by = ?, response_notes = ? WHERE id = ? AND tenant_id = ?`)
-    .run(req.user!.id, req.body.notes ?? null, req.params.id, req.tenantId);
-  logAudit({ tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email, action: 'lgpd_request_fulfilled',
-             resourceType: 'lgpd_data_request', resourceId: req.params.id, legalBasis: 'legal_obligation_art7_II' });
-  res.json({ ok: true });
+  try {
+    const result = fulfillDataRequest({
+      tenantId: req.tenantId!,
+      requestId: req.params.id,
+      actorId: req.user!.id,
+      actorEmail: req.user!.email,
+      notes: req.body?.notes ?? null,
+    });
+    res.json(result);
+  } catch (e: any) {
+    if (e?.code === 'not_found' || e?.message === 'not_found') {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    res.status(500).json({ error: 'fulfill_failed', message: e?.message || 'failed' });
+  }
 });
 
 router.get('/audit', requireRole('admin','dpo'), (req: Request, res: Response) => {
@@ -80,49 +95,12 @@ router.get('/audit', requireRole('admin','dpo'), (req: Request, res: Response) =
   res.json({ entries: db.prepare(sql).all(...args) });
 });
 
-router.get('/policy', (_req, res) => {
-  res.json({
-    version: '1.1',
-    effective_date: '2026-07-31',
-    dpo: { name: 'Dr. Marcos Vieira', email: 'dpo@clinica-tanah.com.br', phone: '+55 11 3000-0001' },
-    legal_bases: [
-      { code: 'art7_I', name: 'Consentimento', description: 'Para tratamentos com base no consentimento explícito do titular.' },
-      { code: 'art7_V', name: 'Execução de contrato', description: 'Para cumprimento do contrato de prestação de serviços médicos.' },
-      { code: 'art7_II', name: 'Cumprimento de obrigação legal', description: 'CFM 2.314, ANVISA, SUS, obrigações fiscais e trabalhistas.' },
-      { code: 'art7_VIII', name: 'Tutela da saúde', description: 'Tratamento de dados de saúde para assistência médica.' },
-    ],
-    technical_measures_art46: {
-      encryption_in_transit: 'TLS terminado na borda (HTTPS obrigatório em produção)',
-      encryption_at_rest: 'AES-256-GCM em campos de PHI (CPF, prontuário SOAP, alergias, receitas, e-mail, notas)',
-      access_control: 'RBAC por papel clínico + isolamento multi-tenant + JWT',
-      audit_trail: 'Registro de acesso a PHI com base legal (LGPD art. 37 / CFM)',
-      consent_proof: 'Pixel + IP/UA + autoatestação em formulários públicos',
-      retention: 'Prontuário: 20 anos (CFM 1.821/2007) — exclusão física bloqueada',
-      note: 'Medidas técnicas alinhadas à LGPD art. 46 e boas práticas ANPD. Não constitui certificação SBIS/CFM.',
-    },
-    data_categories: [
-      { name: 'Dados de identificação', examples: ['nome','CPF','RG'], retention: '20 anos (CFM)', encrypted_at_rest: true },
-      { name: 'Dados de saúde', examples: ['prontuário','exames','prescrições'], retention: '20 anos (CFM 1.821/2007)', encrypted_at_rest: true },
-      { name: 'Dados financeiros', examples: ['faturas','pagamentos'], retention: '5 anos (CTN)' },
-      { name: 'Dados de comunicação', examples: ['WhatsApp','e-mail'], retention: '2 anos após último contato' },
-    ],
-    rights: [
-      { code: 'art18_I', name: 'Confirmação da existência de tratamento' },
-      { code: 'art18_II', name: 'Acesso aos dados' },
-      { code: 'art18_III', name: 'Correção de dados incompletos ou incorretos' },
-      { code: 'art18_IV', name: 'Anonimização, bloqueio ou eliminação' },
-      { code: 'art18_V', name: 'Portabilidade' },
-      { code: 'art18_VI', name: 'Eliminação dos dados tratados com consentimento' },
-      { code: 'art18_VII', name: 'Informação sobre entidades públicas e privadas com as quais houve compartilhamento' },
-      { code: 'art18_IX', name: 'Revogação do consentimento' },
-    ],
-  });
-});
-
 router.get('/security-posture', requireRole('admin', 'dpo'), (_req, res) => {
+  const enc = encryptionStatus();
   res.json({
     framework: 'LGPD + CFM electronic record controls (HIPAA-analogous safeguards for Brazil)',
-    encryption: encryptionStatus(),
+    encryption: enc,
+    production_key_ok: enc.key_source !== 'dev_default',
     transport: {
       https_required_in_production: true,
       hsts: process.env.NODE_ENV === 'production',
@@ -140,9 +118,14 @@ router.get('/security-posture', requireRole('admin', 'dpo'), (_req, res) => {
       consent_ledger: true,
     },
     retention: {
-      clinical_hard_delete_blocked: true,
+      encounters_prescriptions_soft_cancel: true,
+      appointments_cancel_not_hard_delete: true,
+      body_medications_discontinue_not_hard_delete: true,
+      patient_delete_blocked_with_clinical: true,
+      lgpd_deletion_anonymizes_identity: true,
       cfm_years: 20,
     },
+    dpo: buildLgpdPolicy().dpo,
   });
 });
 

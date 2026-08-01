@@ -1,6 +1,7 @@
 /**
  * Standardized 4-view clinical capture — BodyPath parity, Clínica Tanah desk UI.
  * Front / Left / Right / Back · EXIF GPS stripped on server · immutable originals
+ * Flat inset layout (no card-in-card) when nested in patient workspace.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
@@ -163,171 +164,176 @@ export default function CaptureStudio({
   const quality = asset?.quality as Record<string, string> | null;
 
   return (
-    <div className="space-y-4" data-testid="body-capture-studio">
-      <header>
+    <div className="space-y-3" data-testid="body-capture-studio">
+      <header className="px-0.5">
         <h3 className="crm-record-panel-title !mb-0">{t('body.capture_title')}</h3>
         <p className="text-xs text-[color:var(--ink-muted)] mt-1 leading-relaxed">
           {t('body.capture_subtitle')}
         </p>
       </header>
 
-      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
-        <section className="crm-record-panel space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {CAPTURE_VIEWS.map((v) => {
-              const has = !!session?.assets?.[v];
-              return (
+      {/* One surface: stage + meta — no nested raised cards */}
+      <section className="crm-inset-panel space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {CAPTURE_VIEWS.map((v) => {
+            const has = !!session?.assets?.[v];
+            const active = view === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                data-testid={`capture-view-${v}`}
+                className={`seg-item !text-xs inline-flex items-center gap-1.5 ${active ? 'is-active' : ''}`}
+                onClick={() => setView(v)}
+              >
+                {viewLabel(v)}
+                {has && (
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.4}>
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_13.5rem] gap-3 items-start">
+          <div className="space-y-3 min-w-0">
+            <div
+              className={`relative aspect-[3/4] max-h-[440px] w-full mx-auto rounded-xl overflow-hidden border-2 border-dashed ${
+                dragOver ? 'border-[color:var(--brass)] bg-[#f3eadc]' : 'border-[rgba(176,183,192,0.65)] bg-gradient-to-b from-[#faf6ef] to-[#efe6d8]'
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                void uploadFile(e.dataTransfer.files?.[0]);
+              }}
+              data-testid="capture-stage"
+            >
+              <div className="absolute inset-8 border border-[rgba(139,110,60,0.35)] rounded-[40%] pointer-events-none" />
+              <div className="absolute bottom-6 left-6 right-6 h-px bg-[rgba(139,110,60,0.45)] pointer-events-none" />
+
+              {previewSrc ? (
+                <img
+                  src={previewSrc}
+                  alt={`${t('body.vista')} ${viewLabel(view)}`}
+                  className="w-full h-full object-contain relative z-[1]"
+                />
+              ) : (
                 <button
-                  key={v}
                   type="button"
-                  data-testid={`capture-view-${v}`}
-                  className={`btn-secondary text-sm inline-flex items-center gap-1.5 ${view === v ? '!bg-[#3a342c] !text-[#f0e2c8]' : ''}`}
-                  onClick={() => setView(v)}
+                  className="absolute inset-0 flex flex-col items-center justify-center text-[color:var(--ink-muted)] gap-2 px-6 z-[1]"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy}
                 >
-                  {viewLabel(v)}
-                  {has && (
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.4}>
-                      <path d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
+                  <span
+                    className="w-10 h-10 rounded-full border-2 border-[color:var(--brass)] border-t-transparent animate-spin opacity-70"
+                    style={{ animationPlayState: busy ? 'running' : 'paused' }}
+                  />
+                  <p className="text-sm text-center font-medium text-[color:var(--ink)]">
+                    {t('body.capture_tap', { view: viewLabel(view) })}
+                  </p>
+                  <p className="text-xs text-center">{t('body.capture_pose_hint')}</p>
                 </button>
-              );
-            })}
-          </div>
+              )}
+            </div>
 
-          <div
-            className={`relative aspect-[3/4] max-h-[520px] mx-auto rounded-xl overflow-hidden border-2 border-dashed ${
-              dragOver ? 'border-[color:var(--brass)] bg-[#f3eadc]' : 'border-[rgba(176,183,192,0.7)] bg-gradient-to-b from-[#faf6ef] to-[#efe6d8]'
-            }`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              void uploadFile(e.dataTransfer.files?.[0]);
-            }}
-            data-testid="capture-stage"
-          >
-            {/* posing guides */}
-            <div className="absolute inset-8 border border-[rgba(139,110,60,0.35)] rounded-[40%] pointer-events-none" />
-            <div className="absolute bottom-6 left-6 right-6 h-px bg-[rgba(139,110,60,0.45)] pointer-events-none" />
-
-            {previewSrc ? (
-              <img
-                src={previewSrc}
-                alt={`${t('body.vista')} ${viewLabel(view)}`}
-                className="w-full h-full object-contain relative z-[1]"
-              />
-            ) : (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="absolute inset-0 flex flex-col items-center justify-center text-[color:var(--ink-muted)] gap-2 px-6 z-[1]"
+                className="btn-primary text-sm"
+                disabled={busy || session?.status === 'complete'}
                 onClick={() => fileRef.current?.click()}
-                disabled={busy}
+                data-testid="capture-choose-photo"
               >
-                <span className="w-10 h-10 rounded-full border-2 border-[color:var(--brass)] border-t-transparent animate-spin opacity-70" style={{ animationPlayState: busy ? 'running' : 'paused' }} />
-                <p className="text-sm text-center font-medium text-[color:var(--ink)]">
-                  {t('body.capture_tap', { view: viewLabel(view) })}
-                </p>
-                <p className="text-xs text-center">{t('body.capture_pose_hint')}</p>
+                {busy ? t('body.capture_uploading') : t('body.choose_photo')}
               </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn-primary text-sm"
-              disabled={busy || session?.status === 'complete'}
-              onClick={() => fileRef.current?.click()}
-              data-testid="capture-choose-photo"
-            >
-              {busy ? t('body.capture_uploading') : t('body.choose_photo')}
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,.heic,.heif"
-              capture="environment"
-              className="sr-only"
-              onChange={(e) => void uploadFile(e.target.files?.[0])}
-            />
-            {session?.status === 'complete' && (
-              <span className="badge-green text-xs">{t('body.capture_locked')}</span>
-            )}
-          </div>
-          {status && (
-            <p
-              className={`text-sm ${/sucesso|success|conclu|valid/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
-              role="status"
-            >
-              {status}
-            </p>
-          )}
-        </section>
-
-        <aside className="space-y-4">
-          <div className="crm-record-panel">
-            <h4 className="crm-record-panel-title">{t('body.quality')}</h4>
-            {quality ? (
-              <ul className="mt-3 space-y-2 text-sm" data-testid="capture-quality-list">
-                {Object.entries(quality).map(([key, verdict]) => (
-                  <li key={key} className="flex justify-between items-center gap-2">
-                    <span className="capitalize text-[color:var(--ink)]">{key}</span>
-                    <QualityBadge verdict={String(verdict)} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-[color:var(--ink-muted)] mt-2">{t('body.waiting_view')}</p>
-            )}
-          </div>
-
-          <div className="crm-record-panel">
-            <h4 className="crm-record-panel-title">{t('body.privacy')}</h4>
-            <p className="text-sm text-[color:var(--ink-muted)] mt-2 leading-relaxed">
-              {t('body.public_export_blocked')}
-            </p>
-            {viewsComplete && (
-              <div className="mt-4 space-y-2">
-                <button
-                  type="button"
-                  className="btn-secondary w-full text-sm"
-                  disabled={busy || session?.status === 'complete'}
-                  onClick={validateSet}
-                  data-testid="capture-validate-set"
-                >
-                  {t('body.validate_set')}
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary w-full text-sm"
-                  onClick={onGoScenarios}
-                  data-testid="capture-go-scenarios"
-                >
-                  {t('body.tabs.scenarios')}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Thumbnails of all views */}
-          <div className="crm-record-panel">
-            <h4 className="crm-record-panel-title">{t('body.capture_set')}</h4>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {CAPTURE_VIEWS.map((v) => (
-                <ViewThumb
-                  key={v}
-                  label={viewLabel(v)}
-                  url={session?.assets?.[v]?.preview_url || null}
-                  active={view === v}
-                  onClick={() => setView(v)}
-                />
-              ))}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,.heic,.heif"
+                capture="environment"
+                className="sr-only"
+                onChange={(e) => void uploadFile(e.target.files?.[0])}
+              />
+              {session?.status === 'complete' && (
+                <span className="badge-green text-xs">{t('body.capture_locked')}</span>
+              )}
             </div>
+            {status && (
+              <p
+                className={`text-sm ${/sucesso|success|conclu|valid/i.test(status) ? 'text-[#2f6b45]' : 'text-[#8b3a2a]'}`}
+                role="status"
+              >
+                {status}
+              </p>
+            )}
           </div>
-        </aside>
-      </div>
+
+          <aside className="space-y-3 min-w-0">
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.quality')}</h4>
+              {quality ? (
+                <ul className="space-y-1.5 text-sm" data-testid="capture-quality-list">
+                  {Object.entries(quality).map(([key, verdict]) => (
+                    <li key={key} className="flex justify-between items-center gap-2">
+                      <span className="capitalize text-[color:var(--ink)]">{key}</span>
+                      <QualityBadge verdict={String(verdict)} />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-[color:var(--ink-muted)]">{t('body.waiting_view')}</p>
+              )}
+            </div>
+
+            <div className="border-t border-[rgba(176,183,192,0.35)] pt-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.privacy')}</h4>
+              <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">
+                {t('body.public_export_blocked')}
+              </p>
+              {viewsComplete && (
+                <div className="mt-3 space-y-2">
+                  <button
+                    type="button"
+                    className="btn-secondary w-full text-sm"
+                    disabled={busy || session?.status === 'complete'}
+                    onClick={validateSet}
+                    data-testid="capture-validate-set"
+                  >
+                    {t('body.validate_set')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary w-full text-sm"
+                    onClick={onGoScenarios}
+                    data-testid="capture-go-scenarios"
+                  >
+                    {t('body.tabs.scenarios')}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-[rgba(176,183,192,0.35)] pt-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.capture_set')}</h4>
+              <div className="grid grid-cols-2 gap-1.5">
+                {CAPTURE_VIEWS.map((v) => (
+                  <ViewThumb
+                    key={v}
+                    label={viewLabel(v)}
+                    url={session?.assets?.[v]?.preview_url || null}
+                    active={view === v}
+                    onClick={() => setView(v)}
+                  />
+                ))}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
     </div>
   );
 }
@@ -340,14 +346,16 @@ function ViewThumb({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg overflow-hidden border text-left ${active ? 'border-[color:var(--brass)]' : 'border-[rgba(176,183,192,0.5)]'}`}
+      className={`rounded-lg overflow-hidden border text-left transition-colors ${
+        active ? 'border-[color:var(--brass-deep)] ring-1 ring-[color:var(--brass)]' : 'border-[rgba(176,183,192,0.5)]'
+      }`}
     >
       <div className="aspect-[3/4] bg-[#efe6d8]">
         {src ? <img src={src} alt={label} className="w-full h-full object-cover" /> : (
           <div className="w-full h-full flex items-center justify-center text-[10px] text-[color:var(--ink-muted)] px-1 text-center">{label}</div>
         )}
       </div>
-      <div className="px-1.5 py-1 text-[10px] font-medium truncate">{label}</div>
+      <div className="px-1.5 py-1 text-[10px] font-medium truncate bg-[rgba(255,252,245,0.6)]">{label}</div>
     </button>
   );
 }

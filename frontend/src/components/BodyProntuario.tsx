@@ -1,8 +1,9 @@
 /**
  * Body prontuário — Clínica Tanah desk UI (not BodyPath teal/IBM chrome).
  * Capture · Measurements · Medications · Lifestyle · Scenarios · Reports
+ * Nested inside patient workspace shell — use inset panels, not stacked cards.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
 import CaptureStudio from './CaptureStudio';
@@ -25,8 +26,8 @@ const CONSENT_KEYS = [
 
 function Metric({ label, value, unit }: { label: string; value: string | number | null | undefined; unit?: string }) {
   return (
-    <div className="min-w-[5.5rem]">
-      <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">{label}</div>
+    <div className="min-w-[5rem]">
+      <div className="text-[10px] uppercase tracking-[0.06em] text-[color:var(--ink-muted)] font-semibold">{label}</div>
       <div className="font-display text-xl text-[color:var(--ink)] tabular-nums leading-tight mt-0.5">
         {value != null && value !== '' ? value : '—'}
         {value != null && value !== '' && unit ? <span className="text-sm font-body text-[color:var(--ink-muted)] ml-1">{unit}</span> : null}
@@ -35,13 +36,13 @@ function Metric({ label, value, unit }: { label: string; value: string | number 
   );
 }
 
-export default function BodyProntuario({ patientId, patientName, birthDate, gender }: {
+export default function BodyProntuario({ patientId }: {
   patientId: string;
   patientName?: string;
   birthDate?: string | null;
   gender?: string | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [tab, setTab] = useState<BodyTab>('capture');
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,19 +71,6 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
   const summary = data?.clinical_summary || {};
   const consents = data?.consents || {};
   const counts = data?.counts || {};
-
-  const dobLabel = useMemo(() => {
-    if (!birthDate) return '—';
-    const d = new Date(birthDate.length === 10 ? `${birthDate}T12:00:00` : birthDate);
-    if (Number.isNaN(d.getTime())) return birthDate;
-    return d.toLocaleDateString(locale, { year: 'numeric', month: '2-digit', day: '2-digit' });
-  }, [birthDate, locale]);
-
-  const genderLabel = gender === 'F' || gender === 'female'
-    ? t('patients.gender_options.F')
-    : gender === 'M' || gender === 'male'
-      ? t('patients.gender_options.M')
-      : gender || '—';
 
   const grantConsents = async (purposes: string[]) => {
     setBusy('consent');
@@ -135,19 +123,12 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
     return <div className="p-4 text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>;
   }
 
-  return (
-    <div className="space-y-4" data-testid="body-prontuario">
-      <div className="px-4 pt-4 pb-2 border-b border-[rgba(176,183,192,0.45)]" style={{ background: 'linear-gradient(180deg,#f7f1e6,#efe6d8)' }}>
-        <div className="font-display text-2xl text-[color:var(--ink)] leading-tight">{patientName || '—'}</div>
-        <div className="text-sm text-[color:var(--ink-muted)] mt-1">
-          {t('body.dob')} {dobLabel} · {genderLabel}
-        </div>
-        <p className="text-xs text-[color:var(--ink-muted)] mt-2 leading-relaxed max-w-2xl">
-          {t('body.purpose')}
-        </p>
-      </div>
+  const showSummaryStrip = tab === 'capture' || tab === 'medications' || tab === 'reports';
 
-      <div className="px-2 flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.35)]">
+  return (
+    <div className="flex flex-col min-w-0" data-testid="body-prontuario">
+      {/* Sub-tabs only — patient identity already lives in the workspace header */}
+      <div className="px-3 sm:px-4 pt-3 flex flex-wrap gap-1 border-b border-[rgba(176,183,192,0.4)] bg-gradient-to-b from-[#f7f1e6] to-[#f0e8da]">
         {BODY_TABS.map((id) => (
           <button
             key={id}
@@ -162,135 +143,125 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
       </div>
 
       {error && (
-        <div className="mx-4 text-sm text-[#8b3a2a] bg-[#f8e8e2] border border-[#e2b8a8] rounded-lg px-3 py-2">{error}</div>
+        <div className="mx-4 mt-3 text-sm text-[#8b3a2a] bg-[#f8e8e2] border border-[#e2b8a8] rounded-lg px-3 py-2">{error}</div>
       )}
 
-      <div className={`px-4 pb-4 grid gap-4 ${tab === 'scenarios' || tab === 'measurements' ? '' : 'lg:grid-cols-[1.2fr_0.8fr]'}`}>
-        <div className="space-y-4">
-          {tab !== 'scenarios' && tab !== 'measurements' && tab !== 'lifestyle' && (
-            <section className="crm-record-panel !shadow-none border border-[rgba(176,183,192,0.4)]">
-              <h3 className="crm-record-panel-title">{t('body.clinical_summary')}</h3>
-              <div className="flex flex-wrap gap-5 mt-2">
-                <Metric label={t('body.height')} value={summary.height_cm} unit="cm" />
-                <Metric label={t('body.weight')} value={summary.weight_kg} unit="kg" />
-                <Metric label={t('body.waist')} value={summary.waist_cm} unit="cm" />
-                <Metric label={t('body.bmi')} value={summary.bmi} />
+      <div className="p-3 sm:p-4 space-y-3">
+        {showSummaryStrip && (
+          <section className="crm-inset-panel">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h3 className="crm-record-panel-title !mb-2">{t('body.clinical_summary')}</h3>
+                <div className="flex flex-wrap gap-x-6 gap-y-3">
+                  <Metric label={t('body.height')} value={summary.height_cm} unit="cm" />
+                  <Metric label={t('body.weight')} value={summary.weight_kg} unit="kg" />
+                  <Metric label={t('body.waist')} value={summary.waist_cm} unit="cm" />
+                  <Metric label={t('body.bmi')} value={summary.bmi} />
+                </div>
               </div>
-              <p className="text-[11px] text-[color:var(--ink-muted)] mt-3">{t('body.bmi_note')}</p>
-              <p className="text-[11px] text-[#8b3a2a] mt-2">{t('body.urgent')}</p>
-            </section>
-          )}
+              <p className="text-[11px] text-[#8b3a2a] max-w-xs leading-snug">{t('body.urgent')}</p>
+            </div>
+          </section>
+        )}
 
-          {tab === 'measurements' && (
-            <MeasurementsPanel
-              patientId={patientId}
-              latest={data?.latest_measurement || null}
-              onSaved={load}
-            />
-          )}
+        {tab === 'measurements' && (
+          <MeasurementsPanel
+            patientId={patientId}
+            latest={data?.latest_measurement || null}
+            onSaved={load}
+          />
+        )}
 
-          {tab === 'medications' && (
-            <section className="crm-record-panel space-y-3" data-testid="body-medications">
-              <h3 className="crm-record-panel-title">{t('body.tabs.medications')}</h3>
-              <p className="text-xs text-[color:var(--ink-muted)]">{t('body.meds_disclaimer')}</p>
-              <div className="flex flex-wrap gap-2">
-                <input className="input flex-1 min-w-[10rem]" placeholder={t('body.med_name')} value={medName} onChange={(e) => setMedName(e.target.value)} />
-                <input className="input w-36" placeholder={t('body.med_dose')} value={medDose} onChange={(e) => setMedDose(e.target.value)} />
-                <input className="input w-40" placeholder={t('body.med_class')} value={medClass} onChange={(e) => setMedClass(e.target.value)} />
-                <button type="button" className="btn-primary text-sm" disabled={busy === 'med'} onClick={addMed}>{t('common.add')}</button>
-              </div>
-              <p className="text-xs text-[color:var(--ink-muted)]">{counts.medications || 0} {t('body.records')}</p>
-              <ul className="space-y-1.5">
-                {(data?.medications || []).map((m: any) => (
-                  <li key={m.id} className="crm-timeline-card text-sm flex justify-between gap-2">
-                    <span>
-                      <strong>{m.name}</strong>
-                      {m.dosage ? ` · ${m.dosage}` : ''}
-                      {m.class_tag ? ` · ${m.class_tag}` : ''}
-                      {m.confirmation ? (
-                        <span className="block text-[11px] text-[color:var(--ink-muted)]">{m.confirmation}</span>
-                      ) : null}
-                    </span>
-                    <button
-                      type="button"
-                      className="text-xs text-[#8b3a2a]"
-                      onClick={async () => {
-                        await api.del(`/api/clinical/body/${patientId}/medications/${m.id}`);
-                        load();
-                      }}
-                    >
-                      {t('common.delete')}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {tab === 'lifestyle' && (
-            <LifestylePanel patientId={patientId} plans={data?.plans || []} onSaved={load} />
-          )}
-
-          {tab === 'capture' && (
-            <CaptureStudio
-              patientId={patientId}
-              initialSession={activeSession}
-              onSessionChange={(s) => {
-                setActiveSession(s);
-                load();
-              }}
-              onGoScenarios={() => setTab('scenarios')}
-            />
-          )}
-
-          {tab === 'scenarios' && data && (
-            <ScenarioSimulator
-              patientId={patientId}
-              data={data}
-              onRefresh={load}
-              onNavigate={(id) => setTab(id as BodyTab)}
-            />
-          )}
-
-          {tab === 'reports' && (
-            <section className="crm-record-panel space-y-3" data-testid="body-reports">
-              <h3 className="crm-record-panel-title">{t('body.tabs.reports')}</h3>
-              <p className="text-sm text-[color:var(--ink-muted)]">
-                {t('body.captures_scenarios')}: {counts.captures || 0} · {counts.scenarios || 0}
-              </p>
-              <p className="text-sm text-[color:var(--ink-muted)]">
-                {t('body.tabs.medications')}: {counts.medications || 0} · {t('body.tabs.lifestyle')}: {counts.plans || 0}
-              </p>
-              {summary.bmi != null && (
-                <p className="text-sm">{t('body.bmi')}: <strong className="tabular-nums">{summary.bmi}</strong></p>
+        {tab === 'medications' && (
+          <section className="crm-inset-panel space-y-3" data-testid="body-medications">
+            <h3 className="crm-record-panel-title">{t('body.tabs.medications')}</h3>
+            <p className="text-xs text-[color:var(--ink-muted)]">{t('body.meds_disclaimer')}</p>
+            <div className="flex flex-wrap gap-2">
+              <input className="input flex-1 min-w-[10rem]" placeholder={t('body.med_name')} value={medName} onChange={(e) => setMedName(e.target.value)} />
+              <input className="input w-36" placeholder={t('body.med_dose')} value={medDose} onChange={(e) => setMedDose(e.target.value)} />
+              <input className="input w-40" placeholder={t('body.med_class')} value={medClass} onChange={(e) => setMedClass(e.target.value)} />
+              <button type="button" className="btn-primary text-sm" disabled={busy === 'med'} onClick={addMed}>{t('common.add')}</button>
+            </div>
+            <ul className="space-y-1.5">
+              {(data?.medications || []).map((m: any) => (
+                <li key={m.id} className="crm-timeline-card text-sm flex justify-between gap-2">
+                  <span>
+                    <strong>{m.name}</strong>
+                    {m.dosage ? ` · ${m.dosage}` : ''}
+                    {m.class_tag ? ` · ${m.class_tag}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs text-[#8b3a2a]"
+                    onClick={async () => {
+                      await api.del(`/api/clinical/body/${patientId}/medications/${m.id}`);
+                      load();
+                    }}
+                  >
+                    {t('common.delete')}
+                  </button>
+                </li>
+              ))}
+              {!data?.medications?.length && (
+                <li className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</li>
               )}
-              {summary.whr != null && (
-                <p className="text-sm">RCQ: <strong className="tabular-nums">{summary.whr}</strong></p>
-              )}
-              {summary.whtr != null && (
-                <p className="text-sm">RCE: <strong className="tabular-nums">{summary.whtr}</strong></p>
-              )}
-            </section>
-          )}
-        </div>
+            </ul>
+          </section>
+        )}
 
-        {tab !== 'scenarios' && tab !== 'measurements' && tab !== 'lifestyle' && (
-          <aside className="space-y-4">
-            <section className="crm-record-panel space-y-3" data-testid="body-consents">
+        {tab === 'lifestyle' && (
+          <LifestylePanel patientId={patientId} plans={data?.plans || []} onSaved={load} />
+        )}
+
+        {tab === 'capture' && (
+          <CaptureStudio
+            patientId={patientId}
+            initialSession={activeSession}
+            onSessionChange={(s) => {
+              setActiveSession(s);
+              load();
+            }}
+            onGoScenarios={() => setTab('scenarios')}
+          />
+        )}
+
+        {tab === 'scenarios' && data && (
+          <ScenarioSimulator
+            patientId={patientId}
+            data={data}
+            onRefresh={load}
+            onNavigate={(id) => setTab(id as BodyTab)}
+          />
+        )}
+
+        {tab === 'reports' && (
+          <section className="crm-inset-panel space-y-2" data-testid="body-reports">
+            <h3 className="crm-record-panel-title">{t('body.tabs.reports')}</h3>
+            <p className="text-sm text-[color:var(--ink-muted)]">
+              {t('body.captures_scenarios')}: {counts.captures || 0} · {counts.scenarios || 0}
+            </p>
+            <p className="text-sm text-[color:var(--ink-muted)]">
+              {t('body.tabs.medications')}: {counts.medications || 0} · {t('body.tabs.lifestyle')}: {counts.plans || 0}
+            </p>
+            {summary.bmi != null && (
+              <p className="text-sm">{t('body.bmi')}: <strong className="tabular-nums">{summary.bmi}</strong></p>
+            )}
+          </section>
+        )}
+
+        {/* Consents + counts — one strip under content, not a competing column */}
+        {(tab === 'capture' || tab === 'medications' || tab === 'reports') && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <section className="crm-inset-panel space-y-3" data-testid="body-consents">
               <h3 className="crm-record-panel-title">{t('body.granular_consents')}</h3>
-              <ul className="space-y-2">
+              <ul className="space-y-1.5">
                 {CONSENT_KEYS.map((key) => {
                   const c = consents[key] || {};
                   const ok = !!c.granted;
                   return (
-                    <li key={key} className="flex items-center justify-between text-sm gap-2">
-                      <span>
-                        {t(`body.consent.${key}`)}
-                        {key === 'marketing' && (
-                          <span className="block text-[10px] text-[color:var(--ink-muted)]">{t('body.marketing_off')}</span>
-                        )}
-                      </span>
-                      <span className={`badge ${ok ? 'badge-green' : 'badge-slate'}`}>{ok ? 'OK' : t('common.no')}</span>
+                    <li key={key} className="flex items-center justify-between text-sm gap-2 py-0.5">
+                      <span className="min-w-0 truncate">{t(`body.consent.${key}`)}</span>
+                      <span className={`badge shrink-0 ${ok ? 'badge-green' : 'badge-slate'}`}>{ok ? 'OK' : t('common.no')}</span>
                     </li>
                   );
                 })}
@@ -313,17 +284,28 @@ export default function BodyProntuario({ patientId, patientName, birthDate, gend
               )}
             </section>
 
-            <section className="crm-record-panel space-y-2">
-              <h3 className="crm-record-panel-title">{t('body.tabs.medications')}</h3>
-              <p className="text-sm tabular-nums">{counts.medications || 0} {t('body.records')}</p>
-              <h3 className="crm-record-panel-title !mt-3">{t('body.tabs.lifestyle')}</h3>
-              <p className="text-sm tabular-nums">{counts.plans || 0} {t('body.plans_count')}</p>
-              <h3 className="crm-record-panel-title !mt-3">{t('body.captures_scenarios')}</h3>
-              <p className="text-sm tabular-nums">
-                {t('body.tabs.capture')}: {counts.captures || 0} · {t('body.tabs.scenarios')}: {counts.scenarios || 0}
-              </p>
+            <section className="crm-inset-panel">
+              <h3 className="crm-record-panel-title">{t('body.captures_scenarios')}</h3>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                <div>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('body.tabs.medications')}</dt>
+                  <dd className="font-display text-lg tabular-nums">{counts.medications || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('body.tabs.lifestyle')}</dt>
+                  <dd className="font-display text-lg tabular-nums">{counts.plans || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('body.tabs.capture')}</dt>
+                  <dd className="font-display text-lg tabular-nums">{counts.captures || 0}</dd>
+                </div>
+                <div>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold">{t('body.tabs.scenarios')}</dt>
+                  <dd className="font-display text-lg tabular-nums">{counts.scenarios || 0}</dd>
+                </div>
+              </dl>
             </section>
-          </aside>
+          </div>
         )}
       </div>
     </div>

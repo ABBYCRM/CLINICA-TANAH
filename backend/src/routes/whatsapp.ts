@@ -96,11 +96,9 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
     return;
   }
 
-  // Global opt-out / privacy commands (administrative bot — not diagnostic)
-  if (['sair', 'parar', 'stop', 'cancelar tudo', 'remover', 'exit', 'salir', 'unsubscribe'].includes(lower) && conv.state !== 'awaiting_consent') {
-    updateConversation(phone, tenantId, { state: 'lgpd_optout', opt_out: true });
+  // Global marketing opt-out (SAIR) — does NOT block clinical utility messages
+  if (['sair', 'parar', 'stop', 'remover', 'exit', 'salir', 'unsubscribe'].includes(lower) && conv.state !== 'awaiting_consent') {
     db.prepare(`UPDATE patients SET lgpd_opt_out_marketing = 1 WHERE phone = ? AND tenant_id = ?`).run(phone, tenantId);
-    // Revoke marketing consents when present
     try {
       const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
       if (p) {
@@ -109,7 +107,9 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
         setPatientConsent({ patientId: p.id, tenantId, purpose: 'promotions_events', granted: false, source: 'whatsapp_sair' });
       }
     } catch { /* ignore */ }
-    logAudit({ tenantId, action: 'whatsapp_optout', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
+    // Keep conversation usable for reminders / booking — marketing campaigns already filter lgpd_opt_out_marketing
+    updateConversation(phone, tenantId, { state: 'idle' });
+    logAudit({ tenantId, action: 'whatsapp_marketing_optout', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
     await reply(phone, locale, 'lgpd_optout_confirmed', {}, tenantId);
     return;
   }
@@ -138,6 +138,34 @@ async function handleMessage(phone: string, body: string, locale: Locale, tenant
   }
 
   if (['cancelar mensagens', 'cancelar mensagem'].includes(lower)) {
+    updateConversation(phone, tenantId, { state: 'awaiting_message_optout_choice' });
+    await reply(phone, locale, 'cancel_messages_clarify', {}, tenantId);
+    return;
+  }
+
+  // 1 = promos only · 2 = stop all WhatsApp
+  if (conv.state === 'awaiting_message_optout_choice') {
+    if (['1', '1 — só promoções', '1 - so promocoes', 'promo', 'promos', 'promoções', 'promocoes'].includes(lower) || lower.startsWith('1')) {
+      db.prepare(`UPDATE patients SET lgpd_opt_out_marketing = 1 WHERE phone = ? AND tenant_id = ?`).run(phone, tenantId);
+      try {
+        const p = db.prepare(`SELECT id FROM patients WHERE phone = ? AND tenant_id = ?`).get(phone, tenantId) as any;
+        if (p) {
+          const { setPatientConsent } = await import('../services/patientJourney');
+          setPatientConsent({ patientId: p.id, tenantId, purpose: 'marketing_news', granted: false, source: 'whatsapp_cancel_1' });
+          setPatientConsent({ patientId: p.id, tenantId, purpose: 'promotions_events', granted: false, source: 'whatsapp_cancel_1' });
+        }
+      } catch { /* ignore */ }
+      updateConversation(phone, tenantId, { state: 'idle' });
+      await reply(phone, locale, 'lgpd_optout_confirmed', {}, tenantId);
+      return;
+    }
+    if (['2', '2 — tudo', '2 - tudo', 'tudo', 'all', 'cancelar tudo'].includes(lower) || lower.startsWith('2')) {
+      updateConversation(phone, tenantId, { state: 'lgpd_optout', opt_out: true });
+      db.prepare(`UPDATE patients SET lgpd_opt_out_marketing = 1, do_not_contact = 1 WHERE phone = ? AND tenant_id = ?`).run(phone, tenantId);
+      logAudit({ tenantId, action: 'whatsapp_full_optout', resourceType: 'whatsapp_conversation', resourceId: phone, legalBasis: 'consent_art7_I' });
+      await reply(phone, locale, 'lgpd_optout_confirmed', {}, tenantId);
+      return;
+    }
     await reply(phone, locale, 'cancel_messages_clarify', {}, tenantId);
     return;
   }

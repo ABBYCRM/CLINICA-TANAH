@@ -23,6 +23,7 @@ import Clinics from './pages/Clinics';
 import Manual from './pages/Manual';
 import Forms from './pages/Forms';
 import PublicIntake from './pages/PublicIntake';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import Apps from './pages/Apps';
 import InstallPrompt from './components/InstallPrompt';
 import { registerSW } from 'virtual:pwa-register';
@@ -43,6 +44,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/f/:slug" element={<PublicIntake />} />
+      <Route path="/privacidade" element={<PrivacyPolicy />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/" element={<Protected><Layout /></Protected>}>
         <Route index element={<Dashboard />} />
         <Route path="patients" element={<Patients />} />

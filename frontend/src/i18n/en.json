@@ -284,7 +284,8 @@
       "email_communication": "Email",
       "sms_communication": "SMS",
       "health_data_processing": "Health data (LGPD)",
-      "data_processing": "Registration data processing"
+      "data_processing": "Registration data processing",
+      "phone_calls": "Phone calls"
     },
     "workspace": {
       "tab_overview": "Overview",
@@ -766,7 +767,11 @@
       "deletion": "Deletion",
       "portability": "Portability",
       "opposition": "Opposition"
-    }
+    },
+    "security_posture": "Security posture",
+    "encryption_key": "PHI key source",
+    "key_warning": "Dev key — set PHI_ENCRYPTION_KEY",
+    "retention_flags": "Retention"
   },
   "forms": {
     "title": "Forms",
@@ -1463,5 +1468,16 @@
     "sim_awaiting_gen": "Awaiting generation",
     "sim_reviewer": "Reviewer checklist",
     "sim_pending_review": "Pending review"
+  },
+  "privacy": {
+    "page_title": "Privacy Policy",
+    "intro": "This policy explains how Clínica Tanah processes personal and health data under Brazil's LGPD (Law 13.709/2018) and CFM clinical record retention (Res. 1.821/2007).",
+    "dpo_heading": "Data Protection Officer (DPO)",
+    "bases_heading": "Legal bases",
+    "categories_heading": "Data categories",
+    "rights_heading": "Your rights (art. 18)",
+    "how_heading": "How to exercise them",
+    "security_heading": "Security measures (art. 46)",
+    "version": "Version"
   }
 }

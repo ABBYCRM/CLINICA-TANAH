@@ -121,7 +121,7 @@ export default function MeasurementsPanel({
       </header>
 
       {latest && (
-        <section className="crm-record-panel space-y-3">
+        <section className="crm-inset-panel space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.meas_last_set')}</h4>
             {latest.verified ? <span className="badge-green text-[10px]">{t('body.meas_verified')}</span> : null}
@@ -188,7 +188,7 @@ export default function MeasurementsPanel({
         </section>
       )}
 
-      <section className="crm-record-panel space-y-4">
+      <section className="crm-inset-panel space-y-4">
         <h4 className="font-display text-base text-[color:var(--ink)]">{t('body.meas_new_session')}</h4>
         <p className="text-xs text-[color:var(--ink-muted)]">{t('body.meas_optional_hint')}</p>
 

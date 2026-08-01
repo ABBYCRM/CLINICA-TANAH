@@ -460,7 +460,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   const measurements = measurementsRaw.map(flattenMeasurement);
   const latest = measurements[0] || null;
   const medications = db.prepare(`
-    SELECT * FROM body_medications WHERE tenant_id = ? AND patient_id = ?
+    SELECT * FROM body_medications WHERE tenant_id = ? AND patient_id = ? AND status = 'active'
     ORDER BY created_at DESC LIMIT 100
   `).all(req.tenantId, patient.id) as any[];
   const plans = db.prepare(`
@@ -633,11 +633,21 @@ router.post('/:patientId/medications', requireRole('doctor', 'nurse', 'admin'), 
 
 router.delete('/:patientId/medications/:medId', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
+  // Soft-discontinue — retain medication history (clinical retention)
   const r = db.prepare(`
-    DELETE FROM body_medications WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    UPDATE body_medications
+       SET status = 'discontinued', updated_at = datetime('now')
+     WHERE id = ? AND patient_id = ? AND tenant_id = ? AND status != 'discontinued'
   `).run(req.params.medId, req.params.patientId, req.tenantId);
-  if (!r.changes) { res.status(404).json({ error: 'not_found' }); return; }
-  res.json({ ok: true });
+  if (!r.changes) {
+    const exists = db.prepare(`
+      SELECT id, status FROM body_medications WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(req.params.medId, req.params.patientId, req.tenantId) as any;
+    if (!exists) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ ok: true, status: exists.status, clinical_retention: true });
+    return;
+  }
+  res.json({ ok: true, status: 'discontinued', clinical_retention: true });
 });
 
 router.post('/:patientId/plans', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {

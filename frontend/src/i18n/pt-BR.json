@@ -284,7 +284,8 @@
       "email_communication": "E-mail",
       "sms_communication": "SMS",
       "health_data_processing": "Dados de saúde (LGPD)",
-      "data_processing": "Tratamento de dados cadastrais"
+      "data_processing": "Tratamento de dados cadastrais",
+      "phone_calls": "Ligações telefônicas"
     },
     "workspace": {
       "tab_overview": "Visão geral",
@@ -766,7 +767,11 @@
       "deletion": "Eliminação",
       "portability": "Portabilidade",
       "opposition": "Oposição"
-    }
+    },
+    "security_posture": "Postura de segurança",
+    "encryption_key": "Fonte da chave PHI",
+    "key_warning": "Chave de desenvolvimento — configure PHI_ENCRYPTION_KEY",
+    "retention_flags": "Retenção"
   },
   "forms": {
     "title": "Formulários",
@@ -1463,5 +1468,16 @@
     "sim_awaiting_gen": "Aguardando geração",
     "sim_reviewer": "Checklist do revisor",
     "sim_pending_review": "Pendente de revisão"
+  },
+  "privacy": {
+    "page_title": "Política de Privacidade",
+    "intro": "Esta política explica como a Clínica Tanah trata dados pessoais e de saúde, com bases legais da LGPD (Lei 13.709/2018) e retenção de prontuário conforme CFM 1.821/2007.",
+    "dpo_heading": "Encarregado (DPO)",
+    "bases_heading": "Bases legais",
+    "categories_heading": "Categorias de dados",
+    "rights_heading": "Seus direitos (art. 18)",
+    "how_heading": "Como exercer",
+    "security_heading": "Medidas de segurança (art. 46)",
+    "version": "Versão"
   }
 }

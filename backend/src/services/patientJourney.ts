@@ -33,6 +33,7 @@ export const CONSENT_PURPOSES = [
   'whatsapp_admin',
   'appointment_reminders',
   'post_visit_survey',
+  'phone_calls',
   'marketing_news',
   'promotions_events',
   'email_communication',
