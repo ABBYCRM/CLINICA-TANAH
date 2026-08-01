@@ -14,6 +14,7 @@ import path from 'path';
 import fs from 'fs';
 import { migratePhiAtRest } from '../services/phiCrypto';
 import { ensureBodyMedicationLibrary } from '../services/bodyMedicationLibrary';
+import { ensurePatientDocumentsSchema } from '../services/patientDocumentsVault';
 
 let _db: Database.Database | null = null;
 let _dbPath: string | null = null;
@@ -810,6 +811,7 @@ function migrate(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_pdocs_patient ON patient_documents(patient_id);
   `);
+  ensurePatientDocumentsSchema(openDb());
   try { openDb().exec(`ALTER TABLE patients ADD COLUMN recall_interval_days INTEGER`); } catch { /* exists */ }
   try { openDb().exec(`ALTER TABLE patients ADD COLUMN recall_notified_at TEXT`); } catch { /* exists */ }
   try { openDb().exec(`ALTER TABLE patients ADD COLUMN guardian_name TEXT`); } catch { /* exists */ }

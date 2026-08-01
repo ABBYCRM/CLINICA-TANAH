@@ -4,6 +4,8 @@
  * Professional stamp (name + CRM/UF + timestamp) on every signed entry.
  */
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 import { db } from '../db/schema';
@@ -11,6 +13,8 @@ import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 import { stampFromUser, formatStampLabel } from '../services/clinicalStamp';
 import { revealPrescriptionItems, revealEncounterRow } from '../services/phiCrypto';
+import { uploadsRoot } from '../services/nvidiaOcr';
+import { mimeFromName, upsertPatientDocumentPointer } from '../services/patientDocumentsVault';
 
 const router = Router();
 router.use(authenticate);
@@ -704,6 +708,8 @@ const attachmentSchema = z.object({
   file_path: z.string().max(1000).optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),
   encounter_id: z.string().optional().nullable(),
+  filename: z.string().max(300).optional().nullable(),
+  data_base64: z.string().min(8).optional().nullable(),
 });
 
 router.get('/:patientId/attachments', requireRole(...CLINICAL), (req: Request, res: Response) => {
@@ -725,16 +731,54 @@ router.post('/:patientId/attachments', requireRole(...CLINICAL), (req: Request, 
   if (!parsed.success) { res.status(400).json({ error: 'validation', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
   const id = uuid();
+  let filePath = d.file_path ?? null;
+  let mime = d.mime ?? null;
+  if (d.data_base64) {
+    let buffer: Buffer;
+    try {
+      const raw = String(d.data_base64).replace(/^data:[^;]+;base64,/, '');
+      buffer = Buffer.from(raw, 'base64');
+    } catch {
+      res.status(400).json({ error: 'invalid_base64' }); return;
+    }
+    if (buffer.length > 12 * 1024 * 1024) {
+      res.status(400).json({ error: 'file_too_large', message: 'Max 12MB' }); return;
+    }
+    const original = String(d.filename || d.title || 'anexo').replace(/[^\w.\-()\sÀ-ÿ]+/g, '_').slice(0, 180);
+    const dir = path.join(uploadsRoot(), req.tenantId!, 'patients', patientId, 'attachments');
+    fs.mkdirSync(dir, { recursive: true });
+    filePath = path.join(dir, `${id}_${original}`);
+    fs.writeFileSync(filePath, buffer);
+    mime = mime || mimeFromName(original);
+  }
   db.prepare(`
     INSERT INTO clinical_attachments (
       id, tenant_id, patient_id, uploaded_by, encounter_id, title, doc_type, mime, file_path, notes, status
     ) VALUES (?,?,?,?,?,?,?,?,?,?,'active')
   `).run(
     id, req.tenantId, patientId, req.user!.id, d.encounter_id ?? null, d.title, d.doc_type,
-    d.mime ?? null, d.file_path ?? null, d.notes ?? null,
+    mime, filePath, d.notes ?? null,
   );
+  try {
+    upsertPatientDocumentPointer(db, {
+      tenantId: req.tenantId!,
+      patientId,
+      title: d.title,
+      docType: d.doc_type || 'other',
+      status: 'active',
+      source: 'clinical_attachment',
+      sourceId: id,
+      notes: d.notes ?? null,
+      createdBy: req.user!.id,
+      mimeType: mime,
+      originalName: d.filename || d.title,
+      storagePath: filePath && !/^https?:\/\//i.test(filePath) ? filePath : null,
+      sizeBytes: filePath && fs.existsSync(filePath) ? fs.statSync(filePath).size : null,
+      fileUrl: filePath && /^https?:\/\//i.test(filePath) ? filePath : null,
+    });
+  } catch { /* optional */ }
   audit(req, 'create_clinical_attachment', 'clinical_attachment', id);
-  res.status(201).json({ id });
+  res.status(201).json({ id, file_path: filePath });
 });
 
 router.post('/:patientId/attachments/:id/cancel', requireRole(...CLINICAL), (req: Request, res: Response) => {

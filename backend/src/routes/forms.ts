@@ -12,6 +12,7 @@ import { blindIndex, seal, sealJson, revealPatientRow } from '../services/phiCry
 import { fieldsForKind, PRE_TRIAGE_CONSENT_PT } from '../services/intakeTemplates';
 import { buildIntakeInviteEmail, mailerConfigured, sendEmail } from '../services/mailer';
 import { sendTextMessage } from '../services/whatsapp';
+import { upsertPatientDocumentPointer } from '../services/patientDocumentsVault';
 
 const PIXEL_GIF = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
@@ -611,6 +612,33 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
     userAgent: ua || undefined,
     legalBasis: 'consent_art7_I',
   });
+
+  try {
+    upsertPatientDocumentPointer(db, {
+      tenantId: form.tenant_id,
+      patientId: patientId!,
+      title: form.name || (kind === 'pre_triage' ? 'Pré-triagem' : 'Formulário de intake'),
+      docType: kind || 'intake',
+      status: 'active',
+      source: 'intake_submission',
+      sourceId: session.id,
+      notes: form.slug || null,
+      mimeType: 'application/json',
+      originalName: `${form.slug || 'intake'}_${session.id}.json`,
+      fileUrl: `/api/patients/${patientId}/documents/by-source/intake_submission/${session.id}/file`,
+    });
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'document', 'document_intake', ?, 'active', ?, datetime('now'))
+    `).run(
+      `pte_intake_${Date.now().toString(36)}`,
+      form.tenant_id,
+      patientId,
+      form.name || 'Intake',
+      JSON.stringify({ submission_id: session.id, form_id: form.id, kind }),
+    );
+  } catch { /* vault optional */ }
 
   const urgent = (d.red_flags || []).some((f) => f !== 'none') || d.urgency_self === 'urgent';
   res.status(201).json({

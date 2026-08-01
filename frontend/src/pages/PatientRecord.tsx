@@ -8,6 +8,28 @@ import { PatientForm } from '../components/PatientForm';
 import ProntuarioChart from '../components/prontuario/ProntuarioChart';
 import TimelineInspector from '../components/TimelineInspector';
 
+async function fileToBase64(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function openAuthedFile(url: string) {
+  const token = localStorage.getItem('auth_token');
+  fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    .then(async (r) => {
+      if (!r.ok) throw new Error('download_failed');
+      const blob = await r.blob();
+      const obj = URL.createObjectURL(blob);
+      window.open(obj, '_blank');
+    })
+    .catch(() => { /* ignore */ });
+}
 type WorkspaceTab =
   | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'whatsapp'
   | 'surveys' | 'documents' | 'billing' | 'tasks' | 'privacy' | 'audit';
@@ -115,7 +137,9 @@ export default function PatientRecord() {
   const [teamUsers, setTeamUsers] = useState<any[]>([]);
   const [automations, setAutomations] = useState<any[]>([]);
   const [docTitle, setDocTitle] = useState('');
+  const [docFile, setDocFile] = useState<File | null>(null);
   const [docBusy, setDocBusy] = useState(false);
+  const [docMsg, setDocMsg] = useState('');
   const [recallDays, setRecallDays] = useState('90');
   const [recallBusy, setRecallBusy] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
@@ -399,12 +423,39 @@ export default function PatientRecord() {
   };
 
   const createDocument = async () => {
-    if (!id || !docTitle.trim()) return;
+    if (!id) return;
+    if (!docTitle.trim() && !docFile) return;
+    setDocBusy(true);
+    setDocMsg('');
+    try {
+      const payload: Record<string, unknown> = {
+        title: docTitle.trim() || docFile?.name || 'Documento',
+        doc_type: docFile ? 'upload' : 'form',
+        status: docFile ? 'active' : 'pending',
+      };
+      if (docFile) {
+        payload.filename = docFile.name;
+        payload.mime = docFile.type || 'application/octet-stream';
+        payload.data_base64 = await fileToBase64(docFile);
+      }
+      await api.post(`/api/patients/${id}/documents`, payload);
+      setDocTitle('');
+      setDocFile(null);
+      setDocMsg(t('patients.workspace.documents_saved'));
+      setTab('documents');
+      load();
+    } catch (e: any) {
+      setError(e.message || t('errors.generic'));
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
+  const removeDocument = async (doc: any) => {
+    if (!id || !doc?.can_delete) return;
     setDocBusy(true);
     try {
-      await api.post(`/api/patients/${id}/documents`, { title: docTitle.trim(), doc_type: 'form', status: 'pending' });
-      setDocTitle('');
-      setTab('documents');
+      await api.del(`/api/patients/${id}/documents/${doc.id}`);
       load();
     } catch (e: any) {
       setError(e.message || t('errors.generic'));
@@ -888,16 +939,87 @@ export default function PatientRecord() {
           )}
 
           {tab === 'documents' && (
-            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-2" data-testid="workspace-documents">
-              <h3 className="font-semibold text-sm">{t('patients.workspace.documents_heading')}</h3>
-              {documents.length === 0 && <p className="text-sm text-[color:var(--ink-muted)]">{t('common.no_data')}</p>}
-              {documents.map((d: any) => (
-                <div key={d.id} className="crm-timeline-card flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium truncate">{d.title}</span>
-                  <span className="badge-slate text-[10px]">{d.doc_type}</span>
-                  <span className={`badge ${d.status === 'signed' ? 'badge-green' : 'badge-yellow'}`}>{d.status}</span>
-                </div>
-              ))}
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-3" data-testid="workspace-documents">
+              <div>
+                <h3 className="font-semibold text-sm">{t('patients.workspace.documents_heading')}</h3>
+                <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('patients.workspace.documents_hint')}</p>
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-[rgba(176,183,192,0.45)] bg-[color:var(--paper)]/60 p-3" data-testid="workspace-document-form">
+                <input
+                  className="input"
+                  value={docTitle}
+                  onChange={(e) => setDocTitle(e.target.value)}
+                  placeholder={t('patients.workspace.document_placeholder')}
+                  data-testid="doc-title"
+                />
+                <input
+                  type="file"
+                  className="block w-full text-xs text-[color:var(--ink-muted)]"
+                  data-testid="doc-file"
+                  onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                />
+                {docFile && (
+                  <p className="text-[11px] text-[color:var(--ink-muted)] truncate">{docFile.name}</p>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary w-full text-sm"
+                  disabled={docBusy || (!docTitle.trim() && !docFile)}
+                  onClick={createDocument}
+                  data-testid="doc-submit"
+                >
+                  {docBusy ? '…' : t('patients.workspace.documents_add')}
+                </button>
+                {docMsg && <p className="text-xs text-emerald-700" data-testid="doc-msg">{docMsg}</p>}
+              </div>
+
+              {documents.length === 0 && (
+                <p className="text-sm text-[color:var(--ink-muted)]" data-testid="documents-empty">{t('patients.workspace.documents_empty')}</p>
+              )}
+              <ul className="space-y-2">
+                {documents.map((d: any) => (
+                  <li key={d.id} className="crm-timeline-card space-y-2" data-testid={`doc-row-${d.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{d.title}</div>
+                        <div className="text-[11px] text-[color:var(--ink-muted)]">
+                          {d.origin_label || d.source}
+                          {d.original_name ? ` · ${d.original_name}` : ''}
+                          {d.created_at ? ` · ${fmtDateTime(d.created_at, locale)}` : ''}
+                          {d.size_bytes != null ? ` · ${(Number(d.size_bytes) / 1024).toFixed(1)} KB` : ''}
+                        </div>
+                      </div>
+                      <span className={`badge shrink-0 ${d.status === 'signed' || d.status === 'active' ? 'badge-green' : 'badge-yellow'}`}>
+                        {d.status}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {d.can_download && d.download_url && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          data-testid={`doc-download-${d.id}`}
+                          onClick={() => openAuthedFile(d.download_url.startsWith('http') ? d.download_url : d.download_url)}
+                        >
+                          {t('patients.workspace.documents_download')}
+                        </button>
+                      )}
+                      {d.can_delete && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs text-rose-700"
+                          disabled={docBusy}
+                          data-testid={`doc-remove-${d.id}`}
+                          onClick={() => removeDocument(d)}
+                        >
+                          {t('patients.workspace.documents_remove')}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -930,7 +1052,7 @@ export default function PatientRecord() {
 
           {tab !== 'audit' && tab !== 'clinical' && (
           <div className="p-4 space-y-5">
-            {grouped.length === 0 && tab !== 'tasks' && (
+            {grouped.length === 0 && tab !== 'tasks' && tab !== 'documents' && (
               <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>
             )}
             {tab === 'tasks' && grouped.length > 0 && (
@@ -938,7 +1060,7 @@ export default function PatientRecord() {
                 {t('patients.workspace.task_timeline')}
               </h4>
             )}
-            {grouped.map(([month, items]) => (
+            {tab !== 'documents' && grouped.map(([month, items]) => (
               <div key={month}>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--ink-muted)] mb-2">{month}</div>
                 <ul className="space-y-2">
@@ -1034,9 +1156,18 @@ export default function PatientRecord() {
 
           <div className="crm-record-panel space-y-2">
             <h2 className="crm-record-panel-title">{t('patients.workspace.create_document')}</h2>
-            <input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder={t('patients.workspace.document_placeholder')} />
-            <button type="button" className="btn-secondary w-full text-sm" disabled={docBusy || !docTitle.trim()} onClick={createDocument}>
-              {docBusy ? '…' : t('patients.workspace.action_document')}
+            <input className="input" value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder={t('patients.workspace.document_placeholder')} data-testid="rail-doc-title" />
+            <input
+              type="file"
+              className="block w-full text-xs text-[color:var(--ink-muted)]"
+              data-testid="rail-doc-file"
+              onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+            />
+            <button type="button" className="btn-secondary w-full text-sm" disabled={docBusy || (!docTitle.trim() && !docFile)} onClick={createDocument} data-testid="rail-doc-submit">
+              {docBusy ? '…' : t('patients.workspace.documents_add')}
+            </button>
+            <button type="button" className="btn-secondary w-full text-xs" onClick={() => selectWorkspaceTab('documents')}>
+              {t('patients.workspace.documents_open_vault')}
             </button>
           </div>
 

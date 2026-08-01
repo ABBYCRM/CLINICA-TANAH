@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 import { db } from '../db/schema';
@@ -17,6 +19,7 @@ import {
 } from '../services/patientJourney';
 import {
   blindIndex,
+  openJson,
   revealEncounterRow,
   revealPatientRow,
   revealPrescriptionItems,
@@ -24,6 +27,12 @@ import {
   sealJson,
   sealPatientRow,
 } from '../services/phiCrypto';
+import {
+  ensurePatientDocumentsSchema,
+  listUnifiedPatientDocuments,
+  mimeFromName,
+  writePatientDocumentFile,
+} from '../services/patientDocumentsVault';
 
 const router = Router();
 
@@ -564,11 +573,8 @@ router.get('/:id/record', (req: Request, res: Response) => {
     ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC LIMIT 20
   `).all(req.params.id, req.tenantId) as any[];
 
-  const documents = db.prepare(`
-    SELECT id, doc_type, title, status, signed_at, notes, created_at
-    FROM patient_documents WHERE patient_id = ? AND tenant_id = ?
-    ORDER BY created_at DESC LIMIT 30
-  `).all(req.params.id, req.tenantId) as any[];
+  ensurePatientDocumentsSchema(db);
+  const documents = listUnifiedPatientDocuments(db, req.tenantId!, req.params.id);
 
   const privacyRequests = db.prepare(`
     SELECT id, request_type, status, requested_at AS created_at, fulfilled_at AS completed_at
@@ -756,11 +762,11 @@ router.get('/:id/record', (req: Request, res: Response) => {
   }
   for (const d of documents) {
     timeline.push({
-      id: `doc-${d.id}`, kind: 'document', at: d.signed_at || d.created_at,
-      title: d.status === 'signed' ? 'document_signed' : 'document_pending',
+      id: `doc-${d.id}`, kind: 'document', at: d.created_at || new Date().toISOString(),
+      title: d.status === 'signed' ? 'document_signed' : (d.source === 'manual' && !d.can_download ? 'document_pending' : 'document_uploaded'),
       subtitle: d.title,
       status: d.status,
-      meta: { id: d.id, doc_type: d.doc_type },
+      meta: { id: d.id, doc_type: d.doc_type, source: d.source },
     });
   }
   for (const c of consents.slice(0, 15)) {
@@ -1463,29 +1469,81 @@ router.put('/:id/recall', requireRole('admin', 'doctor', 'nurse'), (req: Request
   res.json({ ok: true, ...result });
 });
 
-/** Register a document / authorization on the patient workspace. */
+/** List unified patient documents (manual + intake + clinical + invoices + reports). */
+router.get('/:id/documents', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  ensurePatientDocumentsSchema(db);
+  const documents = listUnifiedPatientDocuments(db, req.tenantId!, req.params.id);
+  res.json({ documents });
+});
+
+/** Upload / register a document on the patient vault (optional base64 file). */
 router.post('/:id/documents', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
   const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!p) { res.status(404).json({ error: 'not_found' }); return; }
-  const title = String(req.body?.title || '').trim();
-  if (!title) { res.status(400).json({ error: 'title_required' }); return; }
+  ensurePatientDocumentsSchema(db);
+
+  const filename = String(req.body?.filename || req.body?.original_name || '').trim();
+  const dataB64 = req.body?.data_base64 ? String(req.body.data_base64) : '';
+  const title = String(req.body?.title || filename || '').trim();
+  if (!title && !dataB64) { res.status(400).json({ error: 'title_required' }); return; }
+
+  let buffer: Buffer | null = null;
+  if (dataB64) {
+    try {
+      const raw = dataB64.replace(/^data:[^;]+;base64,/, '');
+      buffer = Buffer.from(raw, 'base64');
+    } catch {
+      res.status(400).json({ error: 'invalid_base64' }); return;
+    }
+    if (buffer.length > 12 * 1024 * 1024) {
+      res.status(400).json({ error: 'file_too_large', message: 'Max 12MB' }); return;
+    }
+  }
+
   const id = `doc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const status = String(req.body?.status || 'pending');
+  const status = buffer ? 'active' : String(req.body?.status || 'pending');
   const signedAt = status === 'signed' ? new Date().toISOString() : null;
+  const mime = req.body?.mime || req.body?.mime_type || (filename ? mimeFromName(filename) : null);
+  let storagePath: string | null = null;
+  let originalName: string | null = filename || null;
+  let sizeBytes: number | null = null;
+
+  if (buffer) {
+    const written = writePatientDocumentFile({
+      tenantId: req.tenantId!,
+      patientId: req.params.id,
+      docId: id,
+      filename: filename || `${title || 'documento'}.bin`,
+      buffer,
+    });
+    storagePath = written.storagePath;
+    originalName = written.originalName;
+    sizeBytes = buffer.length;
+  }
+
   db.prepare(`
     INSERT INTO patient_documents
-      (id, tenant_id, patient_id, doc_type, title, status, signed_at, notes, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, tenant_id, patient_id, doc_type, title, status, signed_at, notes, created_by,
+       source, source_id, mime_type, original_name, storage_path, size_bytes, file_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     req.tenantId,
     req.params.id,
-    String(req.body?.doc_type || 'form'),
-    title,
+    String(req.body?.doc_type || (buffer ? 'upload' : 'form')),
+    title || originalName || 'Documento',
     status,
     signedAt,
     req.body?.notes ? String(req.body.notes) : null,
     req.user!.id,
+    id,
+    mime,
+    originalName,
+    storagePath,
+    sizeBytes,
+    req.body?.file_url ? String(req.body.file_url) : null,
   );
   db.prepare(`
     INSERT INTO patient_timeline_events
@@ -1495,12 +1553,164 @@ router.post('/:id/documents', requireRole('admin', 'doctor', 'nurse', 'reception
     `pte_doc_${Date.now().toString(36)}`,
     req.tenantId,
     req.params.id,
-    status === 'signed' ? 'document_signed' : 'document_pending',
-    title,
+    buffer ? 'document_uploaded' : (status === 'signed' ? 'document_signed' : 'document_pending'),
+    title || originalName || 'Documento',
     status,
-    JSON.stringify({ document_id: id }),
+    JSON.stringify({ document_id: id, has_file: !!buffer }),
   );
-  res.status(201).json({ ok: true, id });
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'patient_document_create',
+    resourceType: 'patient_document',
+    resourceId: id,
+    afterValue: { patient_id: req.params.id, has_file: !!buffer },
+  });
+  res.status(201).json({
+    ok: true,
+    id,
+    document: listUnifiedPatientDocuments(db, req.tenantId!, req.params.id).find((d) => d.id === id) || null,
+  });
+});
+
+/** Download aggregated source files (intake JSON, clinical attachment bytes). */
+router.get('/:id/documents/by-source/:source/:sourceId/file', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  const source = String(req.params.source || '');
+  const sourceId = String(req.params.sourceId || '');
+
+  if (source === 'intake_submission') {
+    const row = db.prepare(`
+      SELECT s.*, f.name AS form_name, f.kind AS form_kind, f.slug
+      FROM intake_submissions s
+      LEFT JOIN intake_forms f ON f.id = s.form_id
+      WHERE s.id = ? AND s.patient_id = ? AND s.tenant_id = ?
+    `).get(sourceId, req.params.id, req.tenantId) as any;
+    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    const payload = openJson(row.payload, null);
+    const exportBody = {
+      id: row.id,
+      form_name: row.form_name,
+      form_kind: row.form_kind,
+      form_slug: row.slug,
+      status: row.status,
+      full_name: row.full_name,
+      birth_date: row.birth_date,
+      phone: row.phone,
+      city: row.city,
+      state: row.state,
+      submitted_at: row.pixel_submitted_at || row.created_at,
+      payload,
+    };
+    const buf = Buffer.from(JSON.stringify(exportBody, null, 2), 'utf8');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="intake_${sourceId}.json"`);
+    res.send(buf);
+    return;
+  }
+
+  if (source === 'clinical_attachment') {
+    const row = db.prepare(`
+      SELECT * FROM clinical_attachments
+      WHERE id = ? AND patient_id = ? AND tenant_id = ? AND status = 'active'
+    `).get(sourceId, req.params.id, req.tenantId) as any;
+    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    if (row.file_path && /^https?:\/\//i.test(row.file_path)) {
+      res.redirect(row.file_path);
+      return;
+    }
+    if (!row.file_path || !fs.existsSync(row.file_path)) {
+      res.status(404).json({ error: 'file_missing' }); return;
+    }
+    res.setHeader('Content-Type', row.mime || mimeFromName(row.file_path));
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(row.title || path.basename(row.file_path))}"`,
+    );
+    fs.createReadStream(row.file_path).pipe(res);
+    return;
+  }
+
+  res.status(400).json({ error: 'unsupported_source' });
+});
+
+/** Stream a vault-stored file. */
+router.get('/:id/documents/:docId/file', (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  ensurePatientDocumentsSchema(db);
+  const doc = db.prepare(`
+    SELECT * FROM patient_documents
+    WHERE id = ? AND patient_id = ? AND tenant_id = ? AND deleted_at IS NULL
+  `).get(req.params.docId, req.params.id, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  if (!doc.storage_path || !fs.existsSync(doc.storage_path)) {
+    res.status(404).json({ error: 'file_missing' }); return;
+  }
+  res.setHeader('Content-Type', doc.mime_type || mimeFromName(doc.original_name || doc.storage_path));
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${encodeURIComponent(doc.original_name || path.basename(doc.storage_path))}"`,
+  );
+  fs.createReadStream(doc.storage_path).pipe(res);
+});
+
+/** Soft-delete a manual vault document, or cancel a clinical attachment. */
+router.delete('/:id/documents/:docId', requireRole('admin', 'doctor', 'nurse', 'receptionist'), (req: Request, res: Response) => {
+  const p = db.prepare(`SELECT id FROM patients WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!p) { res.status(404).json({ error: 'not_found' }); return; }
+  ensurePatientDocumentsSchema(db);
+  const docId = String(req.params.docId || '');
+
+  if (docId.startsWith('att_')) {
+    const attId = docId.slice(4);
+    const row = db.prepare(`
+      SELECT * FROM clinical_attachments WHERE id = ? AND patient_id = ? AND tenant_id = ?
+    `).get(attId, req.params.id, req.tenantId) as any;
+    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    db.prepare(`UPDATE clinical_attachments SET status='cancelled' WHERE id=? AND tenant_id=?`)
+      .run(attId, req.tenantId);
+    db.prepare(`
+      UPDATE patient_documents SET deleted_at = datetime('now'), deleted_by = ?, updated_at = datetime('now')
+      WHERE tenant_id = ? AND patient_id = ? AND source = 'clinical_attachment' AND source_id = ?
+        AND deleted_at IS NULL
+    `).run(req.user!.id, req.tenantId, req.params.id, attId);
+    logAudit({
+      tenantId: req.tenantId,
+      actorId: req.user!.id,
+      actorEmail: req.user!.email,
+      action: 'patient_document_remove_attachment',
+      resourceType: 'clinical_attachment',
+      resourceId: attId,
+    });
+    res.json({ ok: true, removed: docId });
+    return;
+  }
+
+  const doc = db.prepare(`
+    SELECT * FROM patient_documents
+    WHERE id = ? AND patient_id = ? AND tenant_id = ? AND deleted_at IS NULL
+  `).get(docId, req.params.id, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  if ((doc.source || 'manual') !== 'manual') {
+    res.status(403).json({ error: 'cannot_delete_ingested', message: 'Documentos de intake/fatura/relatório não podem ser removidos aqui.' });
+    return;
+  }
+  db.prepare(`
+    UPDATE patient_documents SET deleted_at = datetime('now'), deleted_by = ?, status = 'removed', updated_at = datetime('now')
+    WHERE id = ?
+  `).run(req.user!.id, docId);
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'patient_document_delete',
+    resourceType: 'patient_document',
+    resourceId: docId,
+  });
+  res.json({ ok: true, removed: docId });
 });
 
 // Clinical snapshot for the scheduler drawer — everything the medical team
