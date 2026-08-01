@@ -7,6 +7,7 @@ import { ConfirmDialog, FormError } from '../components/crud';
 import { PatientForm } from '../components/PatientForm';
 import ProntuarioChart from '../components/prontuario/ProntuarioChart';
 import TimelineInspector from '../components/TimelineInspector';
+import AppointmentForm from '../components/AppointmentForm';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -144,6 +145,10 @@ export default function PatientRecord() {
   const [waBusy, setWaBusy] = useState(false);
   const [waMsg, setWaMsg] = useState('');
   const [waAutoBusy, setWaAutoBusy] = useState<string | null>(null);
+  const [apptMsg, setApptMsg] = useState('');
+  const [apptCreatedId, setApptCreatedId] = useState<string | null>(null);
+  const [apptCreatedAt, setApptCreatedAt] = useState<string | null>(null);
+  const [showApptForm, setShowApptForm] = useState(true);
   const [recallDays, setRecallDays] = useState('90');
   const [recallBusy, setRecallBusy] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
@@ -584,7 +589,13 @@ export default function PatientRecord() {
             ← {t('patients.back_to_list')}
           </Link>
           <div className="crm-record-actions">
-            <Link to="/appointments" className="btn-secondary text-xs">{t('patients.workspace.action_schedule')}</Link>
+            <Link
+              to={id ? `/appointments?patient_id=${encodeURIComponent(id)}&new=1` : '/appointments'}
+              className="btn-secondary text-xs"
+              data-testid="action-schedule"
+            >
+              {t('patients.workspace.action_schedule')}
+            </Link>
             <button type="button" className="btn-secondary text-xs" onClick={() => selectWorkspaceTab('whatsapp')}>{t('patients.workspace.action_whatsapp')}</button>
             <button type="button" className="btn-secondary text-xs" onClick={() => setShowForm(true)}>{t('common.edit')}</button>
             {user?.role === 'admin' && (
@@ -742,6 +753,88 @@ export default function PatientRecord() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {tab === 'appointments' && (
+            <div className="px-4 py-3 border-b border-[rgba(176,183,192,0.45)] space-y-4" data-testid="workspace-appointments">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold text-sm">{t('patients.workspace.appointments_heading')}</h3>
+                  <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('patients.workspace.appointments_hint')}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={() => setShowApptForm((v) => !v)}
+                    data-testid="appt-toggle-form"
+                  >
+                    {showApptForm ? t('common.cancel') : t('patients.workspace.appointments_new')}
+                  </button>
+                  <Link
+                    to={id ? `/appointments?patient_id=${encodeURIComponent(id)}` : '/appointments'}
+                    className="btn-secondary text-xs"
+                    data-testid="appt-open-scheduler"
+                  >
+                    {t('patients.workspace.appointments_open_scheduler')}
+                  </Link>
+                </div>
+              </div>
+
+              {showApptForm && id && (
+                <section className="crm-inset-panel space-y-2">
+                  <h4 className="font-display text-base text-[color:var(--ink)]">{t('patients.workspace.appointments_new')}</h4>
+                  <AppointmentForm
+                    inline
+                    lockedPatientId={id}
+                    lockedPatientLabel={displayName}
+                    onSaved={(res) => {
+                      setApptCreatedId(res.id);
+                      setApptCreatedAt(res.scheduled_at.slice(0, 10));
+                      setApptMsg(t('patients.workspace.appointments_saved'));
+                      setShowApptForm(false);
+                      setTab('appointments');
+                      load();
+                    }}
+                  />
+                  {apptMsg && (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-700" data-testid="appt-msg">
+                      <span>{apptMsg}</span>
+                      {apptCreatedId && (
+                        <Link
+                          to={`/appointments?patient_id=${encodeURIComponent(id)}&date=${encodeURIComponent(apptCreatedAt || '')}&focus=${encodeURIComponent(apptCreatedId)}`}
+                          className="underline font-medium"
+                          data-testid="appt-goto-scheduler"
+                        >
+                          {t('patients.workspace.appointments_open_scheduler')}
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {!showApptForm && apptMsg && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-700" data-testid="appt-msg">
+                  <span>{apptMsg}</span>
+                  {apptCreatedId && id && (
+                    <Link
+                      to={`/appointments?patient_id=${encodeURIComponent(id)}&date=${encodeURIComponent(apptCreatedAt || '')}&focus=${encodeURIComponent(apptCreatedId)}`}
+                      className="underline font-medium"
+                      data-testid="appt-goto-scheduler"
+                    >
+                      {t('patients.workspace.appointments_open_scheduler')}
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              {(associations?.appointments?.count || 0) === 0 && !apptMsg && (
+                <p className="text-sm text-[color:var(--ink-muted)]" data-testid="appointments-empty">
+                  {t('patients.workspace.appointments_empty')}
+                </p>
+              )}
             </div>
           )}
 
@@ -1205,12 +1298,17 @@ export default function PatientRecord() {
 
           {tab !== 'audit' && tab !== 'clinical' && (
           <div className="p-4 space-y-5">
-            {grouped.length === 0 && tab !== 'tasks' && tab !== 'documents' && tab !== 'whatsapp' && (
+            {grouped.length === 0 && tab !== 'tasks' && tab !== 'documents' && tab !== 'whatsapp' && tab !== 'appointments' && (
               <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>
             )}
             {tab === 'tasks' && grouped.length > 0 && (
               <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
                 {t('patients.workspace.task_timeline')}
+              </h4>
+            )}
+            {tab === 'appointments' && grouped.length > 0 && (
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)]">
+                {t('patients.workspace.appointments_timeline')}
               </h4>
             )}
             {tab !== 'documents' && tab !== 'whatsapp' && grouped.map(([month, items]) => (
@@ -1266,7 +1364,13 @@ export default function PatientRecord() {
             <h2 className="crm-record-panel-title">{t('patients.workspace.quick_actions')}</h2>
             <div className="crm-rail-actions">
               <Link to="/whatsapp" className="btn-secondary">{t('patients.workspace.action_whatsapp')}</Link>
-              <Link to="/appointments" className="btn-secondary">{t('patients.workspace.action_schedule')}</Link>
+              <Link
+                to={id ? `/appointments?patient_id=${encodeURIComponent(id)}&new=1` : '/appointments'}
+                className="btn-secondary"
+                data-testid="rail-schedule"
+              >
+                {t('patients.workspace.action_schedule')}
+              </Link>
               <button type="button" className="btn-secondary" onClick={() => selectWorkspaceTab('tasks')}>
                 {t('patients.workspace.action_task')}
               </button>

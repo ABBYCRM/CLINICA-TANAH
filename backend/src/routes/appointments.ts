@@ -103,13 +103,37 @@ router.post('/', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req: 
     INSERT INTO appointments (id, tenant_id, patient_id, practitioner_id, scheduled_at, duration_minutes, type, status, notes, source, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, req.tenantId, d.patient_id, d.practitioner_id, d.scheduled_at, d.duration_minutes, d.type, d.status, d.notes ?? null, d.source, now, now);
+  try {
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'appointment', ?, ?, ?, ?, ?)
+    `).run(
+      `pte_appt_${Date.now().toString(36)}`,
+      req.tenantId,
+      d.patient_id,
+      d.type || 'appointment',
+      null,
+      d.status,
+      JSON.stringify({ appointment_id: id, practitioner_id: d.practitioner_id, type: d.type }),
+      d.scheduled_at,
+    );
+  } catch { /* optional */ }
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'create_appointment', resourceType: 'appointment', resourceId: id,
     afterValue: d, legalBasis: 'contract_art7_V',
   });
-  res.status(201).json({ id });
+  const row = db.prepare(`
+    SELECT a.*, p.full_name AS patient_name, p.phone AS patient_phone,
+           u.full_name AS practitioner_name
+    FROM appointments a
+    JOIN patients p ON p.id = a.patient_id
+    JOIN users u ON u.id = a.practitioner_id
+    WHERE a.id = ? AND a.tenant_id = ?
+  `).get(id, req.tenantId);
+  res.status(201).json({ id, appointment: row });
 });
 
 router.put('/:id', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (req: Request, res: Response) => {

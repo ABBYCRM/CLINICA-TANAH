@@ -31,16 +31,31 @@ export function useLocaleTag(locale: string) {
   return locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US';
 }
 
-export function CalendarView({ onSelect, refreshKey }: {
+export function CalendarView({ onSelect, refreshKey, initialDate, focusAppointmentId }: {
   onSelect: (a: any) => void;
   refreshKey: number;
+  /** YYYY-MM-DD — jump calendar week to this day */
+  initialDate?: string | null;
+  focusAppointmentId?: string | null;
 }) {
   const { t, locale } = useI18n();
   const tag = useLocaleTag(locale);
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => {
+    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+      const d = new Date(`${initialDate}T12:00:00`);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [mobileDay, setMobileDay] = useState(0); // index into the week
+
+  useEffect(() => {
+    if (!initialDate || !/^\d{4}-\d{2}-\d{2}$/.test(initialDate)) return;
+    const d = new Date(`${initialDate}T12:00:00`);
+    if (!Number.isNaN(d.getTime())) setAnchor(d);
+  }, [initialDate]);
 
   const monday = useMemo(() => weekStart(anchor), [anchor]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
@@ -83,7 +98,7 @@ export function CalendarView({ onSelect, refreshKey }: {
       key={a.id}
       onClick={() => onSelect(a)}
       data-testid={`appt-chip-${a.id}`}
-      className={`${STATUS_COLORS[a.status] || 'appt-block'}`}
+      className={`${STATUS_COLORS[a.status] || 'appt-block'} ${focusAppointmentId === a.id ? 'ring-2 ring-[color:var(--brass-deep)]' : ''}`}
     >
       <div className="font-semibold truncate">{a.patient_name}</div>
       {!compact && <div className="truncate opacity-80">{a.practitioner_name}</div>}
