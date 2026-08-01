@@ -104,6 +104,6 @@ test.describe('Patient create consultas', () => {
     await expect(link).toBeVisible();
     await link.click();
     await page.waitForURL(/\/appointments/, { timeout: 15_000 });
-    await expect(page.getByTestId('calendar-view').or(page.getByTestId('new-appointment'))).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('calendar-view')).toBeVisible({ timeout: 15_000 });
   });
 });
