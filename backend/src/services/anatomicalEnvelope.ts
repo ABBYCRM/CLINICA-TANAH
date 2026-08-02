@@ -23,17 +23,46 @@ export type AnatomicalRegionDelta = {
   rationale: string;
 };
 
+/** Pipeline v5 img2img identity locks — same person/clothes/pose/BG; only soft-tissue silhouette changes. */
+export const IMG2IMG_IDENTITY_LOCKS = [
+  'face',
+  'height',
+  'limb_lengths',
+  'skin_marks',
+  'clothing',
+  'pose',
+  'background',
+] as const;
+
+/** Visual silhouette dynamic-range cap for img2img (matches BodyCompositionCalculator / pipeline v5). */
+export const IMG2IMG_SILHOUETTE_CAP_PCT = 7;
+
+export type Img2ImgPipelineConfig = {
+  version: 'v5';
+  identity_locks: typeof IMG2IMG_IDENTITY_LOCKS[number][];
+  magnitude_ceiling_pct: number;
+  effective_silhouette_delta_pct: number;
+  rag_kg_preserved_pct: number;
+  clothing_drape: 'preserve_garments_show_fit_change';
+  transformation_style: 'clinical_before_after_same_frame';
+};
+
 export type AnatomicalEnvelope = {
   maxAbsDeltaPct: number;
   regions: AnatomicalRegionDelta[];
   faceLocked: boolean;
   heightLocked: boolean;
   limbLengthLocked: boolean;
+  skinMarksLocked: boolean;
+  poseLocked: boolean;
   clothingPreserved: boolean;
   backgroundPreserved: boolean;
   photorealism: boolean;
   fidelity: string;
   uncertaintyBand: string;
+  /** Flat map for img2img providers / Gemini-style calculators */
+  regional_anatomical_deltas_pct: Record<AnatomicalRegion, number>;
+  img2img_pipeline_config: Img2ImgPipelineConfig;
 };
 
 export type VisualProfileEntry = {
@@ -52,6 +81,8 @@ export type EnrichedScenarioEnvelope = ScenarioEnvelope & {
   disclaimerPt?: string;
   pillars?: { medication: boolean; nutrition: boolean; exercise: boolean };
   changeMagnitude?: MagnitudeCap;
+  img2img_pipeline_config: Img2ImgPipelineConfig;
+  regional_anatomical_deltas_pct: Record<AnatomicalRegion, number>;
 };
 
 type MedForAnatomy = {
@@ -299,17 +330,42 @@ export function enrichEnvelopeWithAnatomy(input: {
     };
   });
 
+  const regionalMap = Object.fromEntries(
+    fullRegions.map((r) => [r.region, r.deltaPct]),
+  ) as Record<AnatomicalRegion, number>;
+
+  // Pipeline v5: BW magnitude may be 8–12%, but img2img visual delta is capped at 7%.
+  const effectiveSilhouette = Math.min(
+    IMG2IMG_SILHOUETTE_CAP_PCT,
+    Math.abs(sil || weightPct || 0),
+    maxAbs,
+  );
+
+  const img2img_pipeline_config: Img2ImgPipelineConfig = {
+    version: 'v5',
+    identity_locks: [...IMG2IMG_IDENTITY_LOCKS],
+    magnitude_ceiling_pct: maxAbs,
+    effective_silhouette_delta_pct: Math.round(effectiveSilhouette * 100) / 100,
+    rag_kg_preserved_pct: Math.round(effectiveSilhouette * 100) / 100,
+    clothing_drape: 'preserve_garments_show_fit_change',
+    transformation_style: 'clinical_before_after_same_frame',
+  };
+
   const anatomicalEnvelope: AnatomicalEnvelope = {
     maxAbsDeltaPct: maxAbs,
     regions: fullRegions,
     faceLocked: true,
     heightLocked: true,
     limbLengthLocked: true,
+    skinMarksLocked: true,
+    poseLocked: true,
     clothingPreserved: true,
     backgroundPreserved: true,
     photorealism: true,
     fidelity: 'identity_preserving_anatomical',
     uncertaintyBand: 'increases_with_horizon',
+    regional_anatomical_deltas_pct: regionalMap,
+    img2img_pipeline_config,
   };
 
   const rules: EnvelopeRule[] = [...(env.rules || [])];
@@ -321,9 +377,17 @@ export function enrichEnvelopeWithAnatomy(input: {
   pushRule(
     'R_IMG2IMG_PIPELINE',
     `horizonte ${weeks}sem · dieta=${hasNutrition} · exercício=${hasExercise}`,
-    `pipeline img2img v5 · teto |Δ| ${maxAbs}% · âncoras ósseas/identidade bloqueadas · RAG kg preservado`,
+    `pipeline img2img v5 · teto visual |Δ|≤${IMG2IMG_SILHOUETTE_CAP_PCT}% · teto anatômico |Δ| ${maxAbs}% · locks face/altura/membros/marcas/roupa/pose/fundo · drape de roupa muda com silhueta · RAG kg preservado`,
     true,
-    sil,
+    -Math.sign(sil || -1) * effectiveSilhouette || sil,
+  );
+
+  pushRule(
+    'R_BEFORE_AFTER_IDENTITY',
+    'foto de referência presente',
+    'mesmo paciente, mesma pose, mesmas roupas e fundo; apenas tecido mole/silhueta muda (roupa pode ficar mais folgada ou justa)',
+    true,
+    0,
   );
 
   for (const vp of visualProfiles) {
@@ -352,7 +416,7 @@ export function enrichEnvelopeWithAnatomy(input: {
   pushRule(
     'R_IDENTITY',
     'sempre',
-    'preservar face, altura, comprimento de membros, marcas de pele, roupa e fundo',
+    'preservar face, altura, comprimento de membros, marcas de pele, roupa, pose e fundo — transformação estilo before/after clínico',
     true,
     0,
   );
@@ -405,7 +469,10 @@ export function enrichEnvelopeWithAnatomy(input: {
       `Projeção educacional (RAG/kg): peso ${env.deltas.weight_kg} kg · gordura ${env.deltas.fat_mass_kg} kg · cintura ${env.deltas.waist_cm} cm · silhueta ${sil}%.`,
     );
   }
-  narrativePt.push('Envelope anatômico proporcional com fidelidade de identidade (face/altura/membros bloqueados).');
+  narrativePt.push('Envelope anatômico proporcional com fidelidade de identidade (face/altura/membros/marcas/roupa/pose/fundo bloqueados).');
+  narrativePt.push(
+    `Pipeline img2img v5 · silhueta efetiva ≤${IMG2IMG_SILHOUETTE_CAP_PCT}% · roupa igual com caimento alterado pela silhueta.`,
+  );
   narrativePt.push('Simulação ilustrativa — não é previsão médica. Incerteza aumenta com o horizonte; resultados reais variam.');
 
   return {
@@ -421,5 +488,7 @@ export function enrichEnvelopeWithAnatomy(input: {
     pillars: { medication: hasMed, nutrition: hasNutrition, exercise: hasExercise },
     changeMagnitude: magnitude,
     max_abs_silhouette_pct: Math.min(env.max_abs_silhouette_pct || maxAbs, maxAbs),
+    img2img_pipeline_config,
+    regional_anatomical_deltas_pct: regionalMap,
   };
 }
