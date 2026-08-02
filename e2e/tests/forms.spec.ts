@@ -5,7 +5,7 @@
 import { test, expect } from '@playwright/test';
 
 const ADMIN_EMAIL = 'Juliana';
-const PASSWORD = '12345678';
+const PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.E2E_PASSWORD || '12345678';
 
 async function login(request: import('@playwright/test').APIRequestContext, baseURL: string) {
   const res = await request.post(`${baseURL}/api/auth/login`, {
@@ -162,7 +162,7 @@ test('pre-triagem public API returns exhaustive CFM+LGPD schema and accepts full
 test('Forms admin page shows link and embed code as primary share', async ({ page }) => {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('Juliana');
-  await page.getByTestId('login-password').fill('12345678');
+  await page.getByTestId('login-password').fill(PASSWORD);
   await page.getByTestId('login-submit').click();
   await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 
