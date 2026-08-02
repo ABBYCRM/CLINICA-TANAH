@@ -2318,12 +2318,26 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
   }
 
   try {
-    await runGenerate(req, id, patient.id, capture, prompt, {
+    // Mark pending and return immediately — DO App Platform gateway ~100s;
+    // generative + architecture-lock for 4 views routinely exceeds that.
+    db.prepare(`UPDATE body_scenarios SET status = 'pending', updated_at = datetime('now') WHERE id = ?`).run(id);
+    const tenantId = req.tenantId!;
+    const userId = req.user!.id;
+    const genOpts = {
       captureSessionId,
       envelope: execution_plan,
       sex: patient.gender,
       interventions,
       weeks,
+    };
+    setImmediate(() => {
+      runGenerate(req, id, patient.id, capture, prompt, genOpts).catch((e: any) => {
+        try {
+          db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
+            .run(String(e?.message || e).slice(0, 500), id);
+        } catch { /* */ }
+        console.error('[body_scenario_generate]', id, e?.message || e);
+      });
     });
   } catch (e: any) {
     db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
