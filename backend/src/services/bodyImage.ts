@@ -571,7 +571,7 @@ export function lockArchitectureFromBefore(
     const py = `
 import sys
 try:
-  from rembg import remove
+  from rembg import remove, new_session
   import cv2
   import numpy as np
   from PIL import Image, ImageFilter
