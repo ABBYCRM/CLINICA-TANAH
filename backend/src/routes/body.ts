@@ -21,6 +21,7 @@ import {
   buildScenarioPrompt,
   calcBmi,
   enforceAfterReflectsMath,
+  fetchProviderImageBytes,
   generateBodyScenarioImage,
   imageProvidersStatus,
   morphGuidanceFromEnvelope,
@@ -323,10 +324,10 @@ async function generateAndPersistOneView(opts: {
     morphGuidance: opts.morphGuidance,
   });
 
-  // Poll A2E if pending
+  // Poll A2E if pending — nano-banana often needs 60–120s
   if (result.status === 'pending' && result.taskId) {
     let terminal = false;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 24; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       const polled = await pollA2e(result.taskId!);
       if (polled.status === 'completed' && polled.imageUrl) {
@@ -351,10 +352,7 @@ async function generateAndPersistOneView(opts: {
 
   let imageBytes = result.imageBytes;
   if (!imageBytes && result.imageUrl) {
-    try {
-      const res = await fetch(result.imageUrl);
-      if (res.ok) imageBytes = Buffer.from(await res.arrayBuffer());
-    } catch { /* */ }
+    imageBytes = await fetchProviderImageBytes(result.imageUrl) || undefined;
   }
 
   // A2E pending short-circuits the provider chain — if we still have no bytes, force
@@ -373,10 +371,7 @@ async function generateAndPersistOneView(opts: {
       result = fallback;
       imageBytes = fallback.imageBytes;
       if (!imageBytes && fallback.imageUrl) {
-        try {
-          const res = await fetch(fallback.imageUrl);
-          if (res.ok) imageBytes = Buffer.from(await res.arrayBuffer());
-        } catch { /* */ }
+        imageBytes = await fetchProviderImageBytes(fallback.imageUrl) || undefined;
       }
     } else if (!imageBytes) {
       result = fallback;
@@ -397,10 +392,16 @@ async function generateAndPersistOneView(opts: {
   // HARDENED RAG: after must reflect calculator math — reject near-copies of before
   let providerLabel = result.provider;
   if (opts.referencePath && opts.morphGuidance && fs.existsSync(opts.referencePath)) {
+    const generative = result.provider === 'gemini'
+      || result.provider === 'a2e'
+      || result.provider === 'bitdeer'
+      || String(result.provider).startsWith('gemini')
+      || String(result.provider).startsWith('a2e');
     const enforced = enforceAfterReflectsMath({
       referencePath: opts.referencePath,
       afterBytes: imageBytes,
       guidance: opts.morphGuidance,
+      generativeProvider: generative,
     });
     if (enforced.enforced) {
       imageBytes = enforced.bytes;
@@ -2397,9 +2398,8 @@ async function persistScenarioImage(
   taskId?: string,
 ) {
   try {
-    const res = await fetch(imageUrl);
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
+    const buf = await fetchProviderImageBytes(imageUrl);
+    if (buf?.length) {
       const dir = bodyUploadsDir(tenantId, patientId);
       const imagePath = path.join(dir, `scenario-${scenarioId}.jpg`);
       fs.writeFileSync(imagePath, buf);

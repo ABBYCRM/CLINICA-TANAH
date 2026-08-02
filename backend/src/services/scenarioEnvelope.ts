@@ -205,7 +205,9 @@ export function buildPhotorealScenarioPrompt(opts: {
     ? [
         `Edit this clinical ${viewLabel}-view photograph of the SAME adult patient (clinical before→after).`,
         'MANDATORY VISIBLE CHANGE: the AFTER image MUST look thinner/softer-tissue-changed vs BEFORE at waist and abdomen. An unmodified copy of the input is a HARD FAILURE of rule RAG:img2img-after-must-reflect-math.',
-        'IDENTITY LOCKS (keep identical): face, hair, skin tone, skin marks, height, limb lengths, pose (hands/stance), camera framing, lighting, garment identity (same shirt/pants/shoes/colors), studio background.',
+        'TRUE-TO-NATURE REGEN (not liquify): anatomically regenerate the soft-tissue body as a naturally thinner person. Do NOT horizontally squeeze, warp, or liquify the whole frame.',
+        'ARCHITECTURE LOCK (critical): keep ALL background geometry perfectly straight — door frames, cabinet edges, wall corners, baseboards, floor lines, AC vents. No wavy, bent, or bowed verticals/horizontals. Background objects must keep their original perspective and pixel alignment outside the body silhouette.',
+        'IDENTITY LOCKS (keep identical): face, hair, skin tone, skin marks, height, limb lengths, pose (hands/stance), camera framing, lighting, garment identity (same shirt/pants/shoes/colors), room background.',
         'CHANGE ONLY: soft-tissue silhouette + garment drape/fit (looser folds after fat loss; tighter after gain). Preferential central fat reduction at waist/abdomen proportional to fat_delta_kg.',
         `Keep the ${view} viewing angle unchanged.`,
       ].join(' ')
@@ -281,6 +283,7 @@ export function buildPhotorealScenarioPrompt(opts: {
     interventions ? `Clinical plan context (do not render text): ${interventions}.` : '',
     citations ? `Knowledge grounding ids: ${citations}.` : '',
     'Stay true to nature: ultra-realistic professional 4K-grade imagery, natural proportions, no cartoon, no beauty-filter exaggeration, no surgical alteration, no impossible leanness, no face swap.',
+    'FORBIDDEN FAILURE MODES: liquify/warp of doors or furniture; wavy cabinet edges; bent door frames; smeared background following a squeezed torso; returning the input unchanged.',
     `Photoreal only. Burn discreet watermark: ${watermark}.`,
     'Intended use: professionally mediated scenario visualization — not autonomous diagnosis or outcome guarantee.',
   ].filter(Boolean).join(' ');

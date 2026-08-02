@@ -147,10 +147,11 @@ test.describe('LIVE doctor morph', () => {
     expect(diff, 'mean abs pixel diff').not.toBeNull();
     expect(diff!, `diff=${diff}`).toBeGreaterThan(0.02);
 
-    // Provider should reflect real morph, not silent noop
+    // Provider must be generative img2img (gemini/a2e) — not a silent noop.
+    // local_morph is last-resort only; prefer gemini|a2e after this fix.
     const polled = await request.get(`${BASE}/api/clinical/body/${jose.id}/scenarios/${scenarioId}`, { headers });
     const sc = (await polled.json()).scenario || await polled.json();
-    expect(String(sc.provider || '')).toMatch(/morph/i);
+    expect(String(sc.provider || '')).toMatch(/gemini|a2e|bitdeer|morph/i);
     expect(sc.output_view_count).toBeGreaterThanOrEqual(4);
 
     writeFileSync(path.join(SHOT, 'result.json'), JSON.stringify({

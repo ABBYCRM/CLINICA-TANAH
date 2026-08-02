@@ -61,7 +61,7 @@ services:
         type: SECRET
         scope: RUN_TIME
       - key: IMAGE_PROVIDER_ORDER
-        value: "a2e,gemini,bitdeer,local_morph"
+        value: "a2e,gemini,local_morph"
       - key: LOCAL_MORPH_FALLBACK
         value: "1"
       - key: NVIDIA_OCR_MODEL

@@ -1,7 +1,9 @@
 /**
  * Body composition scenario imagery — ultra-realistic clinical visualizations.
  *
- * Provider order (BodyPath-compatible): A2E → Gemini → Bitdeer → local_morph fallback.
+ * Provider order: Gemini → A2E → Bitdeer → local_morph (last-resort only).
+ * Doctor Δkg must use generative img2img first — never prefer silhouette squeeze
+ * (that warps doors/cabinets). local_morph is fallback only when cloud fails.
  * Images illustrate professionally mediated scenarios — NOT autonomous diagnosis.
  */
 import fs from 'fs';
@@ -280,6 +282,22 @@ export async function pollA2e(taskId: string): Promise<ImageGenResult> {
   return { provider: 'a2e', taskId, status: 'pending', raw: json };
 }
 
+/** A2E CDN rejects bare fetches — send a browser UA. */
+export async function fetchProviderImageBytes(imageUrl: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ClinicaTanahBody/1.0)',
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      },
+    });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 async function generateGemini(opts: {
   prompt: string;
   referenceBytes?: Buffer;
@@ -526,7 +544,8 @@ print((s / n / 255.0) if n else 1.0)
 
 /**
  * HARDENED RAG rule: if cloud after ≈ before, force calculator-driven morph.
- * Returns possibly replaced bytes + whether enforcement ran.
+ * Only remorph true near-copies — never overlay squeeze on a successful generative
+ * edit (that warps architecture). Prefer keeping generative bytes when clearly changed.
  */
 export function enforceAfterReflectsMath(opts: {
   referencePath: string;
@@ -534,14 +553,21 @@ export function enforceAfterReflectsMath(opts: {
   guidance?: MorphGuidance | null;
   /** Mean-abs threshold below which after is treated as an illegal copy (default 0.04). */
   maxCopySimilarity?: number;
+  /**
+   * When true (Gemini/A2E/Bitdeer), only remorph byte-identical / near-zero diffs.
+   * Do not liquify a photoreal regen that already changed soft tissue.
+   */
+  generativeProvider?: boolean;
 }): { bytes: Buffer; enforced: boolean; similarity: number | null; contentType: string } {
   const sil = Math.abs(Number(opts.guidance?.silhouette_delta_pct ?? 0));
   const weight = Math.abs(Number(opts.guidance?.weight_delta_kg ?? 0));
   const mustChange = sil >= 3 || weight >= 2;
   let similarity = afterImageSimilarity(opts.referencePath, opts.afterBytes);
-  // Stricter for large clinician targets — near-copies must be remorphed
+  // Generative outputs: only catch true no-ops. Local path: stricter copy detection.
   const threshold = opts.maxCopySimilarity
-    ?? (weight >= 8 || sil >= 8 ? 0.07 : 0.04);
+    ?? (opts.generativeProvider
+      ? (weight >= 8 || sil >= 8 ? 0.025 : 0.015)
+      : (weight >= 8 || sil >= 8 ? 0.07 : 0.04));
   let identicalBytes = false;
   try {
     identicalBytes = opts.afterBytes.equals(fs.readFileSync(opts.referencePath));
@@ -600,6 +626,8 @@ function applyLocalSilhouetteMorphDetailed(
     const abdomen = Number(regions.abdomen ?? waist);
     const hip = Number(regions.hip ?? waist * 0.6);
     const silCap = Math.abs(Number(guidance?.effective_silhouette_cap_pct ?? 12)) || 12;
+    // Subject-band morph: compress only a center person column so doors/cabinets
+    // at the frame edges stay geometrically straight (last-resort when Gemini/A2E fail).
     const py = `
 from PIL import Image, ImageEnhance, ImageFilter
 import sys
@@ -609,24 +637,26 @@ sil = float(sys.argv[3])
 waist = float(sys.argv[4])
 abdomen = float(sys.argv[5])
 hip = float(sys.argv[6])
-# Overall silhouette → horizontal scale (full clinician Δ, no dampening)
 cap = float(sys.argv[7]) / 100.0
 abs_sil = min(cap, abs(sil) / 100.0)
 sign = 1.0 if sil > 0 else -1.0
 base = 1.0 + sign * abs_sil
-base = max(0.72, min(1.22, base))
-# Mid-torso + hip extras (clinical soft-tissue) — stronger for large doctor Δkg
-mid = min(0.20, max(abs_sil * 0.55, (abs(waist) + abs(abdomen)) / 160.0))
-hip_extra = min(0.12, max(abs_sil * 0.35, abs(hip) / 160.0))
-out = Image.new('RGB', (w, h), (245, 240, 232))
+base = max(0.78, min(1.18, base))
+mid = min(0.16, max(abs_sil * 0.45, (abs(waist) + abs(abdomen)) / 180.0))
+hip_extra = min(0.10, max(abs_sil * 0.28, abs(hip) / 180.0))
+# Keep left/right margins unscaled so architecture (doors, cabinets) stays straight
+margin = max(0.12, min(0.28, 0.22))
+band_l = int(w * margin)
+band_r = int(w * (1.0 - margin))
+band_w = max(16, band_r - band_l)
+out = im.copy()
 px = im.load()
 opx = out.load()
 for y in range(h):
     t = y / max(1, h - 1)
-    # face/shoulders locked; soft-tissue on torso/hips
     face_lock = 1.0
     if t < 0.22:
-        face_lock = max(0.0, t / 0.22)  # ramp: head stays identity
+        face_lock = max(0.0, t / 0.22)
     torso = 0.0
     if 0.26 <= t <= 0.74:
         torso = 1.0 - abs(t - 0.48) / 0.26
@@ -636,24 +666,27 @@ for y in range(h):
         hips = 1.0 - abs(t - 0.70) / 0.20
         hips = max(0.0, min(1.0, hips))
     row_scale = base + sign * (mid * torso + hip_extra * hips) * face_lock
-    # blend toward 1.0 at head so identity locks
-    row_scale = 1.0 + (row_scale - 1.0) * (0.15 + 0.85 * face_lock) if t < 0.22 else row_scale
-    row_scale = max(0.70, min(1.25, row_scale))
-    nw = max(8, int(round(w * row_scale)))
-    x0 = (w - nw) // 2
-    for x in range(w):
-        sx = int((x - x0) * (w - 1) / max(1, nw - 1))
-        if 0 <= sx < w and x0 <= x < x0 + nw:
+    if t < 0.22:
+        row_scale = 1.0 + (row_scale - 1.0) * (0.15 + 0.85 * face_lock)
+    row_scale = max(0.76, min(1.20, row_scale))
+    if abs(row_scale - 1.0) < 0.004:
+        continue
+    nw = max(8, int(round(band_w * row_scale)))
+    x0 = band_l + (band_w - nw) // 2
+    for x in range(band_l, band_r):
+        sx = band_l + int((x - x0) * (band_w - 1) / max(1, nw - 1))
+        if band_l <= sx < band_r and x0 <= x < x0 + nw:
             opx[x, y] = px[sx, y]
-        elif x < x0 or x >= x0 + nw:
-            edge = 0 if x < x0 else w - 1
-            opx[x, y] = px[edge, y]
+        elif x < x0:
+            opx[x, y] = px[band_l, y]
+        elif x >= x0 + nw:
+            opx[x, y] = px[band_r - 1, y]
 canvas = out
-canvas = ImageEnhance.Contrast(canvas).enhance(1.08)
-canvas = ImageEnhance.Color(canvas).enhance(0.97)
-canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.2, percent=70, threshold=2))
+canvas = ImageEnhance.Contrast(canvas).enhance(1.04)
+canvas = ImageEnhance.Color(canvas).enhance(0.99)
+canvas = canvas.filter(ImageFilter.UnsharpMask(radius=0.8, percent=40, threshold=3))
 out_path = sys.argv[2]
-canvas.save(out_path, 'JPEG', quality=90, optimize=True)
+canvas.save(out_path, 'JPEG', quality=92, optimize=True)
 `;
     const tmpOut = `${referencePath}.morph-${process.pid}-${Date.now()}.jpg`;
     const res = spawnSync(
@@ -694,14 +727,10 @@ export async function generateBodyScenarioImage(opts: {
   /** If/Then calculator output — drives local_morph and is reflected in cloud prompts */
   morphGuidance?: MorphGuidance | null;
 }): Promise<ImageGenResult> {
-  // Large clinician Δkg → prefer deterministic morph first so AFTER is visibly thinner.
-  const doctorish = Math.abs(Number(opts.morphGuidance?.weight_delta_kg ?? 0)) >= 5
-    || Math.abs(Number(opts.morphGuidance?.silhouette_delta_pct ?? 0)) >= 8
-    || Math.abs(Number(opts.morphGuidance?.effective_silhouette_cap_pct ?? 0)) >= 12;
-  let order = providerOrder();
-  if (doctorish && localMorphEnabled()) {
-    order = ['local_morph', ...order.filter((p) => p !== 'local_morph')];
-  }
+  // Always generative-first (Gemini/A2E/Bitdeer). local_morph stays last — it is a
+  // last-resort silhouette edit and must never win over photoreal img2img for doctor Δkg.
+  let order = providerOrder().filter((p) => p !== 'local_morph');
+  if (localMorphEnabled()) order.push('local_morph');
   if (!order.length) {
     return { provider: 'a2e', status: 'failed', error: 'no_image_provider_configured' };
   }
