@@ -206,8 +206,12 @@ export function enrichEnvelopeWithAnatomy(input: {
   assumptions?: ScenarioAssumptions;
 }): EnrichedScenarioEnvelope {
   const env = input.envelope;
+  const doctorOverride = !!env.doctor_override;
+  const doctorSilCap = Number(env.visual_silhouette_cap_pct) || 18;
   const magnitude: MagnitudeCap = env.magnitude_cap || input.assumptions?.change_magnitude || 'conservative';
-  const maxAbs = magnitude === 'moderate' ? 7 : 4.5;
+  const maxAbs = doctorOverride
+    ? Math.min(doctorSilCap, Math.max(7, Math.abs(Number(env.silhouette_delta_pct) || 0) + 2))
+    : (magnitude === 'moderate' ? 7 : 4.5);
   const weeks = env.horizon_weeks || 12;
   const meds = input.medications || [];
   const hasMed = meds.length > 0;
@@ -251,6 +255,19 @@ export function enrichEnvelopeWithAnatomy(input: {
   };
 
   // Lifestyle / plan directional bases (BodyPath-style)
+  if (doctorOverride && (sil < 0 || wDelta < 0)) {
+    const docScale = Math.min(maxAbs, Math.max(1.5, Math.abs(sil || weightPct) * 0.7));
+    const sign = -1;
+    regionAccum.waist.delta += sign * docScale * 0.85;
+    regionAccum.abdomen.delta += sign * docScale;
+    regionAccum.hip.delta += sign * docScale * 0.7;
+    regionAccum.thigh.delta += sign * docScale * 0.35;
+    regionAccum.chest.delta += sign * docScale * 0.25;
+    const bit = `perda prevista pelo clínico (${wDelta.toFixed(1)} kg) — morph regional`;
+    regionAccum.waist.bits.push(bit);
+    regionAccum.abdomen.bits.push(bit);
+    regionAccum.hip.bits.push(bit);
+  }
   if (hasNutrition) {
     const nutScale = (nutAdh === 'high' ? 1 : nutAdh === 'low' ? 0.55 : 0.75) * scale * 0.35;
     const sign = sil < 0 || wDelta < 0 ? -1 : sil > 0 ? 1 : -1;
@@ -334,9 +351,11 @@ export function enrichEnvelopeWithAnatomy(input: {
     fullRegions.map((r) => [r.region, r.deltaPct]),
   ) as Record<AnatomicalRegion, number>;
 
-  // Pipeline v5: BW magnitude may be 8–12%, but img2img visual delta is capped at 7%.
+  // Pipeline v5: BW magnitude may be 8–12%, but img2img visual delta is capped at 7%
+  // (raised when the clinician owns predicted Δkg).
+  const visualCap = doctorOverride ? doctorSilCap : IMG2IMG_SILHOUETTE_CAP_PCT;
   const effectiveSilhouette = Math.min(
-    IMG2IMG_SILHOUETTE_CAP_PCT,
+    visualCap,
     Math.abs(sil || weightPct || 0),
     maxAbs,
   );
@@ -376,8 +395,8 @@ export function enrichEnvelopeWithAnatomy(input: {
 
   pushRule(
     'R_IMG2IMG_PIPELINE',
-    `horizonte ${weeks}sem · dieta=${hasNutrition} · exercício=${hasExercise}`,
-    `pipeline img2img v5 · teto visual |Δ|≤${IMG2IMG_SILHOUETTE_CAP_PCT}% · teto anatômico |Δ| ${maxAbs}% · locks face/altura/membros/marcas/roupa/pose/fundo · drape de roupa muda com silhueta · RAG kg preservado`,
+    `horizonte ${weeks}sem · dieta=${hasNutrition} · exercício=${hasExercise}${doctorOverride ? ' · Δkg clínico' : ''}`,
+    `pipeline img2img v5 · teto visual |Δ|≤${visualCap}% · teto anatômico |Δ| ${maxAbs}% · locks face/altura/membros/marcas/roupa/pose/fundo · drape de roupa muda com silhueta · RAG kg preservado`,
     true,
     -Math.sign(sil || -1) * effectiveSilhouette || sil,
   );
@@ -479,7 +498,7 @@ export function enrichEnvelopeWithAnatomy(input: {
   }
   narrativePt.push('Envelope anatômico proporcional com fidelidade de identidade (face/altura/membros/marcas/roupa/pose/fundo bloqueados).');
   narrativePt.push(
-    `Pipeline img2img v5 · silhueta efetiva ≤${IMG2IMG_SILHOUETTE_CAP_PCT}% · roupa igual com caimento alterado pela silhueta.`,
+    `Pipeline img2img v5 · silhueta efetiva ≤${visualCap}% · roupa igual com caimento alterado pela silhueta.`,
   );
   narrativePt.push('Simulação ilustrativa — não é previsão médica. Incerteza aumenta com o horizonte; resultados reais variam.');
 

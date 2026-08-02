@@ -30,6 +30,8 @@ export type MorphGuidance = {
   waist_delta_cm?: number | null;
   identity_locks?: string[];
   effective_silhouette_delta_pct?: number;
+  /** Visual morph cap (%); raised when clinician owns predicted Δkg. */
+  effective_silhouette_cap_pct?: number;
 };
 
 /** Extract morph guidance from enriched scenario execution_plan / anatomical envelope. */
@@ -48,9 +50,14 @@ export function morphGuidanceFromEnvelope(envelope: any | null | undefined): Mor
   );
   // Prefer signed silhouette from envelope (negative = loss)
   const silSigned = Number(envelope.silhouette_delta_pct ?? 0);
+  const cap = Number(
+    envelope.visual_silhouette_cap_pct
+      ?? pipe?.magnitude_ceiling_pct
+      ?? (envelope.doctor_override ? 18 : 7),
+  ) || 7;
   const silhouette = silSigned !== 0
-    ? Math.max(-7, Math.min(7, silSigned))
-    : (silRaw ? -Math.min(7, Math.abs(silRaw)) : -5);
+    ? Math.max(-cap, Math.min(cap, silSigned))
+    : (silRaw ? -Math.min(cap, Math.abs(silRaw)) : -5);
   const locks = pipe?.identity_locks || [
     'face', 'height', 'limb_lengths', 'skin_marks', 'clothing', 'pose', 'background',
   ];
@@ -61,6 +68,7 @@ export function morphGuidanceFromEnvelope(envelope: any | null | undefined): Mor
     fat_delta_kg: envelope.deltas?.fat_mass_kg ?? null,
     waist_delta_cm: envelope.deltas?.waist_cm ?? null,
     identity_locks: locks,
+    effective_silhouette_cap_pct: cap,
     effective_silhouette_delta_pct: Math.abs(silhouette),
   };
 }
@@ -534,15 +542,17 @@ export function enforceAfterReflectsMath(opts: {
   }
 
   // Amplify guidance slightly so the deterministic morph is clinically obvious
+  const cap = Math.abs(Number(opts.guidance?.effective_silhouette_cap_pct ?? 7)) || 7;
   const amplified: MorphGuidance = {
     ...(opts.guidance || { silhouette_delta_pct: -5, regional_deltas_pct: {} }),
-    silhouette_delta_pct: Math.max(-7, Math.min(7,
+    silhouette_delta_pct: Math.max(-cap, Math.min(cap,
       (opts.guidance?.silhouette_delta_pct ?? -5) * 1.15,
     )),
+    effective_silhouette_cap_pct: cap,
     regional_deltas_pct: Object.fromEntries(
       Object.entries(opts.guidance?.regional_deltas_pct || {}).map(([k, v]) => [
         k,
-        Math.max(-7, Math.min(7, Number(v) * 1.25)),
+        Math.max(-cap, Math.min(cap, Number(v) * 1.25)),
       ]),
     ),
   };
@@ -565,6 +575,7 @@ function applyLocalSilhouetteMorph(
     const waist = Number(regions.waist ?? regions.abdomen ?? sil * 0.3);
     const abdomen = Number(regions.abdomen ?? waist);
     const hip = Number(regions.hip ?? waist * 0.6);
+    const silCap = Math.abs(Number(guidance?.effective_silhouette_cap_pct ?? 12)) || 12;
     const py = `
 from PIL import Image, ImageEnhance, ImageFilter
 import sys
@@ -574,14 +585,14 @@ sil = float(sys.argv[3])
 waist = float(sys.argv[4])
 abdomen = float(sys.argv[5])
 hip = float(sys.argv[6])
-# Overall silhouette → horizontal scale (cap 12%)
-abs_sil = min(0.12, abs(sil) / 100.0)
+# Overall silhouette → horizontal scale (cap from clinician guidance, default 12%)
+abs_sil = min(float(sys.argv[7]) / 100.0, abs(sil) / 100.0)
 sign = 1.0 if sil > 0 else -1.0
 base = 1.0 + sign * abs_sil * 0.9
-base = max(0.86, min(1.12, base))
+base = max(0.80, min(1.18, base))
 # Mid-torso extra squeeze from waist/abdomen (clinical soft-tissue)
-mid = min(0.08, (abs(waist) + abs(abdomen)) / 200.0)
-hip_extra = min(0.05, abs(hip) / 200.0)
+mid = min(0.12, (abs(waist) + abs(abdomen)) / 200.0)
+hip_extra = min(0.08, abs(hip) / 200.0)
 out = Image.new('RGB', (w, h), (245, 240, 232))
 px = im.load()
 opx = out.load()
@@ -598,7 +609,7 @@ for y in range(h):
         hips = 1.0 - abs(t - 0.70) / 0.18
         hips = max(0.0, min(1.0, hips))
     row_scale = base + sign * (mid * torso + hip_extra * hips)
-    row_scale = max(0.82, min(1.14, row_scale))
+    row_scale = max(0.78, min(1.20, row_scale))
     nw = max(8, int(round(w * row_scale)))
     # nearest-neighbor sample from source row into centered narrower/wider row
     x0 = (w - nw) // 2
@@ -620,7 +631,7 @@ canvas.save(out_path, 'JPEG', quality=90, optimize=True)
     const tmpOut = `${referencePath}.morph-${process.pid}.jpg`;
     const res = spawnSync(
       'python3',
-      ['-c', py, referencePath, tmpOut, String(sil), String(waist), String(abdomen), String(hip)],
+      ['-c', py, referencePath, tmpOut, String(sil), String(waist), String(abdomen), String(hip), String(silCap)],
       { encoding: 'utf8' },
     );
     if (res.status === 0 && fs.existsSync(tmpOut)) {

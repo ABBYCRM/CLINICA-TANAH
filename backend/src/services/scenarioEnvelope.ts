@@ -49,6 +49,10 @@ export type ScenarioEnvelope = {
   rag_citations?: CompositionProjection['rag_citations'];
   visual_guidance?: CompositionProjection['visual_guidance'];
   silhouette_delta_pct?: number;
+  doctor_override?: boolean;
+  visual_silhouette_cap_pct?: number;
+  doctor_predicted_loss_kg?: number | null;
+  target_weight_kg?: number | null;
   rules: EnvelopeRule[];
   identity_locks: string;
   summary: string;
@@ -135,13 +139,17 @@ export function computeScenarioEnvelope(input: {
   exercisePlans?: PlanInput[];
   plan_config: PlanConfig;
   assumptions: ScenarioAssumptions;
+  doctor_predicted_loss_kg?: number | null;
+  target_weight_kg?: number | null;
 }): ScenarioEnvelope {
   const nutritionPlans = mergePlanCalories(input.nutritionPlans, input.plan_config);
   const proj = projectBodyComposition({
     ...input,
     nutritionPlans,
   });
-  const maxAbs = proj.magnitude_cap === 'moderate' ? 12 : 8;
+  const maxAbs = proj.doctor_override
+    ? (proj.visual_silhouette_cap_pct ?? 18)
+    : (proj.magnitude_cap === 'moderate' ? 12 : 8);
   return {
     ok: proj.ok,
     blockers: proj.blockers,
@@ -163,6 +171,10 @@ export function computeScenarioEnvelope(input: {
     rag_citations: proj.rag_citations,
     visual_guidance: proj.visual_guidance,
     silhouette_delta_pct: proj.silhouette_delta_pct,
+    doctor_override: proj.doctor_override,
+    visual_silhouette_cap_pct: proj.visual_silhouette_cap_pct,
+    doctor_predicted_loss_kg: proj.doctor_predicted_loss_kg,
+    target_weight_kg: proj.target_weight_kg,
     rules: proj.rules,
     identity_locks: proj.identity_locks,
     summary: proj.summary,

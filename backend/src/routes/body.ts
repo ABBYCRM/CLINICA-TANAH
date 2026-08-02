@@ -1857,6 +1857,10 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
     change_magnitude: req.body?.change_magnitude === 'moderate' ? 'moderate' : 'conservative',
     ...(req.body?.assumptions || {}),
   };
+  const doctor_predicted_loss_kg = req.body?.doctor_predicted_loss_kg != null
+    ? Number(req.body.doctor_predicted_loss_kg)
+    : (req.body?.predicted_loss_kg != null ? Number(req.body.predicted_loss_kg) : null);
+  const target_weight_kg = req.body?.target_weight_kg != null ? Number(req.body.target_weight_kg) : null;
   const basePlan = computeScenarioEnvelope({
     horizon_weeks: horizon,
     sex: patient.gender,
@@ -1874,6 +1878,8 @@ router.post('/:patientId/scenarios/preview', requireRole('doctor', 'nurse', 'adm
     exercisePlans: plans.filter((p) => p.plan_type === 'exercise'),
     plan_config,
     assumptions,
+    doctor_predicted_loss_kg: Number.isFinite(doctor_predicted_loss_kg as number) ? doctor_predicted_loss_kg : null,
+    target_weight_kg: Number.isFinite(target_weight_kg as number) ? target_weight_kg : null,
   });
   const execution_plan = enrichFromContext({
     envelope: basePlan,
@@ -2046,6 +2052,11 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
     recovery_adequate: z.boolean().optional(),
     comorbidity_stable: z.boolean().optional(),
     change_magnitude: z.enum(['conservative', 'moderate']).optional(),
+    /** Clinician-owned predicted loss in kg (positive = loss). Primary driver for morph. */
+    doctor_predicted_loss_kg: z.number().positive().max(200).optional().nullable(),
+    predicted_loss_kg: z.number().positive().max(200).optional().nullable(),
+    /** Absolute target weight in kg. */
+    target_weight_kg: z.number().positive().max(400).optional().nullable(),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
 
@@ -2075,6 +2086,9 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
       || 'conservative',
   };
 
+  const doctorLoss = parsed.data.doctor_predicted_loss_kg ?? parsed.data.predicted_loss_kg ?? null;
+  const targetWeight = parsed.data.target_weight_kg ?? null;
+
   const basePlan = computeScenarioEnvelope({
     horizon_weeks: weeks,
     sex: patient.gender,
@@ -2092,6 +2106,8 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
     exercisePlans: plans.filter((p) => p.plan_type === 'exercise'),
     plan_config,
     assumptions,
+    doctor_predicted_loss_kg: doctorLoss,
+    target_weight_kg: targetWeight,
   });
   const execution_plan = enrichFromContext({
     envelope: basePlan,

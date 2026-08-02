@@ -43,6 +43,20 @@ describe('morphGuidanceFromEnvelope', () => {
     expect(g!.weight_delta_kg).toBe(-10.5);
     expect(g!.identity_locks).toContain('face');
   });
+
+  it('raises silhouette morph cap when clinician owns predicted Δkg', () => {
+    const g = morphGuidanceFromEnvelope({
+      ok: true,
+      doctor_override: true,
+      visual_silhouette_cap_pct: 18,
+      silhouette_delta_pct: -18,
+      deltas: { weight_kg: -40, fat_mass_kg: -34, ffm_kg: -6, waist_cm: -12 },
+      regional_anatomical_deltas_pct: { waist: -8, abdomen: -9, hip: -6 },
+    });
+    expect(g!.silhouette_delta_pct).toBe(-18);
+    expect(g!.effective_silhouette_cap_pct).toBe(18);
+    expect(g!.weight_delta_kg).toBe(-40);
+  });
 });
 
 describe('enforceAfterReflectsMath', () => {

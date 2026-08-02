@@ -53,11 +53,22 @@ export type PlanInput = {
   summary?: string | null;
 };
 
+/** Default img2img visual silhouette cap (%). Doctor override may raise this. */
+export const DEFAULT_IMG2IMG_SIL_CAP = 7;
+/** When the doctor enters predicted loss, allow stronger silhouette morph (identity still locked). */
+export const DOCTOR_IMG2IMG_SIL_CAP = 18;
+
 export type CompositionProjection = {
   ok: boolean;
   blockers: string[];
   horizon_weeks: number;
   magnitude_cap: MagnitudeCap;
+  /** True when projected Δkg came from the clinician, not the auto if/then engine. */
+  doctor_override?: boolean;
+  /** Absolute visual silhouette cap applied for morph/prompts. */
+  visual_silhouette_cap_pct?: number;
+  doctor_predicted_loss_kg?: number | null;
+  target_weight_kg?: number | null;
   energy: {
     bmr_kcal: number | null;
     tdee_kcal: number | null;
@@ -105,6 +116,61 @@ export type CompositionProjection = {
     intensity: 'subtle' | 'modest' | 'noticeable';
   };
 };
+
+/** Resolve clinician-entered target weight or predicted loss into a signed Δkg. */
+export function resolveDoctorWeightDelta(opts: {
+  baseline_kg: number | null | undefined;
+  height_cm?: number | null;
+  doctor_predicted_loss_kg?: number | null;
+  target_weight_kg?: number | null;
+}): { delta_kg: number | null; target_kg: number | null; loss_kg: number | null; error?: string } {
+  const w0 = opts.baseline_kg != null && opts.baseline_kg > 0 ? opts.baseline_kg : null;
+  if (!w0) return { delta_kg: null, target_kg: null, loss_kg: null, error: 'baseline_weight_required' };
+
+  let target: number | null = null;
+  if (opts.target_weight_kg != null && Number.isFinite(opts.target_weight_kg)) {
+    target = Number(opts.target_weight_kg);
+  } else if (opts.doctor_predicted_loss_kg != null && Number.isFinite(opts.doctor_predicted_loss_kg)) {
+    const loss = Math.abs(Number(opts.doctor_predicted_loss_kg));
+    if (loss < 0.1) return { delta_kg: null, target_kg: null, loss_kg: null, error: 'loss_too_small' };
+    target = w0 - loss;
+  } else {
+    return { delta_kg: null, target_kg: null, loss_kg: null };
+  }
+
+  // Safety floor: BMI ≥ 16 or absolute 40 kg
+  const h = opts.height_cm != null && opts.height_cm > 100 ? opts.height_cm : null;
+  const minByBmi = h ? 16 * (h / 100) ** 2 : 40;
+  const minKg = Math.max(40, Math.round(minByBmi * 10) / 10);
+  if (target < minKg) {
+    return {
+      delta_kg: null,
+      target_kg: target,
+      loss_kg: Math.round((w0 - target) * 10) / 10,
+      error: `target_below_safe_floor_${minKg}`,
+    };
+  }
+  // Cap gain at +15% BW (illustrative)
+  const maxKg = Math.round(w0 * 1.15 * 10) / 10;
+  if (target > maxKg) {
+    return {
+      delta_kg: null,
+      target_kg: target,
+      loss_kg: Math.round((w0 - target) * 10) / 10,
+      error: `target_above_safe_ceiling_${maxKg}`,
+    };
+  }
+
+  const delta = Math.round((target - w0) * 100) / 100;
+  if (Math.abs(delta) < 0.1) {
+    return { delta_kg: null, target_kg: target, loss_kg: 0, error: 'loss_too_small' };
+  }
+  return {
+    delta_kg: delta,
+    target_kg: Math.round(target * 10) / 10,
+    loss_kg: Math.round((w0 - target) * 10) / 10,
+  };
+}
 
 function classifyMed(m: MedInput): 'tirzepatide' | 'semaglutide' | 'liraglutide' | 'metformin' | 'orlistat' | 'hrt' | 'other' {
   const s = `${m.name} ${m.class_tag || ''} ${m.dosage || ''}`.toLowerCase();
@@ -214,17 +280,36 @@ export function projectBodyComposition(input: {
   exercisePlans?: PlanInput[];
   plan_config: PlanConfig;
   assumptions: ScenarioAssumptions;
+  /** Clinician-owned predicted loss (kg). Positive = loss. Drives morph when set. */
+  doctor_predicted_loss_kg?: number | null;
+  /** Absolute target weight (kg). Alternative to predicted loss. */
+  target_weight_kg?: number | null;
 }): CompositionProjection {
   const blockers: string[] = [];
   const weeks = Math.max(4, Math.min(260, Number(input.horizon_weeks) || 12));
   const months = weeks / 4.345;
   const cap: MagnitudeCap = input.assumptions.change_magnitude === 'moderate' ? 'moderate' : 'conservative';
-  // Cap total BW % change for communication realism
+  // Cap total BW % change for communication realism (auto mode only)
   const maxAbsPct = cap === 'moderate' ? 12 : 8;
 
   const w0 = input.baseline.weight_kg ?? null;
   const h0 = input.baseline.height_cm ?? null;
   if (!w0 || !h0) blockers.push('Altura e peso do baseline são obrigatórios para o envelope.');
+
+  const doctorResolved = resolveDoctorWeightDelta({
+    baseline_kg: w0,
+    height_cm: h0,
+    doctor_predicted_loss_kg: input.doctor_predicted_loss_kg,
+    target_weight_kg: input.target_weight_kg,
+  });
+  const hasDoctorOverride = doctorResolved.delta_kg != null;
+  if (doctorResolved.error?.startsWith('target_below_safe_floor_')) {
+    blockers.push(`Peso-alvo abaixo do piso clínico seguro (~${doctorResolved.error.replace('target_below_safe_floor_', '')} kg).`);
+  } else if (doctorResolved.error?.startsWith('target_above_safe_ceiling_')) {
+    blockers.push(`Peso-alvo acima do teto ilustrativo (~${doctorResolved.error.replace('target_above_safe_ceiling_', '')} kg).`);
+  } else if (doctorResolved.error === 'loss_too_small') {
+    blockers.push('Informe uma perda (ou ganho) prevista de pelo menos 0,1 kg.');
+  }
 
   const pc = input.plan_config || {};
   const medIds = new Set(pc.medication_record_ids || []);
@@ -234,8 +319,9 @@ export function projectBodyComposition(input: {
   const nuts = (input.nutritionPlans || []).filter((p) => nutIds.has(p.id));
   const exs = (input.exercisePlans || []).filter((p) => exIds.has(p.id));
 
-  if (!meds.length && !nuts.length && !exs.length) {
-    blockers.push('Selecione ao menos um plano de intervenção (medicamento, nutrição ou treino).');
+  // Doctor-owned Δkg replaces the need for auto intervention selection
+  if (!hasDoctorOverride && !meds.length && !nuts.length && !exs.length) {
+    blockers.push('Informe a perda prevista (kg) ou selecione um plano de intervenção.');
   }
   if (input.assumptions.comorbidity_stable === false) {
     blockers.push('Comorbidades não estáveis — revise clinicamente antes de simular.');
@@ -431,17 +517,30 @@ export function projectBodyComposition(input: {
 
   // Physiological weekly ceiling
   let totalKg = combinedKg;
-  if (w0) {
+  if (!hasDoctorOverride && w0) {
     const maxKg = -Math.min(maxWeeklyKg * weeks, (maxWeeklyPct / 100) * w0 * weeks);
     // maxKg is negative (loss ceiling). Allow HRT-driven slight gain separately via ffm
     if (totalKg < maxKg) totalKg = maxKg;
   }
 
-  // Magnitude communication cap (% BW)
-  if (w0) {
+  // Magnitude communication cap (% BW) — skipped when clinician owns the Δkg
+  if (!hasDoctorOverride && w0) {
     const pct = (totalKg / w0) * 100;
     if (pct < -maxAbsPct) totalKg = -((maxAbsPct / 100) * w0);
     if (pct > 1.5 && !meds.some((m) => classifyMed(m) === 'hrt')) totalKg = Math.min(totalKg, 0.015 * w0);
+  }
+
+  // Clinician-owned predicted outcome replaces engine Δkg (meds/diet remain educational context)
+  if (hasDoctorOverride && doctorResolved.delta_kg != null) {
+    totalKg = doctorResolved.delta_kg;
+    push(
+      'R_DOCTOR_PREDICTED_LOSS',
+      'Clínico informou perda/alvo de peso previsto',
+      `Δkg clínico ${totalKg.toFixed(1)} kg (alvo ${doctorResolved.target_kg} kg) — morph das 4 vistas usa este valor; não é previsão automática do motor`,
+      true,
+      w0 ? (totalKg / w0) * 100 : 0,
+      totalKg,
+    );
   }
 
   // Partition fat vs FFM
@@ -455,12 +554,16 @@ export function projectBodyComposition(input: {
       : (rates.ffm_loss_fraction_no_rt ?? 0.35);
 
   let fatDelta = 0;
-  let ffmChange = ffmDelta;
+  let ffmChange = hasDoctorOverride ? 0 : ffmDelta;
   if (totalKg < 0) {
     // weight loss: mostly fat, some FFM; meds skew more to fat
     const loss = -totalKg;
-    const medShare = medKg < 0 ? Math.min(1, (-medKg) / Math.max(1e-6, -combinedKg || 1)) : 0;
-    const fatFrac = medFatFrac * medShare + (1 - medShare) * (1 - ffmLossFrac);
+    const medShare = (!hasDoctorOverride && medKg < 0)
+      ? Math.min(1, (-medKg) / Math.max(1e-6, -combinedKg || 1))
+      : 0;
+    const fatFrac = hasDoctorOverride
+      ? 0.85
+      : (medFatFrac * medShare + (1 - medShare) * (1 - ffmLossFrac));
     fatDelta = -(loss * fatFrac);
     ffmChange += -(loss * (1 - fatFrac));
   } else {
@@ -468,8 +571,10 @@ export function projectBodyComposition(input: {
     ffmChange += totalKg * 0.7;
   }
 
-  // Net weight from compartments
-  const netWeightDelta = fatDelta + ffmChange;
+  // Net weight from compartments — doctor override is authoritative
+  const netWeightDelta = hasDoctorOverride && doctorResolved.delta_kg != null
+    ? doctorResolved.delta_kg
+    : (fatDelta + ffmChange);
   const weight1 = w0 != null ? Math.round((w0 + netWeightDelta) * 10) / 10 : null;
   const fat1 = fat0 != null ? Math.max(2, Math.round((fat0 + fatDelta) * 10) / 10) : null;
   const ffm1 = ffm0 != null ? Math.max(20, Math.round((ffm0 + ffmChange) * 10) / 10) : null;
@@ -482,13 +587,16 @@ export function projectBodyComposition(input: {
   const waist0 = input.baseline.waist_cm ?? null;
   const waist1 = waist0 != null ? Math.round((waist0 + waistDelta) * 10) / 10 : null;
 
-  // BW magnitude may use 8–12% caps; img2img visual silhouette is capped at 7% (pipeline v5).
-  const IMG2IMG_SIL_CAP = 7;
-  const silhouetteRaw = w0 ? Math.max(-maxAbsPct, Math.min(maxAbsPct, (netWeightDelta / w0) * 100)) : 0;
-  const silhouette = Math.max(-IMG2IMG_SIL_CAP, Math.min(IMG2IMG_SIL_CAP, silhouetteRaw));
+  // Visual silhouette: auto mode ≤7%; doctor-predicted loss maps BW% → stronger morph (≤18%).
+  const silCap = hasDoctorOverride ? DOCTOR_IMG2IMG_SIL_CAP : DEFAULT_IMG2IMG_SIL_CAP;
+  const weightPctRaw = w0 ? (netWeightDelta / w0) * 100 : 0;
+  const silhouetteRaw = hasDoctorOverride
+    ? Math.sign(weightPctRaw) * Math.min(silCap, Math.abs(weightPctRaw) * 0.55)
+    : Math.max(-maxAbsPct, Math.min(maxAbsPct, weightPctRaw));
+  const silhouette = Math.max(-silCap, Math.min(silCap, silhouetteRaw));
   const absSil = Math.abs(silhouette);
   const intensity: CompositionProjection['visual_guidance']['intensity'] =
-    absSil >= 6 ? 'noticeable' : absSil >= 3 ? 'modest' : 'subtle';
+    absSil >= 10 ? 'noticeable' : absSil >= 6 ? 'noticeable' : absSil >= 3 ? 'modest' : 'subtle';
 
   const muscleTone = ffmChange > 0.15
     ? 'slightly firmer limb and trunk musculature'
@@ -515,6 +623,10 @@ export function projectBodyComposition(input: {
     blockers,
     horizon_weeks: weeks,
     magnitude_cap: cap,
+    doctor_override: hasDoctorOverride,
+    visual_silhouette_cap_pct: silCap,
+    doctor_predicted_loss_kg: hasDoctorOverride ? doctorResolved.loss_kg : null,
+    target_weight_kg: hasDoctorOverride ? doctorResolved.target_kg : null,
     energy: {
       bmr_kcal: bmr != null ? Math.round(bmr) : null,
       tdee_kcal: tdee != null ? Math.round(tdee) : null,
@@ -556,9 +668,13 @@ export function projectBodyComposition(input: {
     })),
     rag_context: ragContext,
     rules,
-    identity_locks: `Face/altura/membros/marcas/roupa/pose/fundo bloqueados · teto BW |Δ| ${maxAbsPct}% · silhueta img2img ≤7% · med ${medMonth.toFixed(2)} kg/mês · dieta ${dietMonth.toFixed(2)} kg/mês · sem promessa clínica`,
+    identity_locks: hasDoctorOverride
+      ? `Face/altura/membros/marcas/roupa/pose/fundo bloqueados · Δkg clínico ${netWeightDelta.toFixed(1)} kg · silhueta morph ≤${silCap}% · sem promessa clínica`
+      : `Face/altura/membros/marcas/roupa/pose/fundo bloqueados · teto BW |Δ| ${maxAbsPct}% · silhueta img2img ≤${silCap}% · med ${medMonth.toFixed(2)} kg/mês · dieta ${dietMonth.toFixed(2)} kg/mês · sem promessa clínica`,
     summary: ok
-      ? `${weeks}w · Δ ${netWeightDelta.toFixed(1)} kg (gordura ${fatDelta.toFixed(1)} / FFM ${ffmChange.toFixed(1)}) · déficit ${deficitDay != null ? Math.round(deficitDay) : '—'} kcal/d · RAG ${chunks.length} fontes`
+      ? (hasDoctorOverride
+        ? `${weeks}w · Δ clínico ${netWeightDelta.toFixed(1)} kg → ${weight1} kg (gordura ${fatDelta.toFixed(1)} / FFM ${ffmChange.toFixed(1)}) · morph 4 vistas`
+        : `${weeks}w · Δ ${netWeightDelta.toFixed(1)} kg (gordura ${fatDelta.toFixed(1)} / FFM ${ffmChange.toFixed(1)}) · déficit ${deficitDay != null ? Math.round(deficitDay) : '—'} kcal/d · RAG ${chunks.length} fontes`)
       : blockers.join(' '),
     visual_guidance: {
       soft_tissue: softTissue,

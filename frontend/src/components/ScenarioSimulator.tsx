@@ -196,6 +196,9 @@ export default function ScenarioSimulator({
   const [comorbidity, setComorbidity] = useState(true);
   const [dailyCalories, setDailyCalories] = useState('');
   const [deficitKcal, setDeficitKcal] = useState('');
+  /** Clinician-owned predicted loss (kg). Primary driver for after-image morph. */
+  const [predictedLossKg, setPredictedLossKg] = useState('');
+  const [targetWeightKg, setTargetWeightKg] = useState('');
   const [nutOverrideId, setNutOverrideId] = useState('');
   const [exOverrideId, setExOverrideId] = useState('');
   const [trainingStyle, setTrainingStyle] = useState('full_body');
@@ -254,6 +257,43 @@ export default function ScenarioSimulator({
   const effectiveHorizon = customHorizon.trim()
     ? Math.min(104, Math.max(1, Number(customHorizon) || horizon))
     : horizon;
+
+  const baselineWeight = Number(summary.weight_kg ?? latest?.weight_kg ?? 0) || null;
+
+  const doctorLossNum = predictedLossKg.trim() ? Number(predictedLossKg) : null;
+  const doctorTargetNum = targetWeightKg.trim() ? Number(targetWeightKg) : null;
+  const hasDoctorTarget = (doctorLossNum != null && Number.isFinite(doctorLossNum) && doctorLossNum >= 0.1)
+    || (doctorTargetNum != null && Number.isFinite(doctorTargetNum) && doctorTargetNum >= 40);
+  const previewTargetKg = hasDoctorTarget && baselineWeight
+    ? (doctorTargetNum != null && Number.isFinite(doctorTargetNum)
+      ? doctorTargetNum
+      : Math.round((baselineWeight - Math.abs(doctorLossNum || 0)) * 10) / 10)
+    : null;
+
+  const setLossFromDoctor = (raw: string) => {
+    setPredictedLossKg(raw);
+    const n = Number(raw);
+    if (baselineWeight && Number.isFinite(n) && n >= 0) {
+      setTargetWeightKg(String(Math.round((baselineWeight - n) * 10) / 10));
+    }
+  };
+
+  const setTargetFromDoctor = (raw: string) => {
+    setTargetWeightKg(raw);
+    const n = Number(raw);
+    if (baselineWeight && Number.isFinite(n) && n > 0) {
+      setPredictedLossKg(String(Math.round((baselineWeight - n) * 10) / 10));
+    }
+  };
+
+  const doctorPayload = () => ({
+    doctor_predicted_loss_kg: doctorLossNum != null && Number.isFinite(doctorLossNum) && doctorLossNum >= 0.1
+      ? Math.abs(doctorLossNum)
+      : null,
+    target_weight_kg: doctorTargetNum != null && Number.isFinite(doctorTargetNum) && doctorTargetNum >= 40
+      ? doctorTargetNum
+      : null,
+  });
 
   const applyNutOverride = (id: string) => {
     setNutOverrideId(id);
@@ -324,6 +364,7 @@ export default function ScenarioSimulator({
         recovery_adequate: recovery,
         comorbidity_stable: comorbidity,
         change_magnitude: magnitude,
+        ...doctorPayload(),
       });
       setEnvelope(res.execution_plan);
     } catch (e: any) {
@@ -336,9 +377,13 @@ export default function ScenarioSimulator({
   const generate = async () => {
     setBusy('generate'); setError('');
     try {
+      if (!hasDoctorTarget) {
+        setError(t('body.sim_doctor_loss_required'));
+        return;
+      }
       // Ensure If/Then envelope matches current controls before generating after-images
       let plan = activeEnvelope;
-      if (!plan?.ok) {
+      if (!plan?.ok || !plan?.doctor_override) {
         const preview = await api.post(`/api/clinical/body/${patientId}/scenarios/preview`, {
           horizon_weeks: effectiveHorizon,
           weeks: effectiveHorizon,
@@ -349,6 +394,7 @@ export default function ScenarioSimulator({
           recovery_adequate: recovery,
           comorbidity_stable: comorbidity,
           change_magnitude: magnitude,
+          ...doctorPayload(),
         });
         plan = preview.execution_plan;
         setEnvelope(plan);
@@ -376,6 +422,7 @@ export default function ScenarioSimulator({
         recovery_adequate: recovery,
         comorbidity_stable: comorbidity,
         change_magnitude: magnitude,
+        ...doctorPayload(),
       });
       if (res?.execution_plan) setEnvelope(res.execution_plan);
       setStepPassword('');
@@ -473,7 +520,7 @@ export default function ScenarioSimulator({
 
   const providersOrder = data?.image_providers?.order;
   const simulationsAllowed = !!data?.simulations_allowed;
-  const generateDisabled = busy === 'generate' || !simulationsAllowed || !stepPassword;
+  const generateDisabled = busy === 'generate' || !simulationsAllowed || !stepPassword || !hasDoctorTarget;
   const generatePanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -498,7 +545,6 @@ export default function ScenarioSimulator({
         <p className="text-sm text-[color:var(--ink)] leading-relaxed">
           {t('body.sim_generate_panel_hint')}
         </p>
-        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.sim_configure_below')}</p>
       </div>
 
       {!simulationsAllowed && (
@@ -512,6 +558,64 @@ export default function ScenarioSimulator({
           {t('body.sim_photos_missing')}
         </p>
       )}
+
+      <div
+        className="rounded-xl border border-[color:var(--edge-soft)] bg-[color:var(--paper-mid)] p-3 space-y-3"
+        data-testid="sim-doctor-loss"
+      >
+        <div className="space-y-1">
+          <p className="font-display text-base text-[color:var(--ink)]">{t('body.sim_doctor_loss_title')}</p>
+          <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">{t('body.sim_doctor_loss_hint')}</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="text-xs text-[color:var(--ink-muted)] block">
+            {t('body.sim_predicted_loss_kg')}
+            <input
+              className="input mt-1 w-full tabular-nums"
+              type="number"
+              min={0.1}
+              step={0.1}
+              inputMode="decimal"
+              placeholder={t('body.sim_predicted_loss_ph')}
+              value={predictedLossKg}
+              onChange={(e) => setLossFromDoctor(e.target.value)}
+              data-testid="sim-predicted-loss"
+              disabled={!simulationsAllowed}
+            />
+          </label>
+          <label className="text-xs text-[color:var(--ink-muted)] block">
+            {t('body.sim_target_weight_kg')}
+            <input
+              className="input mt-1 w-full tabular-nums"
+              type="number"
+              min={40}
+              step={0.1}
+              inputMode="decimal"
+              placeholder={baselineWeight ? String(baselineWeight) : t('body.sim_target_weight_ph')}
+              value={targetWeightKg}
+              onChange={(e) => setTargetFromDoctor(e.target.value)}
+              data-testid="sim-target-weight"
+              disabled={!simulationsAllowed}
+            />
+          </label>
+        </div>
+        {baselineWeight != null && (
+          <p className="text-xs text-[color:var(--ink)]" data-testid="sim-doctor-loss-preview">
+            {t('body.sim_doctor_loss_preview', {
+              from: baselineWeight,
+              to: previewTargetKg ?? '—',
+              loss: hasDoctorTarget && previewTargetKg != null
+                ? Math.round((baselineWeight - previewTargetKg) * 10) / 10
+                : '—',
+            })}
+          </p>
+        )}
+        {!hasDoctorTarget && (
+          <p className="text-xs text-[#8b3a2a]" data-testid="sim-doctor-loss-needed">
+            {t('body.sim_doctor_loss_required')}
+          </p>
+        )}
+      </div>
 
       <div className="sim-generate-actions">
         <label className="sim-generate-password text-xs text-[color:var(--ink-muted)] block">

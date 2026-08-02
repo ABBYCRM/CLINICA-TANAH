@@ -114,4 +114,37 @@ describe('body composition projection engine', () => {
     });
     expect(tirz.deltas.weight_kg).toBeLessThan(met.deltas.weight_kg);
   });
+
+  it('honors clinician-predicted loss as authoritative Δkg for morph', () => {
+    const p = projectBodyComposition({
+      ...base,
+      doctor_predicted_loss_kg: 40,
+      medications: [],
+      nutritionPlans: [],
+      exercisePlans: [],
+      plan_config: {
+        medication_record_ids: [],
+        nutrition_plan_ids: [],
+        exercise_plan_ids: [],
+      },
+    });
+    expect(p.ok).toBe(true);
+    expect(p.doctor_override).toBe(true);
+    expect(p.deltas.weight_kg).toBeCloseTo(-40, 0);
+    expect(p.projected.weight_kg).toBeCloseTo(52, 0);
+    expect(p.target_weight_kg).toBe(52);
+    expect(Math.abs(p.silhouette_delta_pct)).toBeGreaterThan(7);
+    expect(p.visual_silhouette_cap_pct).toBe(18);
+  });
+
+  it('accepts absolute target weight as clinician override', () => {
+    const p = projectBodyComposition({
+      ...base,
+      target_weight_kg: 70,
+    });
+    expect(p.ok).toBe(true);
+    expect(p.doctor_override).toBe(true);
+    expect(p.deltas.weight_kg).toBeCloseTo(-22, 0);
+    expect(p.projected.weight_kg).toBe(70);
+  });
 });
