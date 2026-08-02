@@ -1646,4 +1646,26 @@ export function seedMarketingDefaults(tenantId: string): void {
   try {
     openDb().exec(`CREATE INDEX IF NOT EXISTS idx_mvmt_ref ON stock_movements(reference_id)`);
   } catch { /* exists */ }
+
+  // ============================================================
+  // Hair transplant image generator (TANAH-HAIR-GEN port)
+  // ============================================================
+  openDb().exec(`
+    CREATE TABLE IF NOT EXISTS hair_generations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      model TEXT,
+      view TEXT,
+      params_json TEXT NOT NULL,
+      output_data_url TEXT,
+      raw_image_data_url TEXT,
+      results_json TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_hair_gen_patient
+      ON hair_generations(tenant_id, patient_id, created_at DESC);
+  `);
 }
