@@ -7,6 +7,7 @@ import { generateBodyScenarioImage, imageProvidersStatus } from '../src/services
 const ENV_KEYS = [
   'A2E_API_KEY', 'A2E_ENABLED',
   'GEMINI_API_KEY', 'GEMINI_ENABLED',
+  'OPENAI_API_KEY', 'OPENAI_ENABLED', 'OPENAI_IMAGE_MODEL',
   'BITDEER_API_KEY', 'BITDEER_BASE_URL', 'BITDEER_ENABLED',
   'LOCAL_MORPH_FALLBACK', 'IMAGE_PROVIDER_ORDER',
 ] as const;
@@ -34,13 +35,35 @@ describe('body image providers', () => {
     delete process.env.LOCAL_MORPH_FALLBACK;
     process.env.A2E_ENABLED = '0';
     process.env.GEMINI_ENABLED = '0';
+    process.env.OPENAI_ENABLED = '0';
     delete process.env.A2E_API_KEY;
     delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
 
     const status = imageProvidersStatus();
     expect(status.local_morph).toBe(true);
     expect(status.bitdeer).toBe(false);
+    expect(status.openai).toBe(false);
     expect(status.order).toEqual(['local_morph']);
+  });
+
+  it('includes openai in provider order when OPENAI_API_KEY is set', () => {
+    stashEnv();
+    process.env.A2E_ENABLED = '0';
+    process.env.GEMINI_ENABLED = '0';
+    delete process.env.A2E_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.BITDEER_API_KEY;
+    process.env.OPENAI_ENABLED = 'true';
+    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.OPENAI_IMAGE_MODEL = 'gpt-image-1';
+    process.env.IMAGE_PROVIDER_ORDER = 'gemini,a2e,openai,local_morph';
+    process.env.LOCAL_MORPH_FALLBACK = '1';
+
+    const status = imageProvidersStatus();
+    expect(status.openai).toBe(true);
+    expect(status.openai_model).toBe('gpt-image-1');
+    expect(status.order).toEqual(['openai', 'local_morph']);
   });
 
   it('falls through to local_morph per-view when A2E cannot img2img without public URL', async () => {
@@ -48,11 +71,13 @@ describe('body image providers', () => {
     process.env.A2E_ENABLED = 'true';
     process.env.A2E_API_KEY = 'test-key';
     process.env.GEMINI_ENABLED = '0';
+    process.env.OPENAI_ENABLED = '0';
     delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
     delete process.env.BITDEER_API_KEY;
     delete process.env.BITDEER_BASE_URL;
     process.env.LOCAL_MORPH_FALLBACK = '1';
-    process.env.IMAGE_PROVIDER_ORDER = 'a2e,gemini,bitdeer,local_morph';
+    process.env.IMAGE_PROVIDER_ORDER = 'a2e,gemini,openai,bitdeer,local_morph';
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'body-img-'));
     const left = path.join(dir, 'left.jpg');

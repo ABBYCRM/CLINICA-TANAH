@@ -60,8 +60,19 @@ services:
       - key: GEMINI_API_KEY
         type: SECRET
         scope: RUN_TIME
+      - key: OPENAI_ENABLED
+        value: "true"
+      - key: OPENAI_IMAGE_MODEL
+        value: "gpt-image-1"
+      - key: OPENAI_IMAGE_SIZE
+        value: "1024x1536"
+      - key: OPENAI_IMAGE_QUALITY
+        value: "medium"
+      - key: OPENAI_API_KEY
+        type: SECRET
+        scope: RUN_TIME
       - key: IMAGE_PROVIDER_ORDER
-        value: "gemini,a2e,local_morph"
+        value: "gemini,a2e,openai,local_morph"
       - key: LOCAL_MORPH_FALLBACK
         value: "1"
       - key: NVIDIA_OCR_MODEL

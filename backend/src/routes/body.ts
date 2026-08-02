@@ -394,9 +394,11 @@ async function generateAndPersistOneView(opts: {
   let providerLabel = result.provider;
   const generative = result.provider === 'gemini'
     || result.provider === 'a2e'
+    || result.provider === 'openai'
     || result.provider === 'bitdeer'
     || String(result.provider).startsWith('gemini')
-    || String(result.provider).startsWith('a2e');
+    || String(result.provider).startsWith('a2e')
+    || String(result.provider).startsWith('openai');
 
   if (opts.referencePath && fs.existsSync(opts.referencePath) && generative
       && opts.view === 'front' && process.env.ARCHITECTURE_LOCK !== '0') {
@@ -643,6 +645,13 @@ router.get('/settings/integrations', requireRole('admin', 'doctor'), (_req: Requ
     providers: {
       a2e: { configured: status.a2e, model: status.a2e_model },
       gemini: { configured: status.gemini, model: status.gemini_model },
+      openai: {
+        configured: status.openai,
+        model: status.openai_model,
+        note: status.openai
+          ? 'gpt-image img2img edits fallback'
+          : 'inactive until OPENAI_API_KEY is set',
+      },
       bitdeer: {
         configured: status.bitdeer,
         model: status.bitdeer_model,
@@ -660,7 +669,7 @@ router.get('/settings/integrations', requireRole('admin', 'doctor'), (_req: Requ
     order: status.order,
     multi_view: {
       after_images: 'front,left,right,back — each view uses its capture reference',
-      a2e_img2img: 'requires public HTTPS asset URL; otherwise gemini/bitdeer/local_morph',
+      a2e_img2img: 'requires public HTTPS asset URL; otherwise gemini/openai/bitdeer/local_morph',
     },
   });
 });

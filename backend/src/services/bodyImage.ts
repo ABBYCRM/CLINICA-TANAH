@@ -1,7 +1,7 @@
 /**
  * Body composition scenario imagery — ultra-realistic clinical visualizations.
  *
- * Provider order: A2E → Gemini → Bitdeer → local_morph (last-resort only).
+ * Provider order: Gemini → A2E → OpenAI → Bitdeer → local_morph (last-resort only).
  * Doctor Δkg must use generative img2img first — never prefer silhouette squeeze
  * (that warps doors/cabinets). local_morph is fallback only when cloud fails.
  * A2E CDN downloads require a browser User-Agent (see fetchProviderImageBytes).
@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { uploadsRoot } from './nvidiaOcr';
 
-export type ImageProvider = 'a2e' | 'gemini' | 'bitdeer' | 'local_morph';
+export type ImageProvider = 'a2e' | 'gemini' | 'openai' | 'bitdeer' | 'local_morph';
 
 export type ImageGenResult = {
   provider: ImageProvider;
@@ -79,6 +79,9 @@ export function morphGuidanceFromEnvelope(envelope: any | null | undefined): Mor
 const A2E_BASE = process.env.A2E_BASE_URL || 'https://video.a2e.ai';
 const A2E_MODEL = process.env.A2E_MODEL || 'nano-banana-pro';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
+const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const OPENAI_IMAGE_SIZE = process.env.OPENAI_IMAGE_SIZE || '1024x1536';
+const OPENAI_IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY || 'medium';
 const BITDEER_MODEL = process.env.BITDEER_MODEL || process.env.BITDEER_IMAGE_MODEL || 'google/flash-image-2.5';
 
 export function bodyUploadsDir(tenantId: string, patientId: string): string {
@@ -174,6 +177,11 @@ function geminiEnabled(): boolean {
   return process.env.GEMINI_ENABLED !== '0' && !!process.env.GEMINI_API_KEY;
 }
 
+function openaiEnabled(): boolean {
+  if (process.env.OPENAI_ENABLED === '0' || process.env.OPENAI_ENABLED === 'false') return false;
+  return !!process.env.OPENAI_API_KEY;
+}
+
 function bitdeerBaseUrl(): string | null {
   const base = (
     process.env.BITDEER_BASE_URL
@@ -196,7 +204,7 @@ function localMorphEnabled(): boolean {
 }
 
 function providerOrder(): ImageProvider[] {
-  const raw = (process.env.IMAGE_PROVIDER_ORDER || 'a2e,gemini,bitdeer,local_morph')
+  const raw = (process.env.IMAGE_PROVIDER_ORDER || 'gemini,a2e,openai,bitdeer,local_morph')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
@@ -207,6 +215,7 @@ function providerOrder(): ImageProvider[] {
   for (const p of raw) {
     if (p === 'a2e' && a2eEnabled()) push('a2e');
     if (p === 'gemini' && geminiEnabled()) push('gemini');
+    if ((p === 'openai' || p === 'gpt' || p === 'gpt-image') && openaiEnabled()) push('openai');
     if (p === 'bitdeer' && bitdeerEnabled()) push('bitdeer');
     if ((p === 'local_morph' || p === 'local') && localMorphEnabled()) push('local_morph');
   }
@@ -359,6 +368,70 @@ async function generateGemini(opts: {
     }
   }
   return { provider: 'gemini', status: 'failed', error: 'gemini_no_image', raw: json };
+}
+
+/**
+ * OpenAI gpt-image-* img2img via /v1/images/edits (reference photo required).
+ * Used as cloud fallback when Gemini/A2E fail.
+ */
+async function generateOpenAI(opts: {
+  prompt: string;
+  referencePath?: string | null;
+}): Promise<ImageGenResult> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) {
+    return { provider: 'openai', status: 'failed', error: 'openai_not_configured' };
+  }
+  if (!opts.referencePath || !fs.existsSync(opts.referencePath)) {
+    return { provider: 'openai', status: 'failed', error: 'openai_requires_reference_image' };
+  }
+
+  const model = OPENAI_IMAGE_MODEL;
+  const bytes = fs.readFileSync(opts.referencePath);
+  const mime = opts.referencePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const filename = path.basename(opts.referencePath) || (mime === 'image/png' ? 'before.png' : 'before.jpg');
+
+  const form = new FormData();
+  form.append('model', model);
+  form.append('prompt', opts.prompt.slice(0, 30_000));
+  form.append('size', OPENAI_IMAGE_SIZE);
+  form.append('quality', OPENAI_IMAGE_QUALITY);
+  form.append('image', new Blob([bytes], { type: mime }), filename);
+
+  const res = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}` },
+    body: form,
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      provider: 'openai',
+      status: 'failed',
+      error: json?.error?.message || `openai_http_${res.status}`,
+      raw: json,
+    };
+  }
+  const item = (json?.data && json.data[0]) || null;
+  if (item?.b64_json) {
+    return {
+      provider: 'openai',
+      status: 'completed',
+      imageBytes: Buffer.from(item.b64_json, 'base64'),
+      contentType: 'image/png',
+      raw: { model, size: OPENAI_IMAGE_SIZE, quality: OPENAI_IMAGE_QUALITY, usage: json?.usage },
+    };
+  }
+  if (item?.url) {
+    return {
+      provider: 'openai',
+      status: 'completed',
+      imageUrl: item.url,
+      contentType: 'image/png',
+      raw: { model, size: OPENAI_IMAGE_SIZE, quality: OPENAI_IMAGE_QUALITY, usage: json?.usage },
+    };
+  }
+  return { provider: 'openai', status: 'failed', error: 'openai_no_image', raw: json };
 }
 
 /** Bitdeer / OpenAI-compatible image generate — also supports Gemini-style proxy. */
@@ -881,6 +954,15 @@ export async function generateBodyScenarioImage(opts: {
         errors.push(`gemini:${last.error || 'failed'}`);
         continue;
       }
+      if (provider === 'openai') {
+        last = await generateOpenAI({
+          prompt: opts.prompt,
+          referencePath: opts.referencePath,
+        });
+        if (last.status !== 'failed') return last;
+        errors.push(`openai:${last.error || 'failed'}`);
+        continue;
+      }
       if (provider === 'bitdeer') {
         last = await generateBitdeer({
           prompt: opts.prompt,
@@ -913,11 +995,14 @@ export function imageProvidersStatus() {
   return {
     a2e: a2eEnabled(),
     gemini: geminiEnabled(),
+    openai: openaiEnabled(),
     bitdeer: bitdeerEnabled(),
     local_morph: localMorphEnabled(),
     order: providerOrder(),
     a2e_model: A2E_MODEL,
     gemini_model: GEMINI_MODEL,
+    openai_model: openaiEnabled() ? OPENAI_IMAGE_MODEL : null,
+    openai_configured: openaiEnabled(),
     bitdeer_model: bitdeerEnabled() ? BITDEER_MODEL : null,
     bitdeer_configured: bitdeerEnabled(),
   };

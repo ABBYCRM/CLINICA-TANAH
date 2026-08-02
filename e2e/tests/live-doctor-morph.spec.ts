@@ -151,7 +151,7 @@ test.describe('LIVE doctor morph', () => {
     // local_morph is last-resort only; prefer gemini|a2e after this fix.
     const polled = await request.get(`${BASE}/api/clinical/body/${jose.id}/scenarios/${scenarioId}`, { headers });
     const sc = (await polled.json()).scenario || await polled.json();
-    expect(String(sc.provider || '')).toMatch(/gemini|a2e|bitdeer|morph/i);
+    expect(String(sc.provider || '')).toMatch(/gemini|a2e|openai|bitdeer|morph/i);
     expect(sc.output_view_count).toBeGreaterThanOrEqual(4);
 
     writeFileSync(path.join(SHOT, 'result.json'), JSON.stringify({
