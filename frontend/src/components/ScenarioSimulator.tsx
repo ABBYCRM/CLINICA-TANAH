@@ -336,6 +336,27 @@ export default function ScenarioSimulator({
   const generate = async () => {
     setBusy('generate'); setError('');
     try {
+      // Ensure If/Then envelope matches current controls before generating after-images
+      let plan = activeEnvelope;
+      if (!plan?.ok) {
+        const preview = await api.post(`/api/clinical/body/${patientId}/scenarios/preview`, {
+          horizon_weeks: effectiveHorizon,
+          weeks: effectiveHorizon,
+          plan_config: planConfig,
+          assumptions,
+          sleep_adequate: sleep,
+          hydration_adequate: hydration,
+          recovery_adequate: recovery,
+          comorbidity_stable: comorbidity,
+          change_magnitude: magnitude,
+        });
+        plan = preview.execution_plan;
+        setEnvelope(plan);
+        if (!plan?.ok) {
+          setError(plan?.blockers?.join(' ') || t('body.simulations_blocked'));
+          return;
+        }
+      }
       const step = await api.post('/api/auth/step-up', { password: stepPassword });
       const frontId = session?.assets?.front?.id || null;
       const res = await api.post(`/api/clinical/body/${patientId}/scenarios`, {
@@ -356,6 +377,7 @@ export default function ScenarioSimulator({
         comorbidity_stable: comorbidity,
         change_magnitude: magnitude,
       });
+      if (res?.execution_plan) setEnvelope(res.execution_plan);
       setStepPassword('');
       if (res?.id || res?.scenario?.id) setSelectedId(res.id || res.scenario.id);
       if ((res?.scenario?.output_view_count || 0) > 1) setInspectorMode('contact');

@@ -154,5 +154,7 @@ describe('anatomicalEnvelope', () => {
     expect(prompt).toMatch(/waist|abdomen/i);
     expect(prompt).toMatch(/HARD IDENTITY LOCKS|same clothes drape|clothing_drape/i);
     expect(prompt).toMatch(/img2img pipeline v5/i);
+    expect(prompt).toMatch(/CALCULATED AFTER/i);
+    expect(prompt).toMatch(/regional_anatomical_deltas_pct/i);
   });
 });

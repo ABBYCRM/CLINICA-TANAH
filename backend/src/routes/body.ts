@@ -21,8 +21,10 @@ import {
   calcBmi,
   generateBodyScenarioImage,
   imageProvidersStatus,
+  morphGuidanceFromEnvelope,
   pollA2e,
   retainBodyPhotoCopy,
+  type MorphGuidance,
 } from '../services/bodyImage';
 import {
   applySessionConsistency,
@@ -303,6 +305,7 @@ async function generateAndPersistOneView(opts: {
   prompt: string;
   referencePath: string | null;
   assetId?: string | null;
+  morphGuidance?: MorphGuidance | null;
 }): Promise<OutputViewEntry> {
   const referencePublicUrl = await resolvePublicRef(opts.assetId, opts.referencePath);
   let result = await generateBodyScenarioImage({
@@ -310,6 +313,7 @@ async function generateAndPersistOneView(opts: {
     prompt: opts.prompt,
     referencePath: opts.referencePath,
     referencePublicUrl,
+    morphGuidance: opts.morphGuidance,
   });
 
   // Poll A2E if pending
@@ -354,6 +358,7 @@ async function generateAndPersistOneView(opts: {
       prompt: opts.prompt,
       referencePath: opts.referencePath,
       referencePublicUrl: null,
+      morphGuidance: opts.morphGuidance,
     });
     if (fallback.status === 'pending' && fallback.taskId) {
       // Should not happen for gemini/local_morph; ignore pending A2E if misconfigured
@@ -476,6 +481,7 @@ async function runGenerate(
         prompt: viewPrompt,
         referencePath: asset?.image_path || null,
         assetId: asset?.id || null,
+        morphGuidance: morphGuidanceFromEnvelope(envelope),
       });
       output[view] = entry;
       if (entry.has_image) {
