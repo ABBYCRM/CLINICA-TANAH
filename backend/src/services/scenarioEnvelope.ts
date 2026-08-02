@@ -12,6 +12,10 @@ import {
   type Adherence,
   type MagnitudeCap,
 } from './bodyCompositionEngine';
+import {
+  hardenedImg2imgRuleText,
+  HARDENED_IMG2IMG_RULE_IDS,
+} from './bodyCompositionKnowledge';
 
 export type { Adherence, MagnitudeCap, PlanConfig, ScenarioAssumptions, MedInput, PlanInput };
 
@@ -188,8 +192,9 @@ export function buildPhotorealScenarioPrompt(opts: {
   const identity = opts.hasReferencePhoto
     ? [
         `Edit this clinical ${viewLabel}-view photograph of the SAME adult patient (clinical before→after).`,
-        'HARD IDENTITY LOCKS: keep the identical face, hair, skin tone, skin marks, height, limb lengths, pose (hand placement / stance), camera framing, lighting, garment identity (same shirt/pants/shoes/colors), and studio background.',
-        'Only change soft-tissue silhouette and how the SAME clothes drape: after weight loss, garments hang looser with natural folds; after gain, fabrics sit tighter — never change outfit, never invent a new person.',
+        'MANDATORY VISIBLE CHANGE: the AFTER image MUST look thinner/softer-tissue-changed vs BEFORE at waist and abdomen. An unmodified copy of the input is a HARD FAILURE of rule RAG:img2img-after-must-reflect-math.',
+        'IDENTITY LOCKS (keep identical): face, hair, skin tone, skin marks, height, limb lengths, pose (hands/stance), camera framing, lighting, garment identity (same shirt/pants/shoes/colors), studio background.',
+        'CHANGE ONLY: soft-tissue silhouette + garment drape/fit (looser folds after fat loss; tighter after gain). Preferential central fat reduction at waist/abdomen proportional to fat_delta_kg.',
         `Keep the ${view} viewing angle unchanged.`,
       ].join(' ')
     : `Create a photorealistic clinical full-body ${viewLabel}-view photograph of an adult ${sex} patient for body-composition educational visualization. Neutral studio lighting, accurate anatomy, natural skin texture, professional medical photography.`;
@@ -197,8 +202,13 @@ export function buildPhotorealScenarioPrompt(opts: {
   const ae = opts.envelope.anatomicalEnvelope;
   const pipe = opts.envelope.img2img_pipeline_config || ae?.img2img_pipeline_config;
   const silCap = pipe?.effective_silhouette_delta_pct ?? ae?.maxAbsDeltaPct ?? 7;
+  const absSil = Math.abs(Number(opts.envelope.silhouette_delta_pct ?? silCap) || 0);
+  const ragHard = hardenedImg2imgRuleText();
   const calcBlock = [
-    'CALCULATED AFTER (apply quantitatively to THIS reference photo — do not invent a new person):',
+    '=== HARDENED RAG RULES (MUST OBEY) ===',
+    ragHard,
+    `Rule IDs: ${HARDENED_IMG2IMG_RULE_IDS.join(', ')}.`,
+    '=== CALCULATED AFTER (apply quantitatively to THIS reference photo) ===',
     opts.envelope.deltas
       ? `weight_delta_kg=${opts.envelope.deltas.weight_kg}; fat_delta_kg=${opts.envelope.deltas.fat_mass_kg}; ffm_delta_kg=${opts.envelope.deltas.ffm_kg}; waist_delta_cm=${opts.envelope.deltas.waist_cm}; silhouette_delta_pct=${opts.envelope.silhouette_delta_pct ?? silCap}.`
       : '',
@@ -211,7 +221,10 @@ export function buildPhotorealScenarioPrompt(opts: {
     pipe
       ? `img2img_pipeline_config={version:${pipe.version}, identity_locks:[${(pipe.identity_locks || []).join(',')}], effective_silhouette_delta_pct:${pipe.effective_silhouette_delta_pct}, clothing_drape:${pipe.clothing_drape || 'preserve_garments_show_fit_change'}}.`
       : '',
-    'Visually realize these deltas: reduce/increase soft tissue in marked regions; same clothes must change drape/fit accordingly; face/height/limb lengths/skin marks/pose/background unchanged.',
+    absSil >= 3
+      ? `REQUIRED VISUAL MAGNITUDE: silhouette change ~${absSil.toFixed(1)}% must be obvious to a clinician comparing before vs after side-by-side (narrower waist/abdomen, looser clothing folds).`
+      : '',
+    'Do NOT return the input unchanged. Do NOT beauty-filter the face. Do NOT change clothes identity.',
   ].filter(Boolean).join(' ');
 
   const regional = ae?.regions?.length

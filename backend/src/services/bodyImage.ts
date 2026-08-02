@@ -471,6 +471,88 @@ function localMorphFallback(
   };
 }
 
+/** Mean absolute pixel difference 0–1 between before path and after bytes (resized). */
+export function afterImageSimilarity(beforePath: string, afterBytes: Buffer): number | null {
+  try {
+    const { spawnSync } = require('child_process') as typeof import('child_process');
+    const tmpAfter = `${beforePath}.cmp-after-${process.pid}.jpg`;
+    fs.writeFileSync(tmpAfter, afterBytes);
+    const py = `
+from PIL import Image
+import sys
+a = Image.open(sys.argv[1]).convert('RGB').resize((160, 240))
+b = Image.open(sys.argv[2]).convert('RGB').resize((160, 240))
+pa = list(a.getdata())
+pb = list(b.getdata())
+s = 0.0
+n = 0
+for (r1,g1,b1), (r2,g2,b2) in zip(pa, pb):
+    s += abs(r1-r2) + abs(g1-g2) + abs(b1-b2)
+    n += 3
+print((s / n / 255.0) if n else 1.0)
+`;
+    const res = spawnSync('python3', ['-c', py, beforePath, tmpAfter], { encoding: 'utf8' });
+    try { fs.unlinkSync(tmpAfter); } catch { /* */ }
+    if (res.status !== 0) return null;
+    const v = Number(String(res.stdout || '').trim());
+    return Number.isFinite(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * HARDENED RAG rule: if cloud after ≈ before, force calculator-driven morph.
+ * Returns possibly replaced bytes + whether enforcement ran.
+ */
+export function enforceAfterReflectsMath(opts: {
+  referencePath: string;
+  afterBytes: Buffer;
+  guidance?: MorphGuidance | null;
+  /** Mean-abs threshold below which after is treated as an illegal copy (default 0.04). */
+  maxCopySimilarity?: number;
+}): { bytes: Buffer; enforced: boolean; similarity: number | null; contentType: string } {
+  const sil = Math.abs(Number(opts.guidance?.silhouette_delta_pct ?? 0));
+  const weight = Math.abs(Number(opts.guidance?.weight_delta_kg ?? 0));
+  const mustChange = sil >= 3 || weight >= 2;
+  let similarity = afterImageSimilarity(opts.referencePath, opts.afterBytes);
+  const threshold = opts.maxCopySimilarity ?? 0.04;
+  let identicalBytes = false;
+  try {
+    identicalBytes = opts.afterBytes.equals(fs.readFileSync(opts.referencePath));
+  } catch { /* */ }
+  const looksLikeCopy = identicalBytes
+    || (similarity != null && similarity < threshold);
+
+  if (!mustChange || !looksLikeCopy) {
+    return {
+      bytes: opts.afterBytes,
+      enforced: false,
+      similarity,
+      contentType: 'image/jpeg',
+    };
+  }
+
+  // Amplify guidance slightly so the deterministic morph is clinically obvious
+  const amplified: MorphGuidance = {
+    ...(opts.guidance || { silhouette_delta_pct: -5, regional_deltas_pct: {} }),
+    silhouette_delta_pct: Math.max(-7, Math.min(7,
+      (opts.guidance?.silhouette_delta_pct ?? -5) * 1.15,
+    )),
+    regional_deltas_pct: Object.fromEntries(
+      Object.entries(opts.guidance?.regional_deltas_pct || {}).map(([k, v]) => [
+        k,
+        Math.max(-7, Math.min(7, Number(v) * 1.25)),
+      ]),
+    ),
+  };
+  const morphed = applyLocalSilhouetteMorph(opts.referencePath, amplified);
+  if (!morphed) {
+    return { bytes: opts.afterBytes, enforced: false, similarity, contentType: 'image/jpeg' };
+  }
+  return { bytes: morphed, enforced: true, similarity, contentType: 'image/jpeg' };
+}
+
 /** Narrow/widen silhouette from If/Then calculator guidance (identity-preserving). */
 function applyLocalSilhouetteMorph(
   referencePath: string,

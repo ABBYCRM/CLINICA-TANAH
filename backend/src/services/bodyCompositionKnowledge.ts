@@ -177,11 +177,31 @@ export const BODY_COMPOSITION_CORPUS: KnowledgeChunk[] = [
     source: 'Orlistat long-term RCTs',
   },
   {
+    id: 'img2img-after-must-reflect-math',
+    domain: 'safety',
+    title: 'HARDENED: after image must reflect composition math',
+    text:
+      'RULE (HARDENED / RAG): When generating a clinical before→after body image, the AFTER photograph MUST visibly reflect the If/Then calculator envelope: weight_delta_kg, fat_delta_kg, waist_delta_cm, silhouette_delta_pct, and regional_anatomical_deltas_pct (waist/abdomen/hip/arm/thigh/chest/neck). '
+      + 'Returning an unmodified copy of the BEFORE photo is a RULE FAILURE. Soft-tissue change must be visible at waist/abdomen (preferential central fat), with the SAME garments changing drape/fit. '
+      + 'Identity locks remain: face, height, limb lengths, skin marks, clothing identity, pose, background. Photoreal only; educational simulation — not an outcome guarantee. '
+      + 'If the generative model fails to apply the math, a deterministic silhouette morph driven by the same envelope MUST be applied before delivery.',
+    tags: [
+      'img2img', 'after', 'before_after', 'silhouette', 'waist', 'abdomen',
+      'weight_loss', 'hardened', 'rag_rule', 'safety', 'composition',
+    ],
+    rates: {
+      min_visible_silhouette_pct: 3,
+      after_copy_forbidden: 1,
+      prefer_central_fat_visual: 1,
+    },
+    source: 'Clínica Tanah body module policy + Hall energy models + anthropometric waist mapping (RAG hardened)',
+  },
+  {
     id: 'comp-waist',
     domain: 'body_composition',
     title: 'Waist change vs fat mass',
-    text: 'Central fat loss of ~1 kg often maps to ~0.7–1.1 cm waist reduction in adults with elevated WHtR, with diminishing returns as BMI normalizes.',
-    tags: ['waist', 'visceral', 'composition', 'silhouette'],
+    text: 'Central fat loss of ~1 kg often maps to ~0.7–1.1 cm waist reduction in adults with elevated WHtR, with diminishing returns as BMI normalizes. Visual after images should concentrate soft-tissue reduction at waist/abdomen proportional to fat_delta_kg.',
+    tags: ['waist', 'visceral', 'composition', 'silhouette', 'img2img', 'after'],
     rates: { waist_cm_per_kg_central_fat: 0.9, central_fat_share: 0.55 },
     source: 'Anthropometric–DXA correlation studies',
   },
@@ -198,8 +218,8 @@ export const BODY_COMPOSITION_CORPUS: KnowledgeChunk[] = [
     id: 'safety-disclaimer',
     domain: 'safety',
     title: 'Simulation limits',
-    text: 'Projections are educational envelopes for professionally mediated visualization. They are not outcome guarantees, not Manchester triage, and must not replace clinical judgment. Image outputs must stay photoreal and watermarked as illustrative.',
-    tags: ['safety', 'disclaimer', 'simulation'],
+    text: 'Projections are educational envelopes for professionally mediated visualization. They are not outcome guarantees, not Manchester triage, and must not replace clinical judgment. Image outputs must stay photoreal and watermarked as illustrative. After images that ignore calculator math violate module policy.',
+    tags: ['safety', 'disclaimer', 'simulation', 'img2img'],
     rates: {},
     source: 'Clínica Tanah body module policy',
   },
@@ -217,6 +237,23 @@ export const BODY_COMPOSITION_CORPUS: KnowledgeChunk[] = [
     source: 'Lifestyle + incretin trial design literature',
   },
 ];
+
+/** Hardened RAG rule IDs that must appear in every after-image prompt. */
+export const HARDENED_IMG2IMG_RULE_IDS = [
+  'img2img-after-must-reflect-math',
+  'energy-7700',
+  'comp-waist',
+  'diet-protein-ffm',
+] as const;
+
+export function hardenedImg2imgRuleText(): string {
+  const chunks = HARDENED_IMG2IMG_RULE_IDS
+    .map((id) => BODY_COMPOSITION_CORPUS.find((c) => c.id === id))
+    .filter(Boolean) as KnowledgeChunk[];
+  return chunks
+    .map((c) => `[RAG:${c.id}] ${c.title}: ${c.text}`)
+    .join(' ');
+}
 
 function tokenize(s: string): string[] {
   return s
