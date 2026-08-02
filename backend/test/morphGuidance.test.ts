@@ -2,13 +2,32 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import jpeg from 'jpeg-js';
 import {
   enforceAfterReflectsMath,
   generateBodyScenarioImage,
   morphGuidanceFromEnvelope,
+  normalizeHeightCm,
+  calcBmi,
 } from '../src/services/bodyImage';
 import { HARDENED_IMG2IMG_RULE_IDS, hardenedImg2imgRuleText } from '../src/services/bodyCompositionKnowledge';
+
+function writeSolidJpeg(filePath: string, w = 120, h = 200) {
+  const data = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 3;
+      // soft torso band so horizontal morph is measurable
+      if (x >= 35 && x < 85 && y >= 70 && y < 140) {
+        data[i] = 200; data[i + 1] = 160; data[i + 2] = 140;
+      } else {
+        data[i] = 180; data[i + 1] = 140; data[i + 2] = 120;
+      }
+    }
+  }
+  const enc = jpeg.encode({ width: w, height: h, data }, 90);
+  fs.writeFileSync(filePath, enc.data);
+}
 
 describe('hardened RAG after-must-reflect-math', () => {
   it('exposes hardened rule text and ids', () => {
@@ -45,18 +64,24 @@ describe('morphGuidanceFromEnvelope', () => {
   });
 });
 
+describe('normalizeHeightCm / calcBmi', () => {
+  it('converts meters mistaken as cm and yields sane BMI', () => {
+    expect(normalizeHeightCm(1.8)).toBe(180);
+    expect(normalizeHeightCm(180)).toBe(180);
+    expect(calcBmi(1.8, 129.3)).toBe(calcBmi(180, 129.3));
+    expect(calcBmi(1.8, 129.3)!).toBeGreaterThan(20);
+    expect(calcBmi(1.8, 129.3)!).toBeLessThan(80);
+    // absurd cm rejected
+    expect(normalizeHeightCm(0.1)).toBeNull();
+    expect(normalizeHeightCm(400)).toBeNull();
+  });
+});
+
 describe('enforceAfterReflectsMath', () => {
-  it('replaces near-copy after images with calculator-driven morph', () => {
+  it('replaces near-copy after images with calculator-driven morph (Node, no Python)', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'enforce-after-'));
     const ref = path.join(dir, 'before.jpg');
-    spawnSync('python3', ['-c', `
-from PIL import Image
-im = Image.new('RGB', (120, 200), (180, 140, 120))
-for y in range(70, 140):
-  for x in range(35, 85):
-    im.putpixel((x,y), (200, 160, 140))
-im.save(${JSON.stringify(ref)}, 'JPEG')
-`]);
+    writeSolidJpeg(ref);
     const beforeBytes = fs.readFileSync(ref);
     const out = enforceAfterReflectsMath({
       referencePath: ref,
@@ -68,9 +93,12 @@ im.save(${JSON.stringify(ref)}, 'JPEG')
       },
     });
     expect(out.enforced).toBe(true);
+    expect(out.failed).toBeFalsy();
     expect(out.bytes.equals(beforeBytes)).toBe(false);
     expect(out.similarity).not.toBeNull();
+    // identical bytes → similarity ~0 before morph; after enforcement we still report pre-morph similarity
     expect(out.similarity!).toBeLessThan(0.035);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 
@@ -86,11 +114,7 @@ describe('local_morph uses calculator guidance', () => {
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-guide-'));
     const ref = path.join(dir, 'before.jpg');
-    spawnSync('python3', ['-c', `
-from PIL import Image
-im = Image.new('RGB', (120, 200), (180, 140, 120))
-im.save(${JSON.stringify(ref)}, 'JPEG')
-`]);
+    writeSolidJpeg(ref);
     expect(fs.existsSync(ref)).toBe(true);
 
     const before = fs.readFileSync(ref);
@@ -109,5 +133,7 @@ im.save(${JSON.stringify(ref)}, 'JPEG')
     expect(res.imageBytes).toBeTruthy();
     expect(res.imageBytes!.equals(before)).toBe(false);
     expect((res.raw as any)?.morph_guidance?.silhouette_delta_pct).toBe(-7);
+    expect((res.raw as any)?.engine).toBe('node_jpeg');
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
