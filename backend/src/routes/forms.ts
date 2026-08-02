@@ -133,7 +133,19 @@ formsRouter.post('/:id/send-invite', requireRole('admin', 'receptionist', 'docto
 
   if (d.channel === 'email' || d.channel === 'both') {
     if (email) {
-      const sent = await sendEmail({ to: email, subject: mail.subject, text: mail.text, html: mail.html });
+      const sent = await sendEmail({
+        to: email,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+        tags: [
+          { name: 'category', value: 'transactional_intake' },
+          { name: 'form', value: String(form.slug || 'intake').slice(0, 40) },
+        ],
+        headers: {
+          'X-Entity-Ref-ID': inviteId,
+        },
+      });
       results.email = sent;
       mailto = sent.mailto_url || null;
       if (sent.ok) status = 'sent';

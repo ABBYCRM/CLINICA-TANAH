@@ -5,6 +5,7 @@
  *   RESEND_API_KEY  — required for Resend (https://resend.com)
  *   RESEND_FROM / MAIL_FROM / SMTP_FROM — From address (verified domain on Resend)
  *   MAIL_FROM_NAME  — optional display name
+ *   MAIL_REPLY_TO / CLINIC_EMAIL — Reply-To (improves deliverability + trust)
  *
  * Env (SMTP fallback):
  *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, SMTP_SECURE
@@ -30,11 +31,25 @@ function resolveFromAddress(): string {
   );
 }
 
+function resolveReplyTo(): string | undefined {
+  const raw = (process.env.MAIL_REPLY_TO || process.env.CLINIC_EMAIL || process.env.DPO_EMAIL || '').trim();
+  return raw || undefined;
+}
+
 function formatFrom(from: string): string {
   const name = (process.env.MAIL_FROM_NAME || '').trim();
   if (!name) return from;
   if (from.includes('<')) return from;
   return `"${name}" <${from}>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export function resendConfigured(): boolean {
@@ -65,25 +80,34 @@ async function sendViaResend(args: {
   text: string;
   html?: string;
   from: string;
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }): Promise<MailResult> {
   const apiKey = (process.env.RESEND_API_KEY || '').trim();
   if (!apiKey) {
     return { ok: false, configured: false, provider: null, error: 'resend_not_configured' };
   }
   try {
+    const replyTo = resolveReplyTo();
+    const payload: Record<string, unknown> = {
+      from: formatFrom(args.from),
+      to: [args.to],
+      subject: args.subject,
+      text: args.text,
+      html: args.html || undefined,
+      // Transactional classification helps providers treat this as clinic ops, not promo blast
+      tags: args.tags || [{ name: 'category', value: 'transactional_intake' }],
+    };
+    if (replyTo) payload.reply_to = replyTo;
+    if (args.headers && Object.keys(args.headers).length) payload.headers = args.headers;
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from: formatFrom(args.from),
-        to: [args.to],
-        subject: args.subject,
-        text: args.text,
-        html: args.html || undefined,
-      }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(20_000),
     });
     const body: any = await res.json().catch(() => ({}));
@@ -133,12 +157,17 @@ async function sendViaSmtp(args: {
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
         : undefined,
     });
+    const replyTo = resolveReplyTo();
     const info = await transporter.sendMail({
       from: formatFrom(args.from),
       to: args.to,
       subject: args.subject,
       text: args.text,
       html: args.html || undefined,
+      replyTo,
+      headers: {
+        'X-Auto-Response-Suppress': 'OOF, AutoReply',
+      },
     });
     return { ok: true, configured: true, provider: 'smtp', messageId: info.messageId };
   } catch (e: any) {
@@ -156,6 +185,8 @@ export async function sendEmail(args: {
   subject: string;
   text: string;
   html?: string;
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
 }): Promise<MailResult> {
   const from = resolveFromAddress();
   const fallbackMailto = mailtoUrl({ to: args.to, subject: args.subject, body: args.text });
@@ -181,6 +212,11 @@ export async function sendEmail(args: {
   };
 }
 
+/**
+ * Professional, transactional pré-consulta invite.
+ * Written for deliverability: calm subject, plain-text twin, single CTA,
+ * explicit clinic identity, LGPD purpose, no promo spam cues.
+ */
 export function buildIntakeInviteEmail(args: {
   clinicName: string;
   recipientName?: string | null;
@@ -188,35 +224,131 @@ export function buildIntakeInviteEmail(args: {
   link: string;
   locale?: string;
 }): { subject: string; text: string; html: string } {
-  const name = args.recipientName?.trim() || 'Olá';
-  const clinic = args.clinicName || 'Clínica Tanah';
-  const subject = `${clinic} — pré-cadastro / pré-triagem: ${args.formName}`;
+  const clinic = (args.clinicName || 'Clínica Tanah').trim();
+  const formName = (args.formName || 'Pré-consulta').trim();
+  const link = (args.link || '').trim();
+  const rawName = (args.recipientName || '').trim();
+  const firstName = rawName.split(/\s+/)[0] || '';
+  const greeting = firstName
+    ? `Prezado(a) ${firstName}`
+    : 'Prezado(a) paciente';
+
+  // Calm, transactional subject — avoid ALL CAPS, “grátis”, “urgente!!!”, emoji
+  const subject = `${clinic}: preparação para a sua consulta`;
+
   const text = [
-    `${name},`,
+    `${greeting},`,
     '',
-    `A ${clinic} convida você a preencher o formulário "${args.formName}" antes da consulta.`,
-    'Isso agiliza seu atendimento e registra informações clínicas iniciais com segurança (LGPD).',
+    `Esperamos que esteja bem.`,
     '',
-    `Acesse o link: ${args.link}`,
+    `Em nome da equipe da ${clinic}, gostaríamos de convidá-lo(a) a concluir, com antecedência, o formulário “${formName}”.`,
     '',
-    'Importante: este formulário não substitui emergência. Em urgência, procure o SAMU 192 ou pronto-socorro.',
+    'O preenchimento antecipado nos permite conhecer melhor o seu histórico clínico, organizar o atendimento com segurança e reduzir o tempo de espera no dia da consulta — em conformidade com a LGPD (Lei nº 13.709/2018) e as orientações do CFM para anamnese e prontuário.',
     '',
-    `— Equipe ${clinic}`,
+    'O formulário é pessoal, confidencial e destinado exclusivamente à sua preparação clínica. Não se trata de mensagem promocional.',
+    '',
+    'Acesse com segurança pelo link abaixo:',
+    link,
+    '',
+    'Caso o link não abra, copie e cole o endereço completo no navegador.',
+    '',
+    'Se não reconhece este convite ou já preencheu o formulário, pode desconsiderar esta mensagem. Em caso de dúvidas, responda a este e-mail ou fale com a recepção da clínica.',
+    '',
+    'Importante: este formulário não substitui atendimento de emergência. Em situação de urgência, procure o SAMU 192 ou o pronto-socorro mais próximo.',
+    '',
+    'Com atenção e cordialidade,',
+    `Equipe de Atendimento — ${clinic}`,
+    '',
+    '—',
+    `${clinic}`,
+    'Mensagem transacional relativa à sua consulta. Dados tratados conforme a LGPD.',
   ].join('\n');
-  const html = `
-    <div style="font-family:Georgia,serif;color:#2c2820;line-height:1.5;max-width:560px">
-      <p>${name},</p>
-      <p>A <strong>${clinic}</strong> convida você a preencher o formulário <strong>${args.formName}</strong> antes da consulta.</p>
-      <p>Isso agiliza seu atendimento e registra informações clínicas iniciais com segurança (LGPD).</p>
-      <p style="margin:24px 0">
-        <a href="${args.link}" style="background:#8b6914;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">
-          Preencher formulário
-        </a>
-      </p>
-      <p style="font-size:13px;color:#5c564c">Link: <a href="${args.link}">${args.link}</a></p>
-      <p style="font-size:12px;color:#8b3a2a">Este formulário não substitui emergência. Em urgência, procure o SAMU 192 ou pronto-socorro.</p>
-      <p>— Equipe ${clinic}</p>
-    </div>
-  `;
+
+  const safeGreeting = escapeHtml(greeting);
+  const safeClinic = escapeHtml(clinic);
+  const safeForm = escapeHtml(formName);
+  const safeLink = escapeHtml(link);
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+  <title>${safeClinic} — preparação para a sua consulta</title>
+</head>
+<body style="margin:0;padding:0;background:#f4efe6;color:#2c2118;-webkit-text-size-adjust:100%;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;visibility:hidden;mso-hide:all;">
+    Convite da ${safeClinic} para preenchimento do formulário clínico antes da sua consulta.
+  </div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4efe6;padding:28px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#fbf7f0;border:1px solid #e2d4bc;border-radius:12px;">
+          <tr>
+            <td style="padding:28px 28px 8px 28px;font-family:Georgia,'Times New Roman',serif;color:#2c2118;">
+              <p style="margin:0 0 6px 0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#6b5210;font-family:Arial,Helvetica,sans-serif;">
+                ${safeClinic}
+              </p>
+              <h1 style="margin:0 0 18px 0;font-size:22px;line-height:1.35;font-weight:normal;color:#2c2118;">
+                Preparação para a sua consulta
+              </h1>
+              <p style="margin:0 0 14px 0;font-size:16px;line-height:1.55;">${safeGreeting},</p>
+              <p style="margin:0 0 14px 0;font-size:16px;line-height:1.55;">Esperamos que esteja bem.</p>
+              <p style="margin:0 0 14px 0;font-size:16px;line-height:1.55;">
+                Em nome da equipe da <strong>${safeClinic}</strong>, gostaríamos de convidá-lo(a) a concluir, com antecedência, o formulário
+                <strong>${safeForm}</strong>.
+              </p>
+              <p style="margin:0 0 14px 0;font-size:16px;line-height:1.55;">
+                O preenchimento antecipado nos permite conhecer melhor o seu histórico clínico, organizar o atendimento com segurança
+                e reduzir o tempo de espera no dia da consulta — em conformidade com a LGPD (Lei nº&nbsp;13.709/2018) e as orientações
+                do CFM para anamnese e prontuário.
+              </p>
+              <p style="margin:0 0 22px 0;font-size:15px;line-height:1.55;color:#4a382c;">
+                O formulário é pessoal, confidencial e destinado exclusivamente à sua preparação clínica. Não se trata de mensagem promocional.
+              </p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 18px 0;">
+                <tr>
+                  <td align="center" bgcolor="#6b5210" style="border-radius:8px;">
+                    <a href="${safeLink}"
+                       style="display:inline-block;padding:14px 22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Preencher formulário com segurança
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 18px 0;font-size:13px;line-height:1.5;color:#5c564c;font-family:Arial,Helvetica,sans-serif;word-break:break-all;">
+                Se o botão não funcionar, use este link:<br />
+                <a href="${safeLink}" style="color:#6b5210;">${safeLink}</a>
+              </p>
+              <p style="margin:0 0 14px 0;font-size:14px;line-height:1.5;color:#4a382c;">
+                Caso não reconheça este convite ou já tenha preenchido o formulário, pode desconsiderar esta mensagem.
+                Em caso de dúvidas, responda a este e-mail ou fale com a recepção da clínica.
+              </p>
+              <p style="margin:0 0 22px 0;font-size:13px;line-height:1.5;color:#7a3b2e;">
+                Importante: este formulário não substitui atendimento de emergência. Em situação de urgência, procure o SAMU 192
+                ou o pronto-socorro mais próximo.
+              </p>
+              <p style="margin:0 0 4px 0;font-size:16px;line-height:1.5;">Com atenção e cordialidade,</p>
+              <p style="margin:0 0 24px 0;font-size:16px;line-height:1.5;">
+                Equipe de Atendimento<br />
+                <strong>${safeClinic}</strong>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:14px 28px 22px 28px;border-top:1px solid #e2d4bc;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.45;color:#6a5c4c;">
+              ${safeClinic} · Mensagem transacional relativa à sua consulta.<br />
+              Dados tratados conforme a Lei Geral de Proteção de Dados (LGPD).
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
   return { subject, text, html };
 }

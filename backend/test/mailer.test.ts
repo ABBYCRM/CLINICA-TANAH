@@ -94,17 +94,22 @@ describe('mailer', () => {
     expect(sent.mailto_url).toMatch(/^mailto:/);
   });
 
-  it('builds intake invite email with clinic + link', async () => {
+  it('builds a professional transactional intake invite', async () => {
     const mailer = await import('../src/services/mailer');
     const mail = mailer.buildIntakeInviteEmail({
       clinicName: 'Clínica Tanah',
-      recipientName: 'Luis',
-      formName: 'Pré-triagem',
+      recipientName: 'Luis Lacerda',
+      formName: 'Pré-consulta / pré-triagem (CFM + LGPD)',
       link: 'https://clinic.example/f/pre-triagem',
     });
-    expect(mail.subject).toMatch(/Pré-triagem/);
-    expect(mail.text).toContain('Luis');
+    expect(mail.subject).toBe('Clínica Tanah: preparação para a sua consulta');
+    expect(mail.subject).not.toMatch(/!!!|GRÁTIS|URGENTE|💰|🎂/i);
+    expect(mail.text).toContain('Prezado(a) Luis');
     expect(mail.text).toContain('https://clinic.example/f/pre-triagem');
+    expect(mail.text).toMatch(/LGPD/);
+    expect(mail.text).toMatch(/não se trata de mensagem promocional/i);
     expect(mail.html).toContain('href="https://clinic.example/f/pre-triagem"');
+    expect(mail.html).toContain('Preencher formulário com segurança');
+    expect(mail.html).toContain('Mensagem transacional');
   });
 });
