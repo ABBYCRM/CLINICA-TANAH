@@ -1164,6 +1164,16 @@ export function seedMarketingDefaults(tenantId: string): void {
   }
   ensureRecallAutomation(tenantId);
 
+  // Link seed templates ↔ automations (HubSpot "publish for automation")
+  try {
+    // Lazy require avoids circular import: schema ↔ marketing
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const m = require('../services/marketing');
+    if (typeof m.linkTemplateAutomations === 'function') m.linkTemplateAutomations(tenantId);
+  } catch {
+    /* ignore during early boot */
+  }
+
   // ---- BodyPath clinical module (prontuário corporal / image scenarios) ----
   openDb().exec(`
     CREATE TABLE IF NOT EXISTS body_measurements (

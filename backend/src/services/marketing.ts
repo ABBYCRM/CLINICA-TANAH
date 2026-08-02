@@ -105,6 +105,120 @@ export function renderTemplate(body: string, vars: Record<string, string>): stri
   return out;
 }
 
+/**
+ * HubSpot / Meta-style wiring: approved templates map to either a
+ * campaign audience segment (manual blast) or an automation trigger.
+ * meta_name keys match seedMarketingDefaults.
+ */
+export const TEMPLATE_META_TO_AUTOMATION: Record<string, string> = {
+  tpl_welcome: 'welcome',
+  tpl_reminder_24h: 'reminder_24h',
+  tpl_reminder_2h: 'reminder_2h',
+  tpl_birthday: 'birthday',
+  tpl_nps: 'nps_auto',
+  tpl_noshow: 'no_show',
+  tpl_reengage: 'inactive_90d',
+  tpl_payment: 'payment_reminder',
+};
+
+export const TEMPLATE_META_TO_SEGMENT: Record<string, AudienceSegment> = {
+  tpl_welcome: 'recent_30d',
+  tpl_reminder_24h: 'upcoming_7d',
+  tpl_reminder_2h: 'upcoming_7d',
+  tpl_promo: 'all_consented',
+  tpl_birthday: 'birthday_month',
+  tpl_nps: 'recent_30d',
+  tpl_noshow: 'recent_30d',
+  tpl_reengage: 'inactive_90d',
+  tpl_payment: 'all_consented',
+};
+
+export function suggestedSegmentForTemplate(tpl: {
+  meta_name?: string | null;
+  category?: string | null;
+}): AudienceSegment {
+  const meta = (tpl.meta_name || '').trim();
+  if (meta && TEMPLATE_META_TO_SEGMENT[meta]) return TEMPLATE_META_TO_SEGMENT[meta];
+  if (tpl.category === 'utility') return 'upcoming_7d';
+  return 'all_consented';
+}
+
+export function suggestedAutomationKeyForTemplate(tpl: {
+  meta_name?: string | null;
+}): string | null {
+  const meta = (tpl.meta_name || '').trim();
+  return meta && TEMPLATE_META_TO_AUTOMATION[meta] ? TEMPLATE_META_TO_AUTOMATION[meta] : null;
+}
+
+/** Prefer approved template body when an automation is bound to a template. */
+export function resolveAutomationMessage(
+  auto: { message: string; template_id?: string | null },
+  tenantId: string,
+): string {
+  if (!auto.template_id) return auto.message;
+  const tpl = db.prepare(`
+    SELECT body, status FROM wa_templates WHERE id = ? AND tenant_id = ?
+  `).get(auto.template_id, tenantId) as any;
+  if (tpl?.body && tpl.status === 'approved') return tpl.body;
+  return auto.message;
+}
+
+/**
+ * Idempotent: link seed templates ↔ automations by meta_name / key
+ * (HubSpot "publish for automation"). Does not overwrite an existing bind.
+ */
+export function linkTemplateAutomations(tenantId: string): void {
+  for (const [meta, autoKey] of Object.entries(TEMPLATE_META_TO_AUTOMATION)) {
+    const tpl = db.prepare(`
+      SELECT id, body FROM wa_templates WHERE tenant_id = ? AND meta_name = ?
+    `).get(tenantId, meta) as any;
+    if (!tpl) continue;
+    const auto = db.prepare(`
+      SELECT id, template_id FROM wa_automations WHERE tenant_id = ? AND key = ?
+    `).get(tenantId, autoKey) as any;
+    if (!auto || auto.template_id) continue;
+    db.prepare(`
+      UPDATE wa_automations
+      SET template_id = ?, message = ?, updated_at = datetime('now')
+      WHERE id = ? AND tenant_id = ?
+    `).run(tpl.id, tpl.body, auto.id, tenantId);
+  }
+}
+
+export function bindTemplateToAutomation(args: {
+  tenantId: string;
+  templateId: string;
+  automationId: string;
+  enable?: boolean;
+}): { ok: true } | { ok: false; error: string } {
+  const tpl = db.prepare(`
+    SELECT id, body, status FROM wa_templates WHERE id = ? AND tenant_id = ?
+  `).get(args.templateId, args.tenantId) as any;
+  if (!tpl) return { ok: false, error: 'template_not_found' };
+  if (tpl.status !== 'approved') return { ok: false, error: 'template_not_approved' };
+  const auto = db.prepare(`
+    SELECT id FROM wa_automations WHERE id = ? AND tenant_id = ?
+  `).get(args.automationId, args.tenantId) as any;
+  if (!auto) return { ok: false, error: 'automation_not_found' };
+
+  // One template → one primary automation (clear prior binds of this template)
+  db.prepare(`
+    UPDATE wa_automations SET template_id = NULL, updated_at = datetime('now')
+    WHERE tenant_id = ? AND template_id = ? AND id != ?
+  `).run(args.tenantId, args.templateId, args.automationId);
+
+  const enabledClause = args.enable === undefined ? '' : ', enabled = ?';
+  const params: any[] = [args.templateId, tpl.body];
+  if (args.enable !== undefined) params.push(args.enable ? 1 : 0);
+  params.push(args.automationId, args.tenantId);
+  db.prepare(`
+    UPDATE wa_automations
+    SET template_id = ?, message = ?, updated_at = datetime('now')${enabledClause}
+    WHERE id = ? AND tenant_id = ?
+  `).run(...params);
+  return { ok: true };
+}
+
 export function marketingAnalytics(tenantId: string) {
   const outbound30 = (db.prepare(`
     SELECT COUNT(*) AS c FROM whatsapp_messages
@@ -176,6 +290,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
   if (!auto) return { ok: false, error: 'not_found' as const };
   if (!auto.enabled) return { ok: false, error: 'disabled' as const };
 
+  const message = resolveAutomationMessage(auto, tenantId);
   const config = (() => { try { return JSON.parse(auto.config || '{}'); } catch { return {}; } })() as any;
   let sent = 0, failed = 0, skipped = 0;
   const isMarketing = ['birthday', 'inactive_90d'].includes(auto.key);
@@ -200,7 +315,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
       const dt = new Date(row.scheduled_at.replace(' ', 'T') + 'Z');
       const date = Number.isNaN(dt.getTime()) ? row.scheduled_at.slice(0, 10) : dt.toLocaleDateString('pt-BR');
       const time = Number.isNaN(dt.getTime()) ? row.scheduled_at.slice(11, 16) : dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, auto.message, { date, time }, false, locale);
+      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, message, { date, time }, false, locale);
       if (ok) {
         sent++;
         try { db.prepare(`UPDATE appointments SET ${flagCol} = datetime('now') WHERE id = ?`).run(row.id); } catch { /* col may miss */ }
@@ -214,7 +329,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
       return bd.getUTCDate() === today.getUTCDate() && bd.getUTCMonth() === today.getUTCMonth();
     });
     for (const p of rows) {
-      const ok = await sendPersonalized(tenantId, p.phone, p.full_name, auto.message, {}, true, locale);
+      const ok = await sendPersonalized(tenantId, p.phone, p.full_name, message, {}, true, locale);
       if (ok) sent++; else failed++;
     }
   } else if (auto.key === 'inactive_90d') {
@@ -229,7 +344,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
       LIMIT 200
     `).all(tenantId, `-${days} days`) as any[];
     for (const p of rows) {
-      const ok = await sendPersonalized(tenantId, p.phone, p.full_name, auto.message, {}, true, locale);
+      const ok = await sendPersonalized(tenantId, p.phone, p.full_name, message, {}, true, locale);
       if (ok) sent++; else failed++;
     }
   } else if (auto.key === 'no_show') {
@@ -245,7 +360,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
     `).all(tenantId, `-${lookback} days`) as any[];
     for (const row of rows) {
       const date = String(row.scheduled_at).slice(0, 10);
-      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, auto.message, { date }, false, locale);
+      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, message, { date }, false, locale);
       if (ok) sent++; else failed++;
     }
   } else if (auto.key === 'nps_auto') {
@@ -269,7 +384,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
         patient_id: row.patient_id,
         context: { patient_id: row.patient_id, appointment_id: row.appointment_id, survey: true },
       });
-      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, auto.message, {}, false, locale);
+      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, message, {}, false, locale);
       if (ok) sent++; else failed++;
     }
   } else if (auto.key === 'payment_reminder') {
@@ -283,7 +398,7 @@ export async function runAutomation(tenantId: string, automationId: string, loca
       LIMIT 100
     `).all(tenantId) as any[];
     for (const row of rows) {
-      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, auto.message, { invoice: row.invoice }, false, locale);
+      const ok = await sendPersonalized(tenantId, row.phone, row.full_name, message, { invoice: row.invoice }, false, locale);
       if (ok) sent++; else failed++;
     }
   } else if (auto.key === 'welcome') {
@@ -392,11 +507,12 @@ export async function runAutomationForPatient(
     if (inv?.number) vars.invoice = String(inv.number);
   }
 
+  const message = resolveAutomationMessage(auto, tenantId);
   const ok = await sendPersonalized(
     tenantId,
     patient.phone,
     patient.full_name,
-    auto.message,
+    message,
     vars,
     isMarketing,
     locale,

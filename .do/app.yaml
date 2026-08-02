@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
     github:
       repo: ABBYCRM/CLINICA-TANAH
-      branch: cursor/bodypath-parity-import-531c
+      branch: cursor/whatsapp-template-audience-531c
       deploy_on_push: true
     http_port: 10000
     instance_count: 1
@@ -69,8 +69,13 @@ services:
       - key: NVIDIA_API_KEYS
         type: SECRET
         scope: RUN_TIME
-      - key: INVOICE_DELETE_PASSWORD
-        value: "1234"
+      - key: RESEND_API_KEY
+        type: SECRET
+        scope: RUN_TIME
+      - key: RESEND_FROM
+        value: "Clínica Tanah <onboarding@resend.dev>"
+      - key: MAIL_FROM_NAME
+        value: "Clínica Tanah"
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED

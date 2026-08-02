@@ -810,16 +810,36 @@ function CampaignForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 function TemplatesView() {
   const { t, locale } = useI18n();
   const [templates, setTemplates] = useState<any[]>([]);
+  const [segments, setSegments] = useState<Record<string, number>>({});
+  const [automations, setAutomations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [deleting, setDeleting] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
+  const [audienceById, setAudienceById] = useState<Record<string, string>>({});
+  const [actionId, setActionId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
-    api.get('/api/whatsapp/templates')
-      .then((d) => setTemplates(d.templates || []))
+    Promise.all([
+      api.get('/api/whatsapp/templates'),
+      api.get('/api/whatsapp/automations'),
+    ])
+      .then(([tpl, autos]) => {
+        const list = tpl.templates || [];
+        setTemplates(list);
+        setSegments(tpl.segments || {});
+        setAutomations(autos.automations || []);
+        setAudienceById((prev) => {
+          const next = { ...prev };
+          for (const row of list) {
+            if (!next[row.id]) next[row.id] = row.suggested_segment || 'all_consented';
+          }
+          return next;
+        });
+      })
       .catch((e) => setError(t(apiErrorKey(e))))
       .finally(() => setLoading(false));
   };
@@ -849,41 +869,229 @@ function TemplatesView() {
     }
   };
 
+  const sendToAudience = async (tpl: any, dispatch: boolean) => {
+    setActionId(tpl.id + (dispatch ? ':send' : ':draft'));
+    setError('');
+    setNotice('');
+    try {
+      const audience = audienceById[tpl.id] || tpl.suggested_segment || 'all_consented';
+      const res = await api.post(`/api/whatsapp/templates/${tpl.id}/send`, { audience, dispatch });
+      if (dispatch) {
+        setNotice(t('whatsapp.template_sent', {
+          sent: res.sent ?? 0,
+          failed: res.failed ?? 0,
+          count: res.audience_count ?? 0,
+        }));
+      } else {
+        setNotice(t('whatsapp.template_campaign_draft', { count: res.audience_count ?? 0 }));
+      }
+      load();
+    } catch (e: any) {
+      setError(t(apiErrorKey(e)));
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const bindAutomation = async (tpl: any, automationId?: string) => {
+    setActionId(tpl.id + ':auto');
+    setError('');
+    setNotice('');
+    try {
+      const res = await api.post(`/api/whatsapp/templates/${tpl.id}/automate`, {
+        automation_id: automationId || undefined,
+        enable: true,
+      });
+      setNotice(t('whatsapp.template_automated', { name: res.automation?.name || '' }));
+      load();
+    } catch (e: any) {
+      setError(e.body?.error === 'no_suggested_automation'
+        ? t('whatsapp.template_pick_automation')
+        : t(apiErrorKey(e)));
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const runBoundAutomation = async (tpl: any) => {
+    if (!tpl.automation_id) return;
+    setActionId(tpl.id + ':run');
+    setError('');
+    setNotice('');
+    try {
+      if (!tpl.automation_enabled) {
+        await api.put(`/api/whatsapp/automations/${tpl.automation_id}`, { enabled: true });
+      }
+      const res = await api.post(`/api/whatsapp/automations/${tpl.automation_id}/run`, {});
+      setNotice(t('whatsapp.automation_ran', { sent: res.sent ?? 0, failed: res.failed ?? 0 }));
+      load();
+    } catch (e: any) {
+      setError(t(apiErrorKey(e)));
+    } finally {
+      setActionId(null);
+    }
+  };
+
   return (
     <div className="space-y-4" data-testid="templates-view">
-      <div className="flex items-center justify-between gap-3">
-        <p className="page-subtitle max-w-2xl">{t('whatsapp.templates_info')}</p>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <p className="page-subtitle max-w-3xl text-[color:var(--ink-muted)]">{t('whatsapp.templates_info')}</p>
         <button onClick={() => setShowForm(true)} className="btn-primary shrink-0" data-testid="new-template">
           + {t('whatsapp.new_template')}
         </button>
       </div>
       {error && <FormError message={error} />}
-      {loading && <div className="text-slate-400 py-6 text-center">{t('common.loading')}</div>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {templates.map((tpl) => (
-          <div key={tpl.id} className="card p-4 space-y-2" data-testid={`template-${tpl.id}`}>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-semibold text-slate-900">{tpl.name}</div>
-                <div className="flex gap-2 mt-1 flex-wrap">
-                  <span className="badge-blue">{t(`whatsapp.cat_${tpl.category}`)}</span>
-                  <span className={`badge ${tpl.status === 'approved' ? 'badge-green' : tpl.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
-                    {t(`whatsapp.tpl_status_${tpl.status}`)}
-                  </span>
+      {notice && (
+        <div
+          className="rounded-lg border border-[color:var(--moss)]/45 bg-[color:var(--paper)] px-3.5 py-2.5 text-sm font-medium text-[color:var(--ink)]"
+          role="status"
+          data-testid="templates-notice"
+        >
+          {notice}
+        </div>
+      )}
+      {loading && <div className="text-[color:var(--ink-muted)] py-6 text-center">{t('common.loading')}</div>}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {templates.map((tpl) => {
+          const segment = audienceById[tpl.id] || tpl.suggested_segment || 'all_consented';
+          const count = segments[segment] ?? tpl.audience_count ?? 0;
+          const busySend = actionId === tpl.id + ':send';
+          const busyDraft = actionId === tpl.id + ':draft';
+          const busyAuto = actionId === tpl.id + ':auto';
+          const busyRun = actionId === tpl.id + ':run';
+          const approved = tpl.status === 'approved';
+          return (
+            <div key={tpl.id} className="card p-4 space-y-3" data-testid={`template-${tpl.id}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold text-[color:var(--ink)]">{tpl.name}</div>
+                  <div className="flex gap-2 mt-1 flex-wrap">
+                    <span className="badge-blue">{t(`whatsapp.cat_${tpl.category}`)}</span>
+                    <span className={`badge ${tpl.status === 'approved' ? 'badge-green' : tpl.status === 'rejected' ? 'badge-red' : 'badge-yellow'}`}>
+                      {t(`whatsapp.tpl_status_${tpl.status}`)}
+                    </span>
+                  </div>
                 </div>
+                <button onClick={() => setDeleting(tpl)} className="rounded-lg p-1.5 text-[color:var(--ink-muted)] hover:bg-rose-50 hover:text-rose-700" title={t('common.delete')}>
+                  <IconTrash />
+                </button>
               </div>
-              <button onClick={() => setDeleting(tpl)} className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title={t('common.delete')}>
-                <IconTrash />
-              </button>
+              <p className="text-sm text-[color:var(--ink-muted)] whitespace-pre-wrap">{tpl.body}</p>
+
+              {approved && (
+                <div className="rounded-lg border border-[color:var(--edge-soft)] bg-[color:var(--paper-mid)]/50 p-3 space-y-3" data-testid={`template-wiring-${tpl.id}`}>
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--ink)]">
+                      {t('whatsapp.template_who')}
+                    </div>
+                    <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('whatsapp.template_who_help')}</p>
+                    <div className="mt-2 flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <select
+                        className="input flex-1"
+                        value={segment}
+                        onChange={(e) => setAudienceById((prev) => ({ ...prev, [tpl.id]: e.target.value }))}
+                        data-testid={`template-audience-${tpl.id}`}
+                      >
+                        {AUDIENCE_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {t(`whatsapp.segment_${s}`)} ({segments[s] ?? 0})
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-xs font-medium text-[color:var(--ink)] whitespace-nowrap" data-testid={`template-audience-count-${tpl.id}`}>
+                        {t('whatsapp.template_recipients', { count })}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="btn-primary text-xs"
+                        disabled={!!actionId || count === 0}
+                        onClick={() => sendToAudience(tpl, true)}
+                        data-testid={`template-send-${tpl.id}`}
+                      >
+                        {busySend ? '…' : t('whatsapp.template_send_now')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs"
+                        disabled={!!actionId}
+                        onClick={() => sendToAudience(tpl, false)}
+                        data-testid={`template-draft-${tpl.id}`}
+                      >
+                        {busyDraft ? '…' : t('whatsapp.template_save_campaign')}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-[color:var(--edge-soft)] pt-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--ink)]">
+                      {t('whatsapp.template_how')}
+                    </div>
+                    <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('whatsapp.template_how_help')}</p>
+                    {tpl.automation_id ? (
+                      <div className="mt-2 flex flex-col gap-2">
+                        <div className="text-sm text-[color:var(--ink)]">
+                          <span className="font-medium">{tpl.automation_name}</span>
+                          <span className={`ml-2 badge ${tpl.automation_enabled ? 'badge-green' : 'badge-yellow'}`}>
+                            {tpl.automation_enabled ? t('whatsapp.active') : t('whatsapp.inactive')}
+                          </span>
+                          <span className="ml-2 text-xs font-mono text-[color:var(--ink-muted)]">{tpl.automation_key}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs"
+                            disabled={!!actionId}
+                            onClick={() => runBoundAutomation(tpl)}
+                            data-testid={`template-run-auto-${tpl.id}`}
+                          >
+                            {busyRun ? '…' : t('whatsapp.run_now')}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                        {tpl.suggested_automation_key ? (
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs"
+                            disabled={!!actionId}
+                            onClick={() => bindAutomation(tpl)}
+                            data-testid={`template-automate-${tpl.id}`}
+                          >
+                            {busyAuto ? '…' : t('whatsapp.template_enable_automation')}
+                          </button>
+                        ) : (
+                          <select
+                            className="input text-sm"
+                            defaultValue=""
+                            disabled={!!actionId}
+                            onChange={(e) => {
+                              if (e.target.value) bindAutomation(tpl, e.target.value);
+                            }}
+                            data-testid={`template-pick-auto-${tpl.id}`}
+                          >
+                            <option value="">{t('whatsapp.template_pick_automation')}</option>
+                            {automations.map((a) => (
+                              <option key={a.id} value={a.id}>{a.name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {tpl.status !== 'approved' && (
+                <button onClick={() => setStatus(tpl, 'approved')} className="btn-secondary text-xs" data-testid={`approve-${tpl.id}`}>
+                  {t('whatsapp.mark_approved')}
+                </button>
+              )}
             </div>
-            <p className="text-sm text-slate-600 whitespace-pre-wrap">{tpl.body}</p>
-            {tpl.status !== 'approved' && (
-              <button onClick={() => setStatus(tpl, 'approved')} className="btn-secondary text-xs" data-testid={`approve-${tpl.id}`}>
-                {t('whatsapp.mark_approved')}
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
       {showForm && <TemplateForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}
       {deleting && <ConfirmDialog name={deleting.name} busy={busy} onCancel={() => setDeleting(null)} onConfirm={remove} />}
@@ -999,7 +1207,12 @@ function AutomationsView() {
                 <span className="text-xs text-slate-400 font-mono">{a.key}</span>
               </div>
               <p className="text-sm text-[color:var(--ink-muted)] mt-1">{a.description}</p>
-              <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap border-l-2 border-clinic-200 pl-3">{a.message}</p>
+              {a.template_name ? (
+                <p className="text-xs font-medium text-[color:var(--ink)] mt-1" data-testid={`automation-template-${a.key}`}>
+                  {t('whatsapp.bound_template')}: {a.template_name}
+                </p>
+              ) : null}
+              <p className="text-sm text-[color:var(--ink-muted)] mt-2 whitespace-pre-wrap border-l-2 border-[color:var(--edge-soft)] pl-3">{a.message}</p>
               {a.last_run_at && (
                 <p className="text-xs text-slate-400 mt-2">
                   {t('whatsapp.last_run')}: {a.last_run_at} · {t('whatsapp.sent_count')}: {a.last_sent_count}
