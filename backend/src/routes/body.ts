@@ -2321,8 +2321,7 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
     // Mark pending and return immediately — DO App Platform gateway ~100s;
     // generative + architecture-lock for 4 views routinely exceeds that.
     db.prepare(`UPDATE body_scenarios SET status = 'pending', updated_at = datetime('now') WHERE id = ?`).run(id);
-    const tenantId = req.tenantId!;
-    const userId = req.user!.id;
+    const bgReq = { tenantId: req.tenantId } as Request;
     const genOpts = {
       captureSessionId,
       envelope: execution_plan,
@@ -2331,7 +2330,7 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
       weeks,
     };
     setImmediate(() => {
-      runGenerate(req, id, patient.id, capture, prompt, genOpts).catch((e: any) => {
+      runGenerate(bgReq, id, patient.id, capture, prompt, genOpts).catch((e: any) => {
         try {
           db.prepare(`UPDATE body_scenarios SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ?`)
             .run(String(e?.message || e).slice(0, 500), id);
