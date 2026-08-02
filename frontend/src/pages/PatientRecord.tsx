@@ -8,7 +8,7 @@ import { PatientForm } from '../components/PatientForm';
 import ProntuarioChart from '../components/prontuario/ProntuarioChart';
 import TimelineInspector from '../components/TimelineInspector';
 import AppointmentForm from '../components/AppointmentForm';
-import HairTransplantStub from '../components/HairTransplantStub';
+import HairTransplantWorkspace from '../components/HairTransplantWorkspace';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -854,7 +854,7 @@ export default function PatientRecord() {
           )}
 
           {tab === 'hair_transplant' && patient && (
-            <HairTransplantStub
+            <HairTransplantWorkspace
               patientId={patient.id}
               patientName={patient.social_name || patient.full_name}
             />

@@ -12,7 +12,7 @@ import { blindIndex, seal, sealJson, revealPatientRow } from '../services/phiCry
 import {
   fieldsForKind, PRE_TRIAGE_CONSENT_PT, localizeFields, localizeConsentBoxes, sectionTitle,
 } from '../services/intakeTemplates';
-import { buildIntakeInviteEmail, mailerConfigured, sendEmail } from '../services/mailer';
+import { buildIntakeInviteEmail, mailerConfigured, mailerProvider, sendEmail } from '../services/mailer';
 import { sendTextMessage } from '../services/whatsapp';
 import { upsertPatientDocumentPointer } from '../services/patientDocumentsVault';
 
@@ -61,6 +61,7 @@ formsRouter.get('/', requireRole('admin', 'receptionist', 'doctor', 'nurse'), (r
       kind: f.kind || 'cadastro',
       urls: formPublicUrls(req, f.slug),
       mailer_configured: mailerConfigured(),
+      mailer_provider: mailerProvider(),
     })),
   });
 });
@@ -132,13 +133,25 @@ formsRouter.post('/:id/send-invite', requireRole('admin', 'receptionist', 'docto
 
   if (d.channel === 'email' || d.channel === 'both') {
     if (email) {
-      const sent = await sendEmail({ to: email, subject: mail.subject, text: mail.text, html: mail.html });
+      const sent = await sendEmail({
+        to: email,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+        tags: [
+          { name: 'category', value: 'transactional_intake' },
+          { name: 'form', value: String(form.slug || 'intake').slice(0, 40) },
+        ],
+        headers: {
+          'X-Entity-Ref-ID': inviteId,
+        },
+      });
       results.email = sent;
       mailto = sent.mailto_url || null;
       if (sent.ok) status = 'sent';
-      else if (sent.error === 'smtp_not_configured' && mailto) {
+      else if ((sent.error === 'smtp_not_configured' || sent.error === 'mail_not_configured' || sent.error === 'resend_not_configured') && mailto) {
         status = d.channel === 'both' ? 'partial' : 'mailto';
-        errorMsg = 'smtp_not_configured';
+        errorMsg = sent.error;
       } else {
         status = d.channel === 'both' ? 'partial' : 'failed';
         errorMsg = sent.error || 'email_failed';
@@ -192,6 +205,7 @@ formsRouter.post('/:id/send-invite', requireRole('admin', 'receptionist', 'docto
     embed: urls.embed,
     mailto_url: mailto,
     mailer_configured: mailerConfigured(),
+    mailer_provider: mailerProvider(),
     error: errorMsg,
   });
 });
