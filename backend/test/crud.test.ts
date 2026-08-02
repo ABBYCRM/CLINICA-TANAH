@@ -169,10 +169,15 @@ describe('patients', () => {
     expect(rx.status).toBe(201);
     const rxDel = await api('DELETE', `/clinical/prescriptions/${rx.body.id}`, undefined, true);
     expect(rxDel.status).toBe(200);
+    // Encounter/prescription DELETE is soft-cancel (CFM retention) — rows remain.
     const encDel = await api('DELETE', `/clinical/encounters/${enc.body.id}`);
     expect(encDel.status).toBe(200);
-    const nowOk = await api('DELETE', `/patients/${patientId}`);
-    expect(nowOk.status).toBe(200);
+    expect(encDel.body.status).toBe('cancelled');
+    expect(encDel.body.clinical_retention).toBe(true);
+    // Patient hard-delete must still be blocked; use LGPD anonymization flow instead.
+    const stillBlocked = await api('DELETE', `/patients/${patientId}`);
+    expect(stillBlocked.status).toBe(409);
+    expect(stillBlocked.body.error).toBe('has_clinical_records');
   });
 });
 
@@ -263,8 +268,13 @@ describe('accounting', () => {
     expect(paid.status).toBe(200);
     const editPaid = await api('PUT', `/accounting/invoices/${id}`, { total: 1 });
     expect(editPaid.status).toBe(409);
-    const delPaid = await api('DELETE', `/accounting/invoices/${id}`);
+    // Delete requires confirm password; paid invoices remain fiscal records (409).
+    const delNoPw = await api('DELETE', `/accounting/invoices/${id}`, {});
+    expect(delNoPw.status).toBe(403);
+    expect(delNoPw.body.error).toBe('invalid_delete_password');
+    const delPaid = await api('DELETE', `/accounting/invoices/${id}`, { password: '1234' });
     expect(delPaid.status).toBe(409);
+    expect(delPaid.body.error).toBe('already_paid');
     // clean up directly (fiscal retention is enforced at the API level)
     db.prepare(`DELETE FROM invoices WHERE id = ?`).run(id);
   });

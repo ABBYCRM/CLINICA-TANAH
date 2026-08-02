@@ -426,11 +426,18 @@
       "task_cat_clinical": "Clinical",
       "task_cat_admin": "Admin",
       "hair_transplant_heading": "Hair transplant",
-      "hair_transplant_hint": "Visual outcome simulation for hair transplant from the patient photo (coming soon).",
-      "hair_transplant_stub_title": "Image generation coming soon",
-      "hair_transplant_stub_body": "This space will host before/after image generation for hair-transplant planning, with facial identity preserved. Stub only for now.",
-      "hair_transplant_generate": "Generate simulation",
-      "hair_transplant_coming_soon": "Coming soon"
+      "hair_transplant_hint": "Clinical hair-transplant planning: classification, donor area, graft estimate, and reference photos on the patient record.",
+      "hair_transplant_scale_system": "Scale",
+      "hair_transplant_scale_value": "Grade",
+      "hair_transplant_scale_other": "Other",
+      "hair_transplant_donor": "Donor area / densitometry",
+      "hair_transplant_grafts": "Graft estimate",
+      "hair_transplant_plan_notes": "Surgical plan / notes",
+      "hair_transplant_photo": "Reference photo (optional)",
+      "hair_transplant_save": "Save plan",
+      "hair_transplant_saved": "Hair plan saved to the patient record.",
+      "hair_transplant_history": "Saved plans",
+      "hair_transplant_plan_title": "Hair plan"
     },
     "inspector": {
       "eyebrow": "Live activity",

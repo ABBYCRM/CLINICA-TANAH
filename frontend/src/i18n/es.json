@@ -426,11 +426,18 @@
       "task_cat_clinical": "Clínico",
       "task_cat_admin": "Administrativo",
       "hair_transplant_heading": "Trasplante capilar",
-      "hair_transplant_hint": "Simulación visual del resultado de trasplante capilar a partir de la foto del paciente (próximamente).",
-      "hair_transplant_stub_title": "Generación de imagen próximamente",
-      "hair_transplant_stub_body": "Este espacio recibirá la generación de imagen (antes/después) para planificación de trasplante capilar, preservando la identidad facial. Por ahora es un stub.",
-      "hair_transplant_generate": "Generar simulación",
-      "hair_transplant_coming_soon": "Disponible pronto"
+      "hair_transplant_hint": "Planificación clínica de trasplante capilar: clasificación, zona donante, estimación de grafts y fotos de referencia en la ficha del paciente.",
+      "hair_transplant_scale_system": "Escala",
+      "hair_transplant_scale_value": "Grado",
+      "hair_transplant_scale_other": "Otra",
+      "hair_transplant_donor": "Zona donante / densitometría",
+      "hair_transplant_grafts": "Estimación de grafts",
+      "hair_transplant_plan_notes": "Plan quirúrgico / notas",
+      "hair_transplant_photo": "Foto de referencia (opcional)",
+      "hair_transplant_save": "Guardar plan",
+      "hair_transplant_saved": "Plan capilar guardado en la ficha.",
+      "hair_transplant_history": "Planes guardados",
+      "hair_transplant_plan_title": "Plan capilar"
     },
     "inspector": {
       "eyebrow": "Actividad en vivo",
