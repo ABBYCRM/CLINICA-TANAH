@@ -37,17 +37,26 @@ import lgpdRouter from './routes/lgpd';
 import tenantsRouter from './routes/tenants';
 import formsRouter, { publicFormsRouter } from './routes/forms';
 import appsRouter from './routes/apps';
+import integrationsRouter from './routes/integrations';
 import { mountStatic } from './static';
 import { authenticate } from './middleware/auth';
 import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/security';
 import { assertSecurityConfig, encryptionStatus } from './services/phiCrypto';
 import { buildLgpdPolicy } from './services/lgpdPolicy';
+import { hydrateImageProviderSettings } from './services/integrationSettings';
 assertSecurityConfig();
 try {
   initSchema();
 } catch (err: any) {
   console.error('FATAL: schema init failed', err?.stack || err);
   process.exit(1);
+}
+
+let imageIntegrationStatus: ReturnType<typeof hydrateImageProviderSettings> | null = null;
+try {
+  imageIntegrationStatus = hydrateImageProviderSettings();
+} catch (err: any) {
+  console.error('IMAGE PROVIDERS: failed to hydrate saved integration settings', err?.stack || err);
 }
 
 const app = express();
@@ -107,6 +116,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/tokens', tokensRouter);
+app.use('/api/integrations', integrationsRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/clinical/body', bodyRouter);
@@ -203,6 +213,13 @@ app.listen(PORT, () => {
   const nvKeys = (process.env.NVIDIA_API_KEYS || process.env.NVIDIA_API_KEY || '')
     .split(/[\n,]+/).map((k) => k.replace(/^Bearer\s+/i, '').trim()).filter((k) => k.startsWith('nvapi-'));
   console.log(`   NVIDIA OCR: ${nvKeys.length ? `${nvKeys.length} key(s) · ${process.env.NVIDIA_OCR_MODEL || 'nemotron-nano-12b-v2-vl'}` : 'NOT CONFIGURED'}`);
+  if (imageIntegrationStatus) {
+    const active = Object.entries(imageIntegrationStatus.providers)
+      .filter(([, status]) => status.configured)
+      .map(([name, status]) => `${name}:${status.source}`)
+      .join(', ') || 'none';
+    console.log(`   Image providers: ${imageIntegrationStatus.order.join(' → ')} · configured ${active}`);
+  }
 });
 
 export default app;
