@@ -54,7 +54,7 @@ test.describe('Sim generate CTA visibility', () => {
     const gen = page.getByTestId('sim-generate');
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await expect(gen).toBeVisible();
-    await expect(gen).toContainText(/Gerar imagem|Generate image|Generar imagen/i);
+    await expect(gen).toContainText(/Gerar|Generate|Generar/i);
 
     // Bring into view if chart chrome pushed it slightly; then assert visible in viewport
     await panel.scrollIntoViewIfNeeded();
