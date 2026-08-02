@@ -730,7 +730,7 @@ export async function generateBodyScenarioImage(opts: {
 }): Promise<ImageGenResult> {
   // Always generative-first (Gemini/A2E/Bitdeer). local_morph stays last — it is a
   // last-resort silhouette edit and must never win over photoreal img2img for doctor Δkg.
-  let order = providerOrder().filter((p) => p !== 'local_morph');
+  const order: ImageProvider[] = providerOrder().filter((p) => p !== 'local_morph');
   if (localMorphEnabled()) order.push('local_morph');
   if (!order.length) {
     return { provider: 'a2e', status: 'failed', error: 'no_image_provider_configured' };
