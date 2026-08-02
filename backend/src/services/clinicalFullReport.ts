@@ -114,7 +114,7 @@ function kvTable(rows: Array<[string, unknown]>): string {
 }
 
 function dataTable(headers: string[], rows: string[][]): string {
-  if (!rows.length) return '<p class="muted">Sem registros neste período.</p>';
+  if (!rows.length) return '<p class="empty">Nenhum registro.</p>';
   const head = headers.map((h) => `<th>${esc(h)}</th>`).join('');
   const body = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
   return `<div class="scroll"><table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -482,131 +482,158 @@ export function renderClinicalReportHtml(
     p.address_neighborhood, p.address_city, p.address_state, p.address_zip,
   ].filter(Boolean).join(', ');
 
+  const viewLabel = (v: string) => ({
+    front: 'Frente', left: 'Esquerda', right: 'Direita', back: 'Costas',
+  } as Record<string, string>)[v] || v;
+
+  const statusPt = (s: string | null | undefined) => ({
+    completed: 'Concluído',
+    scheduled: 'Agendado',
+    cancelled: 'Cancelado',
+    no_show: 'Falta',
+    active: 'Ativo',
+    ready: 'Pronto',
+    pending_review: 'Em revisão',
+    approved: 'Aprovado',
+    rejected: 'Rejeitado',
+    consultation: 'Consulta',
+    return: 'Retorno',
+    new_patient: 'Paciente novo',
+    website: 'Site',
+    phone: 'Telefone',
+    reception: 'Recepção',
+    whatsapp_bot: 'WhatsApp',
+  } as Record<string, string>)[String(s || '')] || (s || '—');
+
+  const purposeLabel = (x: string) => ({
+    clinical_record: 'Registro clínico',
+    image_processing: 'Processamento de imagem',
+    generative_ai: 'Inteligência artificial generativa',
+    cross_border_transfer: 'Transferência internacional',
+    research: 'Pesquisa',
+    marketing: 'Marketing',
+    health_data_processing: 'Tratamento de dados de saúde',
+    whatsapp_communication: 'Comunicação por WhatsApp',
+    email_communication: 'Comunicação por e-mail',
+    sms_communication: 'Comunicação por SMS',
+    marketing_news: 'Novidades / conteúdo',
+    promotions_events: 'Promoções e eventos',
+  } as Record<string, string>)[x] || x.replace(/_/g, ' ');
+
+  const fmtDatePt = (v: unknown) => {
+    const s = fmtDate(v);
+    if (!s || s === '—') return '—';
+    // Prefer DD/MM/YYYY for medical docs
+    const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+    if (!m) return s;
+    return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : `${m[3]}/${m[2]}/${m[1]}`;
+  };
+
   const parts: string[] = [];
+  const genDate = fmtDatePt(data.generated_at);
 
   parts.push(`
     <header class="cover">
-      <div class="brand">Clínica Tanah</div>
-      <h1>Relatório clínico completo</h1>
-      <p class="meta">Prontuário integrado · módulo Corpo + chart CFM · gerado em ${esc(fmtDate(data.generated_at))}</p>
-      <p class="meta">Assinado por: <strong>${esc(opts.signatureName)}</strong>${opts.generatedBy ? ` · ${esc(opts.generatedBy)}` : ''}</p>
-      ${opts.nextFollowUpDate ? `<p class="meta">Próximo retorno: ${esc(opts.nextFollowUpDate)}</p>` : ''}
-      <p class="meta">Imagens clínicas no dossiê: capturas ${data.image_policy?.capture_images_embedded ?? 0} · simulações ${data.image_policy?.scenario_images_embedded ?? 0} (acesso autenticado · LGPD art. 7º VIII)</p>
+      <div class="letterhead">
+        <div class="brand">Clínica Tanah</div>
+        <div class="brand-sub">Medicina · Bem-estar · Acompanhamento clínico</div>
+      </div>
+      <h1>Relatório clínico</h1>
+      <p class="subtitle">Documento destinado ao prontuário e ao acompanhamento do paciente</p>
+      <div class="cover-meta">
+        <div><span>Paciente</span><strong>${esc(p.full_name || '—')}</strong></div>
+        <div><span>Data de emissão</span><strong>${esc(genDate)}</strong></div>
+        <div><span>Assinatura clínica</span><strong>${esc(opts.signatureName)}</strong></div>
+        ${opts.nextFollowUpDate ? `<div><span>Próximo retorno</span><strong>${esc(fmtDatePt(opts.nextFollowUpDate))}</strong></div>` : ''}
+      </div>
     </header>
   `);
 
-  parts.push(section('Índice de conteúdo', `
-    <ul class="toc">
-      <li>Identificação e demografia</li>
-      <li>Alertas clínicos</li>
-      <li>Consentimentos (LGPD / Corpo)</li>
-      <li>Antropometria e medidas</li>
-      <li>Medicamentos e receitas</li>
-      <li>Planos de nutrição e treino</li>
-      <li>Captura corporal e qualidade</li>
-      <li>Cenários / simulações ilustrativas</li>
-      <li>Prontuário (SOAP, evoluções, vitais, exames, procedimentos, problemas)</li>
-      <li>Agenda / consultas</li>
-    </ul>
-    <p class="muted">Contagens: medidas ${data.counts.measurements} · meds ${data.counts.medications} · planos ${data.counts.plans} · capturas ${data.counts.capture_sessions} · cenários ${data.counts.scenarios} · evoluções ${data.counts.evolutions} · encontros ${data.counts.encounters} · consultas ${data.counts.appointments}</p>
-  `));
-
   if (include.demographics) {
-    parts.push(section('1. Identificação e demografia', kvTable([
+    parts.push(section('1. Identificação', kvTable([
       ['Nome completo', p.full_name],
       ['Nome social', p.social_name],
-      ['Data de nascimento', p.birth_date],
+      ['Data de nascimento', fmtDatePt(p.birth_date)],
       ['Idade', p.age_years != null ? `${p.age_years} anos` : null],
-      ['Sexo / gênero', p.gender],
+      ['Sexo', p.gender === 'M' ? 'Masculino' : p.gender === 'F' ? 'Feminino' : p.gender],
       ['CPF', p.cpf],
       ['CNS', p.cns],
       ['Telefone', p.phone],
       ['E-mail', p.email],
       ['Endereço', address],
       ['Convênio', p.health_insurance],
-      ['Nº convênio', p.health_insurance_number],
+      ['Nº do convênio', p.health_insurance_number],
       ['Tipo sanguíneo', p.blood_type],
       ['Ocupação', p.occupation],
       ['Estado civil', p.marital_status],
-      ['Contato emergência', [p.emergency_contact_name, p.emergency_contact_phone].filter(Boolean).join(' · ')],
+      ['Contato de emergência', [p.emergency_contact_name, p.emergency_contact_phone].filter(Boolean).join(' · ')],
       ['Responsável', [p.guardian_name, p.guardian_relationship, p.guardian_phone].filter(Boolean).join(' · ')],
-      ['Estágio', p.lifecycle_stage],
-      ['Idioma preferido', p.preferred_language],
-      ['Última visita', fmtDate(p.last_visit_at)],
-    ])));
+    ].filter((row) => row[1] != null && String(row[1]).trim() !== '') as Array<[string, unknown]>)));
   }
 
   if (include.alerts) {
     const allergyRows = [
       ...data.allergies.map((a) => [
         esc(a.substance || a.name || '—'),
-        esc(a.severity || '—'),
+        esc(a.severity === 'legado' ? 'Informada' : (a.severity || '—')),
         esc(a.reaction || a.notes || '—'),
-        esc(fmtDate(a.recorded_at || a.created_at)),
       ]),
       ...(Array.isArray(data.alerts.allergies_legacy) ? data.alerts.allergies_legacy.map((x: any) => [
-        esc(typeof x === 'string' ? x : x?.name || JSON.stringify(x)),
-        'legado',
-        '—',
+        esc(typeof x === 'string' ? x : x?.name || '—'),
+        'Informada',
         '—',
       ]) : []),
     ];
     const chronic = Array.isArray(data.alerts.chronic_conditions)
-      ? data.alerts.chronic_conditions.map((c: any) => esc(typeof c === 'string' ? c : c?.name || JSON.stringify(c))).join(', ')
+      ? data.alerts.chronic_conditions.map((c: any) => esc(typeof c === 'string' ? c : c?.name || '—')).join(', ')
       : '—';
+    const problemRows = data.problems.map((pr) => [
+      esc(pr.title || pr.name || '—'),
+      esc(statusPt(pr.status)),
+      esc(pr.icd10_code || pr.cid10_code || '—'),
+    ]);
     parts.push(section('2. Alertas clínicos', `
-      <p class="${data.alerts.allergy_alert ? 'alert' : 'ok'}">
-        ${data.alerts.allergy_alert ? '⚠ Alerta de alergia presente' : 'Sem alerta de alergia ativo'}
-        ${data.alerts.open_complaint ? ' · Queixa aberta registrada' : ''}
-      </p>
+      ${data.alerts.allergy_alert
+        ? '<p class="alert">Atenção: alergia registrada no prontuário.</p>'
+        : '<p class="ok">Sem alerta de alergia ativo.</p>'}
       <h3>Alergias</h3>
-      ${dataTable(['Substância', 'Severidade', 'Reação / notas', 'Desde'], allergyRows)}
+      ${allergyRows.length
+        ? dataTable(['Substância', 'Severidade', 'Reação / notas'], allergyRows)
+        : '<p class="empty">Nenhuma alergia registrada.</p>'}
       <h3>Condições crônicas</h3>
-      <p>${chronic || '—'}</p>
-      <h3>Problemas ativos / resolvidos</h3>
-      ${dataTable(
-        ['Problema', 'Status', 'CID', 'Atualizado'],
-        data.problems.map((pr) => [
-          esc(pr.title || pr.name || '—'),
-          esc(pr.status),
-          esc(pr.icd10_code || pr.cid10_code || '—'),
-          esc(fmtDate(pr.updated_at || pr.created_at)),
-        ]),
-      )}
+      <p>${chronic && chronic !== '—' ? chronic : 'Nenhuma condição crônica registrada.'}</p>
+      ${problemRows.length ? `
+        <h3>Problemas clínicos</h3>
+        ${dataTable(['Problema', 'Status', 'CID-10'], problemRows)}
+      ` : ''}
     `));
   }
 
   if (include.consents) {
-    const purposeLabel = (x: string) => ({
-      clinical_record: 'Registro clínico',
-      image_processing: 'Processamento de imagem',
-      generative_ai: 'IA generativa',
-      cross_border_transfer: 'Transferência internacional',
-      research: 'Pesquisa',
-      marketing: 'Marketing',
-    } as Record<string, string>)[x] || x;
-    parts.push(section('3. Consentimentos (LGPD / Corpo)', `
-      <p class="muted">Consentimento LGPD do paciente: ${esc(fmtDate(data.consents.patient_lgpd_at))} · versão ${esc(data.consents.patient_lgpd_version || '—')} · opt-out marketing: ${data.consents.marketing_opt_out ? 'sim' : 'não'}</p>
-      <h3>Consentimentos granulares (módulo Corpo)</h3>
-      ${dataTable(
-        ['Finalidade', 'Concedido', 'Em', 'Revogado'],
-        (data.consents.body || []).map((c: any) => [
-          esc(purposeLabel(c.purpose)),
-          c.granted ? 'OK' : 'Não',
-          esc(fmtDate(c.granted_at)),
-          esc(fmtDate(c.revoked_at)),
-        ]),
-      )}
-      <h3>Ledger LGPD</h3>
-      ${dataTable(
-        ['Finalidade', 'Concedido', 'Em', 'Versão'],
-        (data.consents.lgpd || []).map((c: any) => [
-          esc(c.purpose),
-          c.granted ? 'OK' : 'Não',
-          esc(fmtDate(c.granted_at)),
-          esc(c.version || '—'),
-        ]),
-      )}
+    const bodyRows = (data.consents.body || [])
+      .filter((c: any) => c.granted)
+      .map((c: any) => [
+        esc(purposeLabel(c.purpose)),
+        'Sim',
+        esc(fmtDatePt(c.granted_at)),
+      ]);
+    const lgpdRows = (data.consents.lgpd || [])
+      .filter((c: any) => c.granted)
+      .map((c: any) => [
+        esc(purposeLabel(c.purpose)),
+        'Sim',
+        esc(fmtDatePt(c.granted_at)),
+      ]);
+    parts.push(section('3. Consentimentos', `
+      <p>O paciente autorizou o tratamento de dados de saúde para fins assistenciais${data.consents.patient_lgpd_at ? ` em ${esc(fmtDatePt(data.consents.patient_lgpd_at))}` : ''}.</p>
+      ${bodyRows.length ? `
+        <h3>Autorizações clínicas (imagem / registro)</h3>
+        ${dataTable(['Finalidade', 'Concedido', 'Data'], bodyRows)}
+      ` : ''}
+      ${lgpdRows.length ? `
+        <h3>Comunicações e demais finalidades</h3>
+        ${dataTable(['Finalidade', 'Concedido', 'Data'], lgpdRows)}
+      ` : ''}
     `));
   }
 
@@ -615,218 +642,249 @@ export function renderClinicalReportHtml(
     const bmi = latest?.bmi ?? (latest?.height_cm && latest?.weight_kg
       ? Math.round((latest.weight_kg / ((latest.height_cm / 100) ** 2)) * 10) / 10
       : null);
-    parts.push(section('4. Antropometria e medidas corporais', `
-      <h3>Resumo atual</h3>
+    parts.push(section('4. Antropometria', `
+      <h3>Avaliação atual</h3>
       ${kvTable([
         ['Altura', latest?.height_cm != null ? `${latest.height_cm} cm` : null],
         ['Peso', latest?.weight_kg != null ? `${latest.weight_kg} kg` : null],
         ['Cintura', latest?.waist_cm != null ? `${latest.waist_cm} cm` : null],
         ['Quadril', latest?.hip_cm != null ? `${latest.hip_cm} cm` : null],
-        ['% gordura', latest?.body_fat_pct != null ? `${latest.body_fat_pct}%` : null],
+        ['Percentual de gordura', latest?.body_fat_pct != null ? `${latest.body_fat_pct}%` : null],
         ['Massa muscular', latest?.muscle_mass_kg != null ? `${latest.muscle_mass_kg} kg` : null],
         ['IMC', bmi],
-        ['Registrado em', fmtDate(latest?.recorded_at || latest?.measured_at)],
+        ['Data da aferição', fmtDatePt(latest?.recorded_at || latest?.measured_at)],
       ])}
-      <h3>Linha do tempo</h3>
-      ${dataTable(
-        ['Data', 'Peso', 'Cintura', 'IMC', '%G', 'MM'],
-        data.measurements.map((m) => {
-          const mBmi = m.bmi ?? (m.height_cm && m.weight_kg
-            ? Math.round((m.weight_kg / ((m.height_cm / 100) ** 2)) * 10) / 10
-            : '—');
-          return [
-            esc(fmtDate(m.recorded_at || m.measured_at)),
-            esc(m.weight_kg ?? '—'),
-            esc(m.waist_cm ?? '—'),
-            esc(mBmi),
-            esc(m.body_fat_pct ?? '—'),
-            esc(m.muscle_mass_kg ?? '—'),
-          ];
-        }),
-      )}
+      ${data.measurements.length > 1 ? `
+        <h3>Evolução</h3>
+        ${dataTable(
+          ['Data', 'Peso (kg)', 'Cintura (cm)', 'IMC', '% gordura', 'Massa muscular'],
+          data.measurements.map((m) => {
+            const mBmi = m.bmi ?? (m.height_cm && m.weight_kg
+              ? Math.round((m.weight_kg / ((m.height_cm / 100) ** 2)) * 10) / 10
+              : '—');
+            return [
+              esc(fmtDatePt(m.recorded_at || m.measured_at)),
+              esc(m.weight_kg ?? '—'),
+              esc(m.waist_cm ?? '—'),
+              esc(mBmi),
+              esc(m.body_fat_pct ?? '—'),
+              esc(m.muscle_mass_kg ?? '—'),
+            ];
+          }),
+        )}
+      ` : ''}
     `));
   }
 
   if (include.medications) {
-    parts.push(section('5. Medicamentos (Corpo) e receitas', `
-      <h3>Medicamentos no módulo Corpo</h3>
-      ${dataTable(
-        ['Medicamento', 'Dose', 'Classe', 'Status', 'Desde'],
-        data.medications.map((m) => [
-          esc(m.name),
-          esc(m.dosage || '—'),
-          esc(m.class_tag || m.visual_profile || '—'),
-          esc(m.status || '—'),
-          esc(fmtDate(m.started_at || m.created_at)),
-        ]),
-      )}
-      <h3>Receitas clínicas</h3>
+    parts.push(section('5. Medicamentos e receitas', `
+      <h3>Medicamentos em uso</h3>
+      ${data.medications.length
+        ? dataTable(
+          ['Medicamento', 'Dose', 'Classe', 'Desde'],
+          data.medications.map((m) => [
+            esc(m.name),
+            esc(m.dosage || '—'),
+            esc(m.class_tag || m.visual_profile || '—'),
+            esc(fmtDatePt(m.started_at || m.created_at)),
+          ]),
+        )
+        : '<p class="empty">Nenhum medicamento registrado neste módulo.</p>'}
+      <h3>Receitas</h3>
       ${data.prescriptions.length ? data.prescriptions.map((rx) => {
         const items = Array.isArray(rx.items) ? rx.items : [];
         const itemLines = items.map((it: any) => {
           if (typeof it === 'string') return `<li>${esc(it)}</li>`;
           return `<li><strong>${esc(it.medication || it.name || '—')}</strong> — ${esc([it.dosage, it.frequency, it.duration, it.instructions].filter(Boolean).join(' · ') || '—')}</li>`;
         }).join('');
-        return `<div class="card"><div class="card-h">${esc(fmtDate(rx.created_at))} · ${esc(rx.status)} · ${esc(rx.signer_name || '—')}</div><ul>${itemLines || '<li>—</li>'}</ul></div>`;
-      }).join('') : '<p class="muted">Nenhuma receita registrada.</p>'}
+        return `<div class="card"><div class="card-h">${esc(fmtDatePt(rx.created_at))} · ${esc(statusPt(rx.status))} · ${esc(rx.signer_name || '—')}</div><ul>${itemLines || '<li>—</li>'}</ul></div>`;
+      }).join('') : '<p class="empty">Nenhuma receita registrada.</p>'}
     `));
   }
 
   if (include.lifestyle) {
-    parts.push(section('6. Planos de nutrição e treino', data.plans.length ? data.plans.map((pl) => {
-      const meta = [
-        pl.plan_type,
-        pl.status,
-        pl.weeks ? `${pl.weeks}w` : null,
-        pl.daily_calories ? `${pl.daily_calories} kcal/d` : null,
-        pl.deficit_kcal != null ? `déficit ${pl.deficit_kcal}` : null,
-        pl.protein_g ? `prot ${pl.protein_g}g` : null,
-        pl.params?.training_style,
-        pl.params?.resistance_days_per_week != null ? `força ${pl.params.resistance_days_per_week}×` : null,
-        pl.params?.cardio_days_per_week != null ? `cardio ${pl.params.cardio_days_per_week}×` : null,
+    const nut = data.plans.filter((pl) => (pl.plan_type || 'nutrition') === 'nutrition');
+    const ex = data.plans.filter((pl) => pl.plan_type === 'exercise');
+    const planCard = (pl: any, kind: string) => {
+      const bits = [
+        pl.weeks ? `${pl.weeks} semanas` : null,
+        pl.daily_calories ? `${pl.daily_calories} kcal/dia` : null,
+        pl.deficit_kcal != null ? `déficit ${pl.deficit_kcal} kcal` : null,
+        pl.protein_g ? `proteína ${pl.protein_g} g` : null,
+        pl.params?.resistance_days_per_week != null ? `força ${pl.params.resistance_days_per_week}×/sem` : null,
+        pl.params?.cardio_days_per_week != null ? `cardio ${pl.params.cardio_days_per_week}×/sem` : null,
       ].filter(Boolean).join(' · ');
-      return `<div class="card"><div class="card-h">${esc(pl.title)} <span class="muted">${esc(meta)}</span></div><p>${esc(pl.summary || pl.description || '—')}</p></div>`;
-    }).join('') : '<p class="muted">Nenhum plano de dieta/treino.</p>'));
+      return `<div class="card"><div class="card-h">${esc(pl.title)}</div>
+        <p class="kind">${esc(kind)}${bits ? ` · ${esc(bits)}` : ''}</p>
+        <p>${esc(pl.summary || pl.description || '')}</p></div>`;
+    };
+    parts.push(section('6. Nutrição e exercício', `
+      <h3>Plano nutricional</h3>
+      ${nut.length ? nut.map((pl) => planCard(pl, 'Nutrição')).join('') : '<p class="empty">Nenhum plano nutricional ativo.</p>'}
+      <h3>Plano de treino</h3>
+      ${ex.length ? ex.map((pl) => planCard(pl, 'Exercício')).join('') : '<p class="empty">Nenhum plano de treino ativo.</p>'}
+    `));
   }
 
   if (include.captures) {
-    parts.push(section('7. Captura corporal e qualidade', data.capture_sessions.length ? data.capture_sessions.map((s) => {
-      const q = s.quality_summary || {};
-      const gates = typeof q === 'object' && q ? Object.entries(q).map(([k, v]) => {
-        const val = typeof v === 'object' && v ? ((v as any).status || (v as any).result || JSON.stringify(v)) : v;
-        return `<li><code>${esc(k)}</code>: ${esc(val)}</li>`;
-      }).join('') : '';
-      const assets = (s.assets || []).map((a: any) => `<li>${esc(a.view)}${a.has_image ? '' : ' (sem arquivo)'}</li>`).join('');
-      const images = imgGrid((s.assets || []).map((a: any) => ({ label: String(a.view || 'vista'), dataUri: a.data_uri || null })));
-      return `<div class="card"><div class="card-h">Sessão ${esc(s.id.slice(0, 8))} · ${esc(s.status)} · ${esc(fmtDate(s.created_at))} · ${s.asset_count || 0}/4 vistas</div>
-        <ul>${assets || '<li>Sem assets</li>'}</ul>
-        ${images || (data.image_policy?.include_requested && !data.image_policy?.capture_images_allowed
-          ? '<p class="muted">Imagens de captura omitidas — conceda consentimento de registro clínico / processamento de imagem.</p>'
-          : '')}
-        ${gates ? `<h4>Qualidade</h4><ul>${gates}</ul>` : ''}</div>`;
-    }).join('') : '<p class="muted">Nenhuma sessão de captura.</p>'));
+    const sessions = data.capture_sessions.filter((s) => (s.assets || []).some((a: any) => a.data_uri || a.has_image));
+    parts.push(section('7. Registro fotográfico padronizado', sessions.length ? sessions.map((s) => {
+      const ordered = ['front', 'left', 'right', 'back']
+        .map((v) => (s.assets || []).find((a: any) => a.view === v))
+        .filter(Boolean);
+      const images = imgGrid(ordered.map((a: any) => ({
+        label: viewLabel(String(a.view || '')),
+        dataUri: a.data_uri || null,
+      })));
+      return `<div class="card">
+        <div class="card-h">Registro de ${esc(fmtDatePt(s.validated_at || s.created_at))} · ${ordered.length} vistas</div>
+        ${images || '<p class="empty">Fotos não disponíveis neste documento.</p>'}
+      </div>`;
+    }).join('') : '<p class="empty">Nenhum registro fotográfico disponível.</p>'));
   }
 
   if (include.scenarios) {
-    parts.push(section('8. Cenários e simulações ilustrativas', `
-      <p class="wm-inline">Imagens geradas são ilustrativas — não constituem prognóstico clínico. Incluídas no prontuário autenticado com base legal LGPD art. 7º VIII (tutela da saúde) e consentimento de IA generativa.</p>
-      ${data.scenarios.length ? data.scenarios.map((s) => {
+    const usable = data.scenarios.filter((s) =>
+      ['completed', 'ready'].includes(String(s.status || ''))
+      && (s.output_view_count > 0 || (s.output_images || []).some((x: any) => x.data_uri)),
+    );
+    parts.push(section('8. Simulação ilustrativa de composição corporal', `
+      <p class="disclaimer">As imagens a seguir são <strong>ilustrativas</strong> e não constituem prognóstico clínico nem garantia de resultado. Desfechos reais variam conforme adesão, genética e resposta individual.</p>
+      ${usable.length ? usable.map((s) => {
         const proj = s.projected || {};
-        const images = imgGrid((s.output_images || []).map((v: any) => ({
-          label: String(v.view || 'vista'),
+        const ordered = ['front', 'left', 'right', 'back']
+          .map((v) => (s.output_images || []).find((x: any) => x.view === v))
+          .filter(Boolean);
+        const images = imgGrid(ordered.map((v: any) => ({
+          label: viewLabel(String(v.view || '')),
           dataUri: v.data_uri || null,
         })));
+        const horizon = s.horizon_weeks || s.weeks;
+        const loss = s.execution_plan?.deltas?.weight_kg ?? s.deltas?.weight_kg;
+        const lossLine = loss != null
+          ? `Variação prevista informada: ${Number(loss) > 0 ? '+' : ''}${Number(loss).toFixed(1)} kg`
+          : null;
         return `<div class="card">
-          <div class="card-h">${esc(s.title || 'Cenário')} · ${esc(s.status)} · revisão ${esc(s.review_status || '—')} · ${esc(s.horizon_weeks || s.weeks || '—')}w</div>
-          <p>${esc(s.summary || s.goal || '—')}</p>
-          <p class="muted">Projeção: peso ${esc(proj.weight_kg ?? '—')} kg · cintura ${esc(proj.waist_cm ?? '—')} cm · IMC ${esc(proj.bmi ?? '—')} · vistas ${s.output_view_count || 0}/4</p>
-          <p class="muted">Assinatura revisão: ${esc(s.review_signature || '—')} · ${esc(fmtDate(s.reviewed_at))} · prompt ${esc(s.prompt_version || '—')}</p>
-          ${images || (data.image_policy?.include_requested && !data.image_policy?.scenario_images_allowed
-            ? '<p class="muted">Simulações omitidas — conceda consentimento de IA generativa para embutir imagens neste dossiê.</p>'
-            : (s.output_view_count ? '<p class="muted">Arquivos de imagem indisponíveis neste cenário.</p>' : ''))}
+          <div class="card-h">${esc(s.title || 'Simulação')} ${horizon ? `· horizonte ${esc(horizon)} semanas` : ''}</div>
+          ${lossLine ? `<p>${esc(lossLine)}</p>` : ''}
+          <p>Projeção ilustrativa: peso <strong>${esc(proj.weight_kg ?? '—')}</strong> kg
+            · cintura <strong>${esc(proj.waist_cm ?? '—')}</strong> cm
+            · IMC <strong>${esc(proj.bmi ?? '—')}</strong></p>
+          ${images || '<p class="empty">Imagens da simulação indisponíveis.</p>'}
         </div>`;
-      }).join('') : '<p class="muted">Nenhum cenário gerado.</p>'}
+      }).join('') : '<p class="empty">Nenhuma simulação concluída para este relatório.</p>'}
     `));
   }
 
   if (include.chart) {
     const an = data.anamnesis;
-    parts.push(section('9. Prontuário clínico (chart)', `
-      <h3>Anamnese (mais recente)</h3>
-      ${an ? kvTable([
-        ['Registrada em', fmtDate(an.recorded_at)],
-        ['Queixa principal', an.chief_complaint],
-        ['HDA', an.hpi || an.history_present_illness],
-        ['HPP', an.past_history],
-        ['Hábitos / HS', an.social_history || an.habits],
-        ['História familiar', an.family_history],
-        ['Assinatura', an.signer_name],
-      ]) : '<p class="muted">Sem anamnese estruturada.</p>'}
-
-      <h3>Sinais vitais</h3>
-      ${dataTable(
-        ['Data', 'PA', 'FC', 'Temp', 'SpO₂', 'Peso'],
-        data.vitals.map((v) => [
-          esc(fmtDate(v.recorded_at)),
-          esc([v.bp_systolic, v.bp_diastolic].filter((x) => x != null).join('/') || '—'),
-          esc(v.heart_rate ?? v.hr ?? '—'),
-          esc(v.temperature_c ?? v.temp_c ?? '—'),
-          esc(v.spo2 ?? '—'),
-          esc(v.weight_kg ?? '—'),
-        ]),
-      )}
-
-      <h3>Evoluções</h3>
-      ${data.evolutions.length ? data.evolutions.map((ev) => `
-        <div class="card">
-          <div class="card-h">${esc(fmtDate(ev.recorded_at))} · ${esc(ev.note_type || 'evolution')} · ${esc(ev.signer_name || '—')}</div>
-          <pre class="note">${esc(ev.content)}</pre>
-        </div>`).join('') : '<p class="muted">Sem evoluções.</p>'}
-
-      <h3>Encontros SOAP</h3>
-      ${data.encounters.length ? data.encounters.map((en) => `
-        <div class="card">
-          <div class="card-h">${esc(fmtDate(en.started_at))} → ${esc(fmtDate(en.ended_at))} · ${esc(en.status)}</div>
-          <p><strong>S:</strong> ${esc(en.subjective || '—')}</p>
-          <p><strong>O:</strong> ${esc(en.objective || '—')}</p>
-          <p><strong>A:</strong> ${esc(en.assessment || '—')}</p>
-          <p><strong>P:</strong> ${esc(en.plan || '—')}</p>
-          <p class="muted">CID: ${esc(en.cid10_codes || en.icd10_codes || '—')}</p>
-        </div>`).join('') : '<p class="muted">Sem encontros SOAP.</p>'}
-
-      <h3>Exames pedidos</h3>
-      ${dataTable(
-        ['Data', 'Exame', 'Status', 'Notas'],
-        data.exam_orders.map((o) => [
-          esc(fmtDate(o.ordered_at || o.created_at)),
-          esc(o.exam_name || o.name || o.code || '—'),
-          esc(o.status),
-          esc(o.notes || '—'),
-        ]),
-      )}
-
-      <h3>Resultados de exames</h3>
-      ${dataTable(
-        ['Data', 'Exame', 'Resultado', 'Status'],
-        data.exam_results.map((r) => [
-          esc(fmtDate(r.resulted_at || r.created_at)),
-          esc(r.exam_name || r.name || '—'),
-          esc(r.result_summary || r.result_text || r.summary || r.value || '—'),
-          esc(r.status),
-        ]),
-      )}
-
-      <h3>Procedimentos</h3>
-      ${dataTable(
-        ['Data', 'Procedimento', 'Código', 'Notas'],
-        data.procedures.map((pr) => [
-          esc(fmtDate(pr.performed_at || pr.created_at)),
-          esc(pr.procedure_name || pr.name || '—'),
-          esc(pr.procedure_code || pr.code || '—'),
-          esc(pr.description || pr.notes || '—'),
-        ]),
-      )}
-    `));
+    const hasChart = !!(an || data.vitals.length || data.evolutions.length || data.encounters.length
+      || data.exam_orders.length || data.exam_results.length || data.procedures.length);
+    if (hasChart) {
+      parts.push(section('9. Evolução clínica', `
+        ${an ? `
+          <h3>Anamnese</h3>
+          ${kvTable([
+            ['Data', fmtDatePt(an.recorded_at)],
+            ['Queixa principal', an.chief_complaint],
+            ['História da doença atual', an.hpi || an.history_present_illness],
+            ['Antecedentes', an.past_history],
+            ['Hábitos de vida', an.social_history || an.habits],
+            ['História familiar', an.family_history],
+            ['Profissional', an.signer_name],
+          ])}
+        ` : ''}
+        ${data.vitals.length ? `
+          <h3>Sinais vitais</h3>
+          ${dataTable(
+            ['Data', 'PA', 'FC', 'Temp.', 'SpO₂', 'Peso'],
+            data.vitals.map((v) => [
+              esc(fmtDatePt(v.recorded_at)),
+              esc([v.bp_systolic, v.bp_diastolic].filter((x) => x != null).join('/') || '—'),
+              esc(v.heart_rate ?? v.hr ?? '—'),
+              esc(v.temperature_c ?? v.temp_c ?? '—'),
+              esc(v.spo2 ?? '—'),
+              esc(v.weight_kg ?? '—'),
+            ]),
+          )}
+        ` : ''}
+        ${data.evolutions.length ? `
+          <h3>Evoluções</h3>
+          ${data.evolutions.map((ev) => `
+            <div class="card">
+              <div class="card-h">${esc(fmtDatePt(ev.recorded_at))} · ${esc(ev.signer_name || '—')}</div>
+              <p class="prose">${esc(ev.content)}</p>
+            </div>`).join('')}
+        ` : ''}
+        ${data.encounters.length ? `
+          <h3>Atendimentos (SOAP)</h3>
+          ${data.encounters.map((en) => `
+            <div class="card">
+              <div class="card-h">${esc(fmtDatePt(en.started_at))}</div>
+              <p><strong>Subjetivo:</strong> ${esc(en.subjective || '—')}</p>
+              <p><strong>Objetivo:</strong> ${esc(en.objective || '—')}</p>
+              <p><strong>Avaliação:</strong> ${esc(en.assessment || '—')}</p>
+              <p><strong>Plano:</strong> ${esc(en.plan || '—')}</p>
+              ${en.cid10_codes || en.icd10_codes ? `<p><strong>CID-10:</strong> ${esc(en.cid10_codes || en.icd10_codes)}</p>` : ''}
+            </div>`).join('')}
+        ` : ''}
+        ${data.exam_orders.length ? `
+          <h3>Exames solicitados</h3>
+          ${dataTable(
+            ['Data', 'Exame', 'Status'],
+            data.exam_orders.map((o) => [
+              esc(fmtDatePt(o.ordered_at || o.created_at)),
+              esc(o.exam_name || o.name || o.code || '—'),
+              esc(statusPt(o.status)),
+            ]),
+          )}
+        ` : ''}
+        ${data.exam_results.length ? `
+          <h3>Resultados de exames</h3>
+          ${dataTable(
+            ['Data', 'Exame', 'Resultado'],
+            data.exam_results.map((r) => [
+              esc(fmtDatePt(r.resulted_at || r.created_at)),
+              esc(r.exam_name || r.name || '—'),
+              esc(r.result_summary || r.result_text || r.summary || r.value || '—'),
+            ]),
+          )}
+        ` : ''}
+        ${data.procedures.length ? `
+          <h3>Procedimentos</h3>
+          ${dataTable(
+            ['Data', 'Procedimento', 'Código'],
+            data.procedures.map((pr) => [
+              esc(fmtDatePt(pr.performed_at || pr.created_at)),
+              esc(pr.procedure_name || pr.name || '—'),
+              esc(pr.procedure_code || pr.code || '—'),
+            ]),
+          )}
+        ` : ''}
+      `));
+    }
   }
 
-  if (include.appointments) {
-    parts.push(section('10. Agenda e consultas', dataTable(
-      ['Data', 'Tipo', 'Status', 'Profissional', 'Fonte', 'Notas'],
+  if (include.appointments && data.appointments.length) {
+    parts.push(section(include.chart ? '10. Agenda' : '9. Agenda', dataTable(
+      ['Data', 'Tipo', 'Status', 'Profissional'],
       data.appointments.map((a) => [
-        esc(fmtDate(a.scheduled_at)),
-        esc(a.type),
-        esc(a.status),
-        esc(a.practitioner_name || a.practitioner_id || '—'),
-        esc(a.source || '—'),
-        esc(a.notes || '—'),
+        esc(fmtDatePt(a.scheduled_at)),
+        esc(statusPt(a.type)),
+        esc(statusPt(a.status)),
+        esc(a.practitioner_name || '—'),
       ]),
     )));
   }
 
   parts.push(`
     <footer class="foot">
-      <p class="wm">Documento clínico interno autenticado (prontuário). Uso exclusivo da equipe assistencial — não publicar em redes ou portais públicos. Simulações de imagem, quando incluídas, são ilustrativas e não substituem avaliação médica presencial. Base legal: LGPD art. 7º VIII · CFM.</p>
-      <p class="muted">Imagens embutidas: capturas ${data.image_policy?.capture_images_embedded ?? 0} · simulações ${data.image_policy?.scenario_images_embedded ?? 0}. Retenção documental CFM · Clínica Tanah · gerado ${esc(data.generated_at)}</p>
+      <div class="sign-block">
+        <p class="sign-line">${esc(opts.signatureName)}</p>
+        <p class="muted">Assinatura / carimbo clínico</p>
+        ${opts.nextFollowUpDate ? `<p class="muted">Próximo retorno: ${esc(fmtDatePt(opts.nextFollowUpDate))}</p>` : ''}
+      </div>
+      <p class="legal">Documento clínico da Clínica Tanah, destinado ao prontuário e ao acompanhamento do paciente. Simulações de imagem, quando presentes, são meramente ilustrativas e não substituem avaliação médica presencial.</p>
     </footer>
   `);
 
@@ -837,45 +895,69 @@ export function renderClinicalReportHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Relatório clínico — ${esc(p.full_name || 'paciente')} — Clínica Tanah</title>
   <style>
-    :root { --ink:#1c1814; --muted:#6a5f52; --line:#d9cfc0; --bg:#faf6ef; --card:#fffdf8; --brass:#9a7b3c; --alert:#8b3a2a; --ok:#2f6b45; }
+    :root {
+      --ink: #1a1612;
+      --muted: #5c5348;
+      --line: #ddd2c2;
+      --paper: #fffcf7;
+      --band: #2c2118;
+      --accent: #8a6a32;
+      --alert: #8b3a2a;
+      --ok: #2f6b45;
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: "Source Serif 4", Georgia, "Times New Roman", serif; color:var(--ink); background:linear-gradient(180deg,#f3ebe0,#faf6ef 180px); }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
-    .brand { font-family: "Fraunces", Georgia, serif; font-size: 1.35rem; letter-spacing: .02em; color: var(--brass); }
-    h1 { font-family: "Fraunces", Georgia, serif; font-size: 1.75rem; margin: .35rem 0 .5rem; font-weight: 600; }
-    h2 { font-size: 1.15rem; margin: 0 0 .75rem; padding-bottom: .35rem; border-bottom: 1px solid var(--line); }
-    h3 { font-size: .95rem; margin: 1rem 0 .4rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
-    h4 { font-size: .85rem; margin: .6rem 0 .25rem; color: var(--muted); }
-    .meta, .muted { color: var(--muted); font-size: .86rem; }
-    .sec { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 1rem 1.1rem; margin: 1rem 0; box-shadow: 0 1px 0 rgba(28,24,20,.04); }
-    .cover { margin-bottom: 1rem; }
-    .toc { margin: .25rem 0 .5rem 1.1rem; }
-    table.kv { width:100%; border-collapse: collapse; font-size: .92rem; }
-    table.kv th { text-align:left; width: 34%; color: var(--muted); font-weight: 600; padding: .28rem .4rem .28rem 0; vertical-align: top; }
-    table.kv td { padding: .28rem 0; }
-    table.grid { width:100%; border-collapse: collapse; font-size: .84rem; }
-    table.grid th, table.grid td { border-bottom: 1px solid var(--line); padding: .4rem .35rem; text-align: left; vertical-align: top; }
-    table.grid th { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #f3ebe0;
+      font-family: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+      line-height: 1.45;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 1.75rem 1.35rem 3rem; background: var(--paper); min-height: 100vh; }
+    .letterhead { border-bottom: 2px solid var(--band); padding-bottom: .65rem; margin-bottom: .9rem; }
+    .brand { font-size: 1.45rem; font-weight: 700; letter-spacing: .03em; color: var(--band); }
+    .brand-sub { font-size: .78rem; color: var(--muted); margin-top: .15rem; letter-spacing: .04em; text-transform: uppercase; }
+    h1 { font-size: 1.55rem; margin: .2rem 0 .25rem; font-weight: 650; }
+    .subtitle { margin: 0 0 1rem; color: var(--muted); font-size: .92rem; }
+    .cover-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .9rem; margin: 1rem 0 1.25rem; }
+    .cover-meta span { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .cover-meta strong { font-size: .95rem; font-weight: 650; }
+    h2 { font-size: 1.05rem; margin: 0 0 .7rem; padding-bottom: .3rem; border-bottom: 1px solid var(--line); color: var(--band); }
+    h3 { font-size: .8rem; margin: .95rem 0 .35rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+    .sec { margin: 1.15rem 0 1.35rem; page-break-inside: avoid; }
+    .meta, .muted, .kind, .empty { color: var(--muted); font-size: .88rem; }
+    .empty { font-style: italic; }
+    table.kv { width: 100%; border-collapse: collapse; font-size: .93rem; }
+    table.kv th { text-align: left; width: 36%; color: var(--muted); font-weight: 600; padding: .32rem .45rem .32rem 0; vertical-align: top; }
+    table.kv td { padding: .32rem 0; }
+    table.grid { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    table.grid th, table.grid td { border-bottom: 1px solid var(--line); padding: .42rem .35rem; text-align: left; vertical-align: top; }
+    table.grid th { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
     .scroll { overflow-x: auto; }
-    .card { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .8rem; margin: .55rem 0; background: #fff; }
-    .card-h { font-weight: 600; margin-bottom: .35rem; font-size: .92rem; }
-    .note { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; margin: 0; }
-    .alert { color: var(--alert); font-weight: 600; }
+    .card { border: 1px solid var(--line); border-radius: 4px; padding: .75rem .85rem; margin: .55rem 0; background: #fff; }
+    .card-h { font-weight: 700; margin-bottom: .3rem; font-size: .95rem; }
+    .prose { white-space: pre-wrap; margin: .2rem 0; }
+    .alert { color: var(--alert); font-weight: 700; }
     .ok { color: var(--ok); }
-    .wm, .wm-inline { margin-top: .75rem; padding: .65rem .8rem; border: 1px solid #c9a227; background: #fff8e7; font-size: .82rem; border-radius: 8px; }
-    .img-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; margin: .75rem 0 .25rem; }
+    .disclaimer { font-size: .86rem; color: var(--muted); border-left: 3px solid var(--accent); padding: .35rem 0 .35rem .75rem; margin: .4rem 0 .8rem; }
+    .img-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; margin: .7rem 0 .2rem; }
     .img-grid figure { margin: 0; }
-    .img-grid figcaption { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: .3rem; }
-    .img-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: #efe6d8; display: block; }
-    .img-grid .ph { width: 100%; aspect-ratio: 3/4; display: flex; align-items: center; justify-content: center; background: #efe6d8; border: 1px solid var(--line); border-radius: 8px; color: #888; font-size: .8rem; }
-    .foot { margin-top: 1.5rem; }
-    @media (max-width: 720px) { .img-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .img-grid figcaption { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: .28rem; }
+    .img-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border: 1px solid var(--line); border-radius: 3px; background: #efe6d8; display: block; }
+    .img-grid .ph { width: 100%; aspect-ratio: 3/4; display: flex; align-items: center; justify-content: center; background: #efe6d8; border: 1px solid var(--line); border-radius: 3px; color: #888; font-size: .8rem; }
+    .sign-block { margin: 1.5rem 0 1rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+    .sign-line { font-size: 1.05rem; font-weight: 700; margin: 0 0 .2rem; }
+    .legal { font-size: .78rem; color: var(--muted); line-height: 1.4; }
+    .foot { margin-top: 1.75rem; }
+    @media (max-width: 720px) {
+      .cover-meta { grid-template-columns: 1fr; }
+      .img-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     @media print {
       body { background: #fff; }
       .wrap { max-width: none; padding: 0; }
-      .sec, .card { break-inside: avoid; box-shadow: none; }
-      .brand { color: #000; }
-      .img-grid img { max-height: 220px; }
+      .sec, .card { break-inside: avoid; }
+      .img-grid img { max-height: 210px; }
     }
   </style>
 </head>

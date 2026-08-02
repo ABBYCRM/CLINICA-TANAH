@@ -91,6 +91,13 @@ function ageFromBirth(birth?: string | null): string {
   return `${age} anos`;
 }
 
+function fmtDatePt(v?: string | null): string {
+  if (!v) return '—';
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (!m) return String(v);
+  return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 function drawSectionTitle(doc: PDFKit.PDFDocument, title: string) {
   doc.moveDown(0.6);
   doc.fillColor('#2c2118').font('Times-Bold').fontSize(12).text(title);
@@ -118,18 +125,19 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
   const kind = input.kind || 'composition_note';
   const title = input.title
     || (kind === 'clinical_full'
-      ? 'Relatório clínico completo'
+      ? 'Relatório clínico'
       : 'Nota de composição corporal');
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
+      bufferPages: true,
       margins: { top: 48, bottom: 56, left: 48, right: 48 },
       info: {
         Title: title,
         Author: clinic,
-        Subject: 'Prontuário / composição corporal — uso clínico',
-        Creator: 'Clínica Tanah CRM',
+        Subject: 'Relatório clínico',
+        Creator: clinic,
       },
     });
     const chunks: Buffer[] = [];
@@ -139,40 +147,42 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
 
     const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
-    // Header band
-    doc.rect(0, 0, doc.page.width, 72).fill('#2c2118');
+    // Letterhead
+    doc.rect(0, 0, doc.page.width, 68).fill('#2c2118');
     doc.fillColor('#f4efe6').font('Times-Bold').fontSize(16)
-      .text(clinic, 48, 22, { width: pageW });
+      .text(clinic, 48, 20, { width: pageW });
     doc.font('Times-Roman').fontSize(9)
-      .text('Documento clínico autenticado · LGPD / CFM · uso profissional', 48, 44, { width: pageW });
+      .text('Medicina · Bem-estar · Acompanhamento clínico', 48, 42, { width: pageW });
     doc.fillColor('#2c2118');
-    doc.y = 90;
+    doc.y = 88;
 
     doc.font('Times-Bold').fontSize(15).text(title, { width: pageW });
     doc.moveDown(0.25);
     doc.font('Times-Italic').fontSize(9).fillColor('#5c4f42')
-      .text(`Emitido em ${new Date().toLocaleString('pt-BR')}${input.generatedBy ? ` · ${input.generatedBy}` : ''}`, { width: pageW });
+      .text(`Emitido em ${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`, { width: pageW });
     doc.fillColor('#2c2118');
 
     // Patient
-    drawSectionTitle(doc, '1. Identificação do paciente');
+    drawSectionTitle(doc, '1. Identificação');
     kv(doc, 'Nome', input.patient.full_name || '—');
-    kv(doc, 'ID', input.patient.id);
-    kv(doc, 'Nascimento', `${fmt(input.patient.birth_date?.slice?.(0, 10) || input.patient.birth_date)} (${ageFromBirth(input.patient.birth_date)})`);
-    kv(doc, 'Sexo', fmt(input.patient.gender));
-    kv(doc, 'WhatsApp / telefone', fmt(input.patient.phone));
+    kv(doc, 'Nascimento', `${fmtDatePt(input.patient.birth_date?.slice?.(0, 10) || input.patient.birth_date)} (${ageFromBirth(input.patient.birth_date)})`);
+    const sex = input.patient.gender === 'M' ? 'Masculino'
+      : input.patient.gender === 'F' ? 'Feminino'
+        : fmt(input.patient.gender);
+    kv(doc, 'Sexo', sex);
+    kv(doc, 'Telefone', fmt(input.patient.phone));
     kv(doc, 'E-mail', fmt(input.patient.email));
     kv(doc, 'Convênio', fmt(input.patient.health_insurance));
 
     // Anthropometry
-    drawSectionTitle(doc, '2. Medidas antropométricas');
+    drawSectionTitle(doc, '2. Antropometria');
     const m = input.measurement;
     if (!m) {
       doc.font('Times-Italic').fillColor('#5c4f42').text('Nenhuma medida registrada.');
       doc.fillColor('#2c2118');
     } else {
       doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42')
-        .text(`Último conjunto: ${fmt(m.recorded_at)}`);
+        .text(`Data da aferição: ${fmtDatePt(m.recorded_at)}`);
       doc.moveDown(0.3);
       doc.fillColor('#2c2118');
       const leftX = doc.page.margins.left;
@@ -185,13 +195,15 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
         ['IMC', fmt(m.bmi)],
         ['Cintura', fmt(m.waist_cm, ' cm')],
         ['Quadril', fmt(m.hip_cm, ' cm')],
-        ['RCQ / RCE', `${fmt(m.whr)} / ${fmt(m.whtr)}`],
-        ['Pescoço', fmt(m.neck_cm, ' cm')],
-        ['Tórax', fmt(m.chest_cm, ' cm')],
-        ['Abdômen', fmt(m.abdomen_cm, ' cm')],
-        ['% Gordura', fmt(m.body_fat_pct, '%')],
+        ['Percentual de gordura', fmt(m.body_fat_pct, '%')],
         ['Massa muscular', fmt(m.muscle_mass_kg, ' kg')],
       ];
+      if (m.whr != null || m.whtr != null) {
+        rows.push(['RCQ / RCE', `${fmt(m.whr)} / ${fmt(m.whtr)}`]);
+      }
+      if (m.neck_cm != null) rows.push(['Pescoço', fmt(m.neck_cm, ' cm')]);
+      if (m.chest_cm != null) rows.push(['Tórax', fmt(m.chest_cm, ' cm')]);
+      if (m.abdomen_cm != null) rows.push(['Abdômen', fmt(m.abdomen_cm, ' cm')]);
       rows.forEach((pair, i) => {
         const col = i % 2;
         const row = Math.floor(i / 2);
@@ -205,13 +217,13 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
         doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42');
         if (m.clothing_note) doc.text(`Vestuário: ${m.clothing_note}`);
         if (m.posture_note) doc.text(`Postura: ${m.posture_note}`);
-        if (m.notes) doc.text(`Obs.: ${m.notes}`);
+        if (m.notes) doc.text(`Observações: ${m.notes}`);
         doc.fillColor('#2c2118');
       }
     }
 
     // Medications
-    drawSectionTitle(doc, '3. Medicamentos (prontuário)');
+    drawSectionTitle(doc, '3. Medicamentos');
     const meds = input.medications || [];
     if (!meds.length) {
       doc.font('Times-Italic').fillColor('#5c4f42').text('Nenhum medicamento ativo registrado.');
@@ -221,29 +233,29 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
         doc.font('Times-Bold').fontSize(10).fillColor('#2c2118')
           .text(`${i + 1}. ${med.name}`);
         doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42')
-          .text([med.dosage, med.class_tag, med.status].filter(Boolean).join(' · ') || '—');
+          .text([med.dosage, med.class_tag].filter(Boolean).join(' · ') || '—');
         doc.fillColor('#2c2118');
         doc.moveDown(0.15);
       });
     }
 
     // Lifestyle
-    drawSectionTitle(doc, '4. Dieta e exercício (prontuário)');
+    drawSectionTitle(doc, '4. Nutrição e exercício');
     const nuts = input.nutritionPlans || [];
     const exs = input.exercisePlans || [];
     if (!nuts.length && !exs.length) {
-      doc.font('Times-Italic').fillColor('#5c4f42').text('Nenhum plano de dieta/treino ativo.');
+      doc.font('Times-Italic').fillColor('#5c4f42').text('Nenhum plano nutricional ou de treino ativo.');
       doc.fillColor('#2c2118');
     } else {
       if (nuts.length) {
-        doc.font('Times-Bold').fontSize(10).text('Nutrição');
+        doc.font('Times-Bold').fontSize(10).text('Plano nutricional');
         nuts.forEach((p) => {
           doc.font('Times-Roman').fontSize(10).fillColor('#2c2118').text(`• ${p.title}`);
           const bits = [
-            p.weeks != null ? `${p.weeks} sem` : null,
-            p.daily_calories != null ? `${p.daily_calories} kcal/d` : null,
-            p.deficit_kcal != null ? `déficit ${p.deficit_kcal}` : null,
-            p.protein_g != null ? `protéina ${p.protein_g} g` : null,
+            p.weeks != null ? `${p.weeks} semanas` : null,
+            p.daily_calories != null ? `${p.daily_calories} kcal/dia` : null,
+            p.deficit_kcal != null ? `déficit ${p.deficit_kcal} kcal` : null,
+            p.protein_g != null ? `proteína ${p.protein_g} g` : null,
           ].filter(Boolean);
           if (bits.length || p.summary || p.description) {
             doc.fontSize(9).fillColor('#5c4f42')
@@ -254,42 +266,53 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
         doc.moveDown(0.2);
       }
       if (exs.length) {
-        doc.font('Times-Bold').fontSize(10).text('Treino');
+        doc.font('Times-Bold').fontSize(10).text('Plano de treino');
         exs.forEach((p) => {
           doc.font('Times-Roman').fontSize(10).fillColor('#2c2118').text(`• ${p.title}`);
           if (p.summary || p.description || p.weeks != null) {
             doc.fontSize(9).fillColor('#5c4f42')
-              .text([p.weeks != null ? `${p.weeks} sem` : null, p.summary || p.description].filter(Boolean).join(' — '));
+              .text([p.weeks != null ? `${p.weeks} semanas` : null, p.summary || p.description].filter(Boolean).join(' — '));
           }
           doc.fillColor('#2c2118');
         });
       }
     }
 
-    // Doctor predicted outcome (illustrative)
-    drawSectionTitle(doc, '5. Desfecho previsto pelo clínico (ilustrativo)');
-    doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42')
-      .text('Medicação, dieta e treino permanecem no prontuário. A simulação de imagem usa apenas a perda/alvo informados pelo clínico.');
-    doc.moveDown(0.25);
-    doc.fillColor('#2c2118');
-    kv(doc, 'Perda prevista', input.doctorPredictedLossKg != null ? `${input.doctorPredictedLossKg} kg` : '—');
-    kv(doc, 'Peso-alvo', input.targetWeightKg != null ? `${input.targetWeightKg} kg` : '—');
-    kv(doc, 'Horizonte', input.scenarioHorizonWeeks != null ? `${input.scenarioHorizonWeeks} semanas` : '—');
-    if (input.scenarioSummary) {
-      doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42').text(input.scenarioSummary, { width: pageW });
+    // Clinical projection (illustrative)
+    if (input.doctorPredictedLossKg != null || input.targetWeightKg != null || input.scenarioSummary) {
+      drawSectionTitle(doc, '5. Projeção ilustrativa');
+      doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42')
+        .text('Projeção baseada na meta informada pelo clínico. As imagens, quando geradas, são meramente ilustrativas.');
+      doc.moveDown(0.25);
       doc.fillColor('#2c2118');
+      if (input.doctorPredictedLossKg != null) {
+        kv(doc, 'Variação de peso prevista', `${input.doctorPredictedLossKg} kg`);
+      }
+      if (input.targetWeightKg != null) {
+        kv(doc, 'Peso-alvo', `${input.targetWeightKg} kg`);
+      }
+      if (input.scenarioHorizonWeeks != null) {
+        kv(doc, 'Horizonte', `${input.scenarioHorizonWeeks} semanas`);
+      }
+      if (input.scenarioSummary) {
+        doc.font('Times-Roman').fontSize(9).fillColor('#5c4f42').text(input.scenarioSummary, { width: pageW });
+        doc.fillColor('#2c2118');
+      }
     }
 
     // Signature / follow-up
-    drawSectionTitle(doc, '6. Assinatura e retorno');
+    drawSectionTitle(doc, input.doctorPredictedLossKg != null || input.targetWeightKg != null || input.scenarioSummary
+      ? '6. Assinatura e retorno'
+      : '5. Assinatura e retorno');
     kv(doc, 'Assinatura / carimbo', input.signatureName || '—');
-    kv(doc, 'Próximo retorno', input.nextFollowUpDate || '—');
+    kv(doc, 'Próximo retorno', input.nextFollowUpDate ? fmtDatePt(input.nextFollowUpDate) : '—');
 
     doc.moveDown(0.8);
-    doc.font('Times-Italic').fontSize(8).fillColor('#8b3a2a')
+    doc.font('Times-Italic').fontSize(8).fillColor('#5c4f42')
       .text(
-        'AVISO: Simulações de imagem e projeções de peso são ilustrativas — não constituem previsão médica nem garantia de resultado. '
-        + 'Desfechos reais dependem de genética, adesão, dose, comorbidades e resposta individual. Documento destinado ao prontuário e ao paciente para acompanhamento.',
+        'Simulações de imagem e projeções de peso, quando presentes, são ilustrativas e não constituem prognóstico clínico '
+        + 'nem garantia de resultado. Desfechos reais dependem de genética, adesão e resposta individual. '
+        + 'Documento destinado ao prontuário e ao acompanhamento do paciente.',
         { width: pageW, align: 'justify' },
       );
 
@@ -299,7 +322,7 @@ export async function buildCompositionDossierPdf(input: CompositionDossierInput)
       doc.switchToPage(i);
       doc.font('Times-Roman').fontSize(7).fillColor('#8a7d6e')
         .text(
-          `${clinic} · Documento clínico · Página ${i - range.start + 1} de ${range.count} · Não publicar fora do CRM sem base legal`,
+          `${clinic} · Relatório clínico · Página ${i - range.start + 1} de ${range.count}`,
           doc.page.margins.left,
           doc.page.height - 36,
           { width: pageW, align: 'center' },

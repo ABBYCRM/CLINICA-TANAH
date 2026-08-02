@@ -1815,11 +1815,12 @@ router.get('/:id/documents/:docId/file', (req: Request, res: Response) => {
   fs.createReadStream(doc.storage_path).pipe(res);
 });
 
-/** Email a Documentos file to the patient (PDF/HTML clinical notes). */
+/** Email a Documentos file to the email on the patient file. */
 router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
-  const patient = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`)
+  const raw = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`)
     .get(req.params.id, req.tenantId) as any;
-  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  if (!raw) { res.status(404).json({ error: 'not_found' }); return; }
+  const patient = revealPatientRow(raw) || raw;
   ensurePatientDocumentsSchema(db);
   const doc = db.prepare(`
     SELECT * FROM patient_documents
@@ -1832,13 +1833,19 @@ router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse
 
   const to = String(req.body?.to || patient.email || '').trim();
   if (!to || !to.includes('@')) {
-    res.status(400).json({ error: 'patient_email_required', message: 'Paciente sem e-mail cadastrado.' });
+    res.status(400).json({ error: 'patient_email_required', message: 'Paciente sem e-mail cadastrado no prontuário.' });
     return;
   }
-  if (!hasActiveConsent('patient', patient.id, 'email_communication')) {
+
+  const clinicalDoc = ['clinical_report', 'composition_note', 'body_report'].includes(String(doc.doc_type || ''))
+    || ['body_clinical_report', 'body_composition_note', 'body_report'].includes(String(doc.source || ''));
+  const emailOk = hasActiveConsent('patient', patient.id, 'email_communication');
+  const healthOk = hasActiveConsent('patient', patient.id, 'health_data_processing');
+  // Clinical dossiers may go to the patient file email under health protection / treatment.
+  if (!emailOk && !(clinicalDoc && healthOk)) {
     res.status(403).json({
       error: 'email_consent_required',
-      message: 'Consentimento LGPD de comunicação por e-mail necessário.',
+      message: 'Consentimento LGPD necessário (comunicação por e-mail ou tratamento de dados de saúde).',
     });
     return;
   }
@@ -1846,26 +1853,28 @@ router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse
   const clinic = 'Clínica Tanah';
   const filename = doc.original_name || path.basename(doc.storage_path);
   const bytes = fs.readFileSync(doc.storage_path);
-  const subject = `${clinic}: ${doc.title || 'documento clínico'}`;
+  const subject = `${clinic}: ${doc.title || 'relatório clínico'}`;
+  const firstName = String(patient.full_name || '').trim().split(/\s+/)[0] || 'paciente';
   const text = [
-    `Prezado(a) ${String(patient.full_name || '').split(/\s+/)[0] || 'paciente'},`,
+    `Prezado(a) ${firstName},`,
     '',
-    `Segue em anexo o documento “${doc.title || filename}” da ${clinic}, para os seus registros e acompanhamento.`,
+    `Segue em anexo o documento “${doc.title || filename}”, emitido pela ${clinic}, para os seus registros e acompanhamento clínico.`,
     '',
-    'Este envio é transacional (prontuário / evolução clínica). Não se trata de mensagem promocional.',
+    'Este envio refere-se ao seu prontuário / evolução clínica. Não se trata de mensagem promocional.',
     '',
-    'Em caso de dúvidas, responda a este e-mail ou fale com a recepção.',
+    'Em caso de dúvidas, responda a este e-mail ou fale com a recepção da clínica.',
     '',
-    `Equipe — ${clinic}`,
+    `Com cordialidade,`,
+    `Equipe clínica — ${clinic}`,
   ].join('\n');
 
   const sent = await sendEmail({
     to,
     subject,
     text,
-    html: `<p>${text.replace(/\n/g, '<br/>')}</p>`,
+    html: `<div style="font-family:Georgia,serif;color:#1a1612;line-height:1.5"><p>${text.replace(/\n/g, '<br/>')}</p></div>`,
     tags: [
-      { name: 'category', value: 'patient_document' },
+      { name: 'category', value: 'patient_clinical_document' },
       { name: 'doc_type', value: String(doc.doc_type || 'document').slice(0, 40) },
     ],
     attachments: [{
@@ -1882,8 +1891,15 @@ router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse
     action: 'patient_document_email',
     resourceType: 'patient_document',
     resourceId: doc.id,
-    afterValue: { to, ok: sent.ok, provider: sent.provider, error: sent.error || null },
-    legalBasis: 'consent_art7_I',
+    afterValue: {
+      to,
+      ok: sent.ok,
+      provider: sent.provider,
+      error: sent.error || null,
+      clinical_doc: clinicalDoc,
+      legal_basis: emailOk ? 'consent_art7_I' : 'health_protection_art7_VIII',
+    },
+    legalBasis: emailOk ? 'consent_art7_I' : 'health_protection_art7_VIII',
   });
 
   if (!sent.ok) {

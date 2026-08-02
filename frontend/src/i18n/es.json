@@ -364,7 +364,7 @@
       "documents_download": "Abrir / descargar",
       "documents_email": "Enviar por correo",
       "documents_emailed": "Documento enviado a {{to}}",
-      "documents_email_consent": "Se requiere consentimiento LGPD de comunicación por correo.",
+      "documents_email_consent": "Se requiere consentimiento LGPD (correo o tratamiento de datos de salud).",
       "documents_email_missing": "Registre el correo del paciente para enviar el documento.",
       "documents_empty": "Aún no hay documentos. Suba un archivo o espere el intake del paciente.",
       "documents_saved": "Documento guardado",
