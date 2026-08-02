@@ -581,9 +581,10 @@ except Exception as e:
 
 before = Image.open(sys.argv[1]).convert('RGB')
 after = Image.open(sys.argv[2]).convert('RGB').resize(before.size, Image.Resampling.LANCZOS)
-w, h = before.size
-a_before = np.asarray(remove(before).split()[-1]).astype(np.float32) / 255.0
-a_after = np.asarray(remove(after).split()[-1]).astype(np.float32) / 255.0
+# Fast portable model (weights preloaded at U2NET_HOME)
+session = new_session('u2netp')
+a_before = np.asarray(remove(before, session=session).split()[-1]).astype(np.float32) / 255.0
+a_after = np.asarray(remove(after, session=session).split()[-1]).astype(np.float32) / 255.0
 # Inpaint BEFORE under the original person so revealed room (door/cabinet) stays straight
 bgr = cv2.cvtColor(np.asarray(before), cv2.COLOR_RGB2BGR)
 mask = ((a_before > 0.15).astype(np.uint8) * 255)
@@ -605,7 +606,11 @@ print('ok')
     const res = spawnSync(
       'python3',
       ['-c', py, referencePath, tmpAfter, tmpOut],
-      { encoding: 'utf8', timeout: 120_000 },
+      {
+        encoding: 'utf8',
+        timeout: 45_000,
+        env: { ...process.env, U2NET_HOME: process.env.U2NET_HOME || '/opt/u2net' },
+      },
     );
     try { fs.unlinkSync(tmpAfter); } catch { /* */ }
     if (res.status !== 0 || !fs.existsSync(tmpOut)) {
