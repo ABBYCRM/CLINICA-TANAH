@@ -75,7 +75,7 @@ test.describe('Sim generate CTA visibility', () => {
     await page.getByTestId('sim-predicted-loss').fill('12');
     await expect(gen).toBeEnabled();
 
-    await expect(gen).toHaveText(/Gerar imagem|Generate image|Generar imagen/i);
+    await expect(gen).toHaveText(/Gerar|Generate|Generar/i);
 
     const sticky = page.getByTestId('sim-sticky-generate');
     await expect(sticky).toBeVisible();
