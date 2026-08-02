@@ -41,6 +41,7 @@ import { authenticate } from './middleware/auth';
 import { corsOriginDelegate, requireHttps, securityHeaders } from './middleware/security';
 import { assertSecurityConfig, encryptionStatus } from './services/phiCrypto';
 import { buildLgpdPolicy } from './services/lgpdPolicy';
+import { startAnvisaDailySyncJob } from './services/anvisaSyncJob';
 assertSecurityConfig();
 try {
   initSchema();
@@ -201,6 +202,12 @@ app.listen(PORT, () => {
   const nvKeys = (process.env.NVIDIA_API_KEYS || process.env.NVIDIA_API_KEY || '')
     .split(/[\n,]+/).map((k) => k.replace(/^Bearer\s+/i, '').trim()).filter((k) => k.startsWith('nvapi-'));
   console.log(`   NVIDIA OCR: ${nvKeys.length ? `${nvKeys.length} key(s) · ${process.env.NVIDIA_OCR_MODEL || 'nemotron-nano-12b-v2-vl'}` : 'NOT CONFIGURED'}`);
+  // Daily ANVISA sanitary-alerts / recalls refresh (curated catalog + optional feed)
+  try {
+    startAnvisaDailySyncJob(db);
+  } catch (err: any) {
+    console.error('[anvisa-sync] failed to start job:', err?.message || err);
+  }
 });
 
 export default app;

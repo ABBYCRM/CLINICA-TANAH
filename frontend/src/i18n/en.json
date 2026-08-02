@@ -629,6 +629,8 @@
     "anvisa_sync": "Sync ANVISA",
     "anvisa_portal": "ANVISA portal",
     "anvisa_synced_at": "Last sync: {{date}}",
+    "anvisa_next_sync": "Next automatic sync: {{date}}",
+    "anvisa_auto_sync_off": "Automatic sync is off (ANVISA_SYNC_ENABLED).",
     "anvisa_matched_stock": "Affected stock items",
     "anvisa_open_alert": "Open alert source",
     "anvisa_severity_critical": "Critical",

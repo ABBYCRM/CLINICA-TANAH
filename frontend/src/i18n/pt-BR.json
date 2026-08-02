@@ -629,6 +629,8 @@
     "anvisa_sync": "Atualizar ANVISA",
     "anvisa_portal": "Portal ANVISA",
     "anvisa_synced_at": "Última sincronização: {{date}}",
+    "anvisa_next_sync": "Próxima sincronização automática: {{date}}",
+    "anvisa_auto_sync_off": "Sincronização automática desligada (ANVISA_SYNC_ENABLED).",
     "anvisa_matched_stock": "Itens em estoque afetados",
     "anvisa_open_alert": "Abrir fonte do alerta",
     "anvisa_severity_critical": "Crítico",
