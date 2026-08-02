@@ -93,8 +93,8 @@ describe('bot — real appointment cancellation', () => {
     `).run(apptId, patientId, doctorId, `${future} 09:00:00`);
 
     // menu → 3 (cancelar)
-    expect(await simulate(PHONE, 'oi')).toContain('Agendar consulta');
-    const ask = await simulate(PHONE, '3');
+    expect(await simulate(PHONE, 'oi')).toContain('Marcar consulta');
+    const ask = await simulate(PHONE, '4');
     expect(ask).toContain('cancelar');
     expect(ask).toContain('Dr. Eng');
 
@@ -106,7 +106,7 @@ describe('bot — real appointment cancellation', () => {
     expect(appt.status).toBe('cancelled');
 
     // second time: nothing to cancel
-    await simulate(PHONE, '3');
+    await simulate(PHONE, '4');
     const noneMsgs = lastBotMessages(PHONE, 2);
     expect(noneMsgs[0]).toMatch(/não tem|no tienes|no upcoming/i);
   });

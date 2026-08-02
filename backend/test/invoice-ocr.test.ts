@@ -104,12 +104,14 @@ describe('invoice OCR', () => {
     expect(ocr.body.extraction.total).toBe(180);
     expect(ocr.body.extraction.lines[0].description).toContain('Consulta');
 
+    // Unique number per run — OCR fixture always returns NF-OCR-1; DB unique constraint would 409 on re-run.
+    const uniqueNumber = `${ocr.body.extraction.invoice_number}-${Date.now()}`;
     const created = await api('POST', '/accounting/invoices', {
       issue_date: ocr.body.extraction.issue_date,
       due_date: ocr.body.extraction.due_date,
       total: ocr.body.extraction.total,
       status: 'issued',
-      invoice_number_override: ocr.body.extraction.invoice_number,
+      invoice_number_override: uniqueNumber,
       lines: ocr.body.extraction.lines,
     });
     expect(created.status).toBe(201);

@@ -1289,6 +1289,37 @@ export function seedMarketingDefaults(tenantId: string): void {
       UNIQUE(session_id, view)
     );
     CREATE INDEX IF NOT EXISTS idx_body_asset_session ON body_capture_assets(session_id);
+
+    CREATE TABLE IF NOT EXISTS hair_simulations (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      created_by TEXT,
+      kind TEXT NOT NULL,
+      params_json TEXT NOT NULL,
+      output_data_url TEXT,
+      model TEXT,
+      grafts INTEGER,
+      label TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_hair_sim_patient ON hair_simulations(tenant_id, patient_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS hair_procedure_tallies (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      session_label TEXT,
+      extracted INTEGER NOT NULL DEFAULT 0,
+      implanted INTEGER NOT NULL DEFAULT 0,
+      discarded INTEGER NOT NULL DEFAULT 0,
+      damaged INTEGER NOT NULL DEFAULT 0,
+      remaining INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      updated_by TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, patient_id, session_label)
+    );
   `);
 
   // Expand anthropometrics + lifestyle + scenario simulator columns
