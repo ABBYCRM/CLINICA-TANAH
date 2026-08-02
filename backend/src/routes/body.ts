@@ -15,6 +15,7 @@ import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit } from '../services/audit';
 import { canViewClinical } from '../services/patientJourney';
 import { seal, open } from '../services/phiCrypto';
+import { upsertPatientDocumentPointer } from '../services/patientDocumentsVault';
 import {
   bodyUploadsDir,
   buildScenarioPrompt,
@@ -1440,12 +1441,13 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
       scenarios: z.boolean().optional(),
       chart: z.boolean().optional(),
       appointments: z.boolean().optional(),
+      images: z.boolean().optional(),
     }).optional(),
   }).safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'validation' }); return; }
 
   ensureClinicalReportsTable(db);
-  const include = parsed.data.include || {};
+  const include = { images: true, ...(parsed.data.include || {}) };
   const payload = collectClinicalReportData({
     db,
     tenantId: req.tenantId!,
@@ -1479,11 +1481,54 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
     JSON.stringify(include), htmlPath, req.user!.id,
   );
 
+  let documentId: string | null = null;
+  try {
+    let sizeBytes: number | null = null;
+    try { sizeBytes = fs.statSync(htmlPath).size; } catch { /* */ }
+    documentId = upsertPatientDocumentPointer(db, {
+      tenantId: req.tenantId!,
+      patientId: patient.id,
+      title,
+      docType: 'clinical_report',
+      status: 'active',
+      source: 'body_clinical_report',
+      sourceId: id,
+      notes: `Assinado: ${parsed.data.signature_name}${parsed.data.next_follow_up_date ? ` · Retorno: ${parsed.data.next_follow_up_date}` : ''}`,
+      createdBy: req.user!.id,
+      mimeType: 'text/html',
+      originalName: `${id}.html`,
+      storagePath: htmlPath,
+      sizeBytes,
+      fileUrl: `/api/clinical/body/clinical-reports/${id}/html`,
+    });
+    db.prepare(`
+      INSERT INTO patient_timeline_events
+        (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+      VALUES (?, ?, ?, 'document', 'document_clinical_report', ?, 'active', ?, datetime('now'))
+    `).run(
+      `pte_crep_${Date.now().toString(36)}`,
+      req.tenantId,
+      patient.id,
+      title,
+      JSON.stringify({
+        report_id: id,
+        document_id: documentId,
+        signature_name: parsed.data.signature_name,
+        images: payload.image_policy,
+      }),
+    );
+  } catch { /* vault/timeline optional — report HTML still saved */ }
+
   logAudit({
     tenantId: req.tenantId,
     actorId: req.user!.id, actorEmail: req.user!.email,
     action: 'create_clinical_full_report', resourceType: 'body_clinical_report', resourceId: id,
-    afterValue: { patient_id: patient.id, sections: Object.keys(include).length ? include : 'all' },
+    afterValue: {
+      patient_id: patient.id,
+      sections: Object.keys(include).length ? include : 'all',
+      document_id: documentId,
+      images: payload.image_policy,
+    },
     legalBasis: 'health_protection_art7_VIII',
   });
 
@@ -1492,7 +1537,10 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
     kind: 'clinical_full',
     title,
     html_url: `/api/clinical/body/clinical-reports/${id}/html`,
+    document_id: documentId,
+    vault: 'patient_documents',
     counts: payload.counts,
+    image_policy: payload.image_policy,
   });
 });
 

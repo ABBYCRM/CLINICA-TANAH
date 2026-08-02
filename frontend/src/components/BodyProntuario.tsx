@@ -85,6 +85,7 @@ export default function BodyProntuario({ patientId }: {
     scenarios: true,
     chart: true,
     appointments: true,
+    images: true,
   });
   const reloadReports = useCallback(() => {
     return Promise.all([
@@ -161,7 +162,13 @@ export default function BodyProntuario({ patientId }: {
         next_follow_up_date: reportFollowUp || null,
         include: reportInclude,
       });
-      setReportMsg(t('body.full_report_created'));
+      const imgNote = res?.image_policy
+        ? ` · ${t('body.full_report_images_count', {
+          captures: res.image_policy.capture_images_embedded ?? 0,
+          scenarios: res.image_policy.scenario_images_embedded ?? 0,
+        })}`
+        : '';
+      setReportMsg(`${t('body.full_report_created')}${imgNote}`);
       await reloadReports();
       if (res?.html_url) {
         try { await openAuthHtml(res.html_url); } catch { /* list still refreshed */ }
@@ -255,7 +262,8 @@ export default function BodyProntuario({ patientId }: {
   }
 
   const showSummaryStrip = tab === 'capture' || tab === 'medications' || tab === 'reports';
-  const publicExportBlocked = flags?.public_export === false;
+  const publicExportBlocked = flags?.public_export === false; // authenticated report may still embed images
+  const clinicalImagesNote = true;
 
   return (
     <div className="flex flex-col min-w-0" data-testid="body-prontuario">
@@ -551,8 +559,13 @@ export default function BodyProntuario({ patientId }: {
               )}
             </div>
 
+            {clinicalImagesNote && (
+              <p className="text-sm text-[color:var(--ink)] bg-[color:var(--paper-mid)] border border-[color:var(--edge-soft)] rounded-lg px-3 py-2" data-testid="body-clinical-images-note">
+                {t('body.full_report_images_note')}
+              </p>
+            )}
             {publicExportBlocked && (
-              <p className="text-sm text-[#8b3a2a] bg-[#f8e8e2] rounded-lg px-3 py-2" data-testid="body-public-export-blocked">
+              <p className="text-sm text-[color:var(--ink-muted)] rounded-lg px-3 py-2 border border-[color:var(--edge-soft)]" data-testid="body-public-export-blocked">
                 {t('body.public_export_blocked')}
               </p>
             )}

@@ -61,7 +61,7 @@ describe('clinicalFullReport', () => {
       );
       CREATE TABLE body_capture_assets (
         id TEXT PRIMARY KEY, tenant_id TEXT, session_id TEXT, patient_id TEXT, view TEXT,
-        quality_json TEXT, content_type TEXT, created_at TEXT, deleted_at TEXT
+        quality_json TEXT, content_type TEXT, image_path TEXT, created_at TEXT, deleted_at TEXT
       );
       CREATE TABLE body_scenarios (
         id TEXT PRIMARY KEY, tenant_id TEXT, patient_id TEXT, title TEXT, goal TEXT, weeks INTEGER,
@@ -119,6 +119,28 @@ describe('clinicalFullReport', () => {
       INSERT INTO encounters (id, tenant_id, patient_id, started_at, status, subjective, objective, assessment, plan)
       VALUES ('e1','t1','p1','2026-07-03','active','Queixa de peso','IMC 36','Obesidade','Dieta + treino')
     `).run();
+    db.prepare(`
+      INSERT INTO body_consents (tenant_id, patient_id, purpose, granted, granted_at, revoked_at)
+      VALUES ('t1','p1','clinical_record',1,'2026-07-01',NULL),
+             ('t1','p1','image_processing',1,'2026-07-01',NULL),
+             ('t1','p1','generative_ai',1,'2026-07-01',NULL)
+    `).run();
+    const imgPath = path.join(tmp, 'front.jpg');
+    fs.writeFileSync(imgPath, Buffer.from([0xff, 0xd8, 0xff, 0xd9])); // minimal jpeg bytes
+    db.prepare(`
+      INSERT INTO body_capture_sessions (id, tenant_id, patient_id, status, quality_summary, created_at, updated_at, validated_at, deleted_at)
+      VALUES ('s1','t1','p1','validated','{}','2026-07-04','2026-07-04','2026-07-04',NULL)
+    `).run();
+    db.prepare(`
+      INSERT INTO body_capture_assets (id, tenant_id, session_id, patient_id, view, quality_json, content_type, image_path, created_at, deleted_at)
+      VALUES ('a1','t1','s1','p1','front','{}','image/jpeg',?,'2026-07-04',NULL)
+    `).run(imgPath);
+    db.prepare(`
+      INSERT INTO body_scenarios (id, tenant_id, patient_id, title, goal, weeks, horizon_weeks, status, review_status, provider, prompt_version, reviewed_at, review_signature, execution_plan, plan_config, assumptions, created_at, updated_at, image_path, output_views)
+      VALUES ('sc1','t1','p1','Cenário 12w','Perda',12,12,'completed','approved','local','v1','2026-07-05','Dra. J',
+        '{"summary":"Projeção ilustrativa","projected":{"weight_kg":90,"waist_cm":100,"bmi":33}}',
+        NULL, NULL, '2026-07-05','2026-07-05', ?, ?)
+    `).run(imgPath, JSON.stringify({ front: { path: imgPath } }));
   });
 
   afterAll(() => {
@@ -126,7 +148,7 @@ describe('clinicalFullReport', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('collects and renders full HTML dossier', () => {
+  it('collects and renders full HTML dossier with clinical images', () => {
     const data = collectClinicalReportData({
       db,
       tenantId: 't1',
@@ -138,6 +160,10 @@ describe('clinicalFullReport', () => {
     expect(data.plans.length).toBe(1);
     expect(data.encounters.length).toBe(1);
     expect(data.counts.measurements).toBe(1);
+    expect(data.image_policy.capture_images_allowed).toBe(true);
+    expect(data.image_policy.scenario_images_allowed).toBe(true);
+    expect(data.image_policy.capture_images_embedded).toBeGreaterThanOrEqual(1);
+    expect(data.image_policy.scenario_images_embedded).toBeGreaterThanOrEqual(1);
 
     const html = renderClinicalReportHtml(data, { signatureName: 'Dra. Juliana' });
     expect(html).toContain('Relatório clínico completo');
@@ -145,5 +171,7 @@ describe('clinicalFullReport', () => {
     expect(html).toContain('Déficit calórico Ana');
     expect(html).toContain('Queixa de peso');
     expect(html).toContain('IMC');
+    expect(html).toContain('data:image/jpeg;base64,');
+    expect(html).toContain('img-grid');
   });
 });

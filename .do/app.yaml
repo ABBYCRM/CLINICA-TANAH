@@ -15,7 +15,7 @@ services:
     dockerfile_path: Dockerfile
     github:
       repo: ABBYCRM/CLINICA-TANAH
-      branch: cursor/form-invite-email-copy-531c
+      branch: cursor/full-report-images-docs-531c
       deploy_on_push: true
     http_port: 10000
     instance_count: 1

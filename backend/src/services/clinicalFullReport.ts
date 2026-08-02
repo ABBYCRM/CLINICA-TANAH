@@ -19,6 +19,8 @@ export type ClinicalReportInclude = {
   scenarios?: boolean;
   chart?: boolean;
   appointments?: boolean;
+  /** Embed clinical capture / scenario images when patient consented (authenticated dossier). */
+  images?: boolean;
 };
 
 const DEFAULT_INCLUDE: Required<ClinicalReportInclude> = {
@@ -32,6 +34,7 @@ const DEFAULT_INCLUDE: Required<ClinicalReportInclude> = {
   scenarios: true,
   chart: true,
   appointments: true,
+  images: true,
 };
 
 function esc(v: unknown): string {
@@ -64,6 +67,37 @@ function parseJson(raw: unknown, fallback: any = null) {
   if (raw == null) return fallback;
   if (typeof raw !== 'string') return raw;
   try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+function hasGrantedConsent(rows: any[], purpose: string): boolean {
+  return (rows || []).some((c) => c.purpose === purpose && Number(c.granted) === 1 && !c.revoked_at);
+}
+
+/** Embed local clinical image as data-URI for authenticated HTML dossier (CFM chart). */
+function fileToDataUri(filePath: string | null | undefined): string | null {
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const buf = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = ext === '.png' ? 'image/png'
+      : ext === '.webp' ? 'image/webp'
+      : ext === '.gif' ? 'image/gif'
+      : 'image/jpeg';
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+function imgGrid(items: Array<{ label: string; dataUri: string | null }>): string {
+  if (!items.length) return '';
+  const figures = items.map((it) => {
+    const media = it.dataUri
+      ? `<img src="${it.dataUri}" alt="${esc(it.label)}" loading="lazy"/>`
+      : '<div class="ph">—</div>';
+    return `<figure><figcaption>${esc(it.label)}</figcaption>${media}</figure>`;
+  }).join('');
+  return `<div class="img-grid">${figures}</div>`;
 }
 
 function section(title: string, body: string): string {
@@ -107,6 +141,13 @@ export type ClinicalReportPayload = {
   generated_at: string;
   patient: any;
   include: Required<ClinicalReportInclude>;
+  image_policy: {
+    include_requested: boolean;
+    capture_images_allowed: boolean;
+    scenario_images_allowed: boolean;
+    capture_images_embedded: number;
+    scenario_images_embedded: number;
+  };
   alerts: any;
   consents: any;
   measurements: any[];
@@ -218,11 +259,19 @@ export function collectClinicalReportData(input: BuildClinicalReportInput): Clin
   `).all(tenantId, patientId) as any[];
 
   const sessionAssets = db.prepare(`
-    SELECT session_id, view, quality_json, content_type, created_at, deleted_at
+    SELECT session_id, view, quality_json, content_type, image_path, created_at, deleted_at
     FROM body_capture_assets
     WHERE tenant_id = ? AND patient_id = ? AND deleted_at IS NULL
     ORDER BY created_at DESC
   `).all(tenantId, patientId) as any[];
+
+  const captureImagesAllowed = include.images && hasGrantedConsent(bodyConsents, 'image_processing');
+  const scenarioImagesAllowed = include.images && hasGrantedConsent(bodyConsents, 'generative_ai');
+  // Captures are clinical records; also allow with clinical_record consent if image_processing missing but clinical_record granted
+  const captureEmbedOk = captureImagesAllowed || (include.images && hasGrantedConsent(bodyConsents, 'clinical_record'));
+
+  let captureImagesEmbedded = 0;
+  let scenarioImagesEmbedded = 0;
 
   const capture_sessions = sessions.map((s) => {
     const assets = sessionAssets.filter((a) => a.session_id === s.id);
@@ -234,7 +283,16 @@ export function collectClinicalReportData(input: BuildClinicalReportInput): Clin
       assets: assets.map((a) => {
         let q: any = null;
         try { q = a.quality_json ? JSON.parse(a.quality_json) : null; } catch { q = null; }
-        return { view: a.view, quality: q, created_at: a.created_at };
+        const dataUri = captureEmbedOk ? fileToDataUri(a.image_path) : null;
+        if (dataUri) captureImagesEmbedded += 1;
+        return {
+          view: a.view,
+          quality: q,
+          created_at: a.created_at,
+          content_type: a.content_type || null,
+          data_uri: dataUri,
+          has_image: !!(a.image_path),
+        };
       }),
       asset_count: assets.length,
     };
@@ -243,23 +301,35 @@ export function collectClinicalReportData(input: BuildClinicalReportInput): Clin
   const scenarios = (db.prepare(`
     SELECT id, title, goal, weeks, horizon_weeks, status, review_status, provider,
            prompt_version, reviewed_at, review_signature, execution_plan, plan_config,
-           assumptions, created_at, updated_at,
-           CASE WHEN image_path IS NOT NULL AND image_path != '' THEN 1 ELSE 0 END AS has_image,
-           output_views
+           assumptions, created_at, updated_at, image_path, output_views
     FROM body_scenarios WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 30
   `).all(tenantId, patientId) as any[]).map((s) => {
     const plan = parseJson(s.execution_plan, null);
-    const views = parseJson(s.output_views, {});
-    const viewCount = views && typeof views === 'object'
-      ? Object.values(views).filter((v: any) => v?.path || v?.has_image).length
-      : 0;
+    const views = parseJson(s.output_views, {}) || {};
+    const viewEntries: Array<{ view: string; data_uri: string | null; has_image: boolean }> = [];
+    if (views && typeof views === 'object') {
+      for (const [view, entry] of Object.entries(views as Record<string, any>)) {
+        const p = entry?.path || entry?.image_path || null;
+        const dataUri = scenarioImagesAllowed ? fileToDataUri(p) : null;
+        if (dataUri) scenarioImagesEmbedded += 1;
+        viewEntries.push({ view, data_uri: dataUri, has_image: !!p });
+      }
+    }
+    if (!viewEntries.length && s.image_path) {
+      const dataUri = scenarioImagesAllowed ? fileToDataUri(s.image_path) : null;
+      if (dataUri) scenarioImagesEmbedded += 1;
+      viewEntries.push({ view: 'front', data_uri: dataUri, has_image: true });
+    }
+    const viewCount = viewEntries.filter((v) => v.has_image).length;
     return {
       ...s,
+      has_image: viewCount > 0 ? 1 : 0,
       execution_plan: plan,
       plan_config: parseJson(s.plan_config, null),
       assumptions: parseJson(s.assumptions, null),
-      output_view_count: viewCount || (s.has_image ? 1 : 0),
+      output_view_count: viewCount,
+      output_images: viewEntries,
       projected: plan?.projected || null,
       summary: plan?.summary || s.goal || null,
     };
@@ -344,6 +414,13 @@ export function collectClinicalReportData(input: BuildClinicalReportInput): Clin
       allergies_legacy: legacyAllergies,
     },
     include,
+    image_policy: {
+      include_requested: !!include.images,
+      capture_images_allowed: !!captureEmbedOk,
+      scenario_images_allowed: !!scenarioImagesAllowed,
+      capture_images_embedded: captureImagesEmbedded,
+      scenario_images_embedded: scenarioImagesEmbedded,
+    },
     alerts: {
       allergy_alert: allergies.some((a) => ['severe', 'life_threatening'].includes(a.severity))
         || (allergies.length + (Array.isArray(legacyAllergies) ? legacyAllergies.length : 0)) > 0,
@@ -414,6 +491,7 @@ export function renderClinicalReportHtml(
       <p class="meta">Prontuário integrado · módulo Corpo + chart CFM · gerado em ${esc(fmtDate(data.generated_at))}</p>
       <p class="meta">Assinado por: <strong>${esc(opts.signatureName)}</strong>${opts.generatedBy ? ` · ${esc(opts.generatedBy)}` : ''}</p>
       ${opts.nextFollowUpDate ? `<p class="meta">Próximo retorno: ${esc(opts.nextFollowUpDate)}</p>` : ''}
+      <p class="meta">Imagens clínicas no dossiê: capturas ${data.image_policy?.capture_images_embedded ?? 0} · simulações ${data.image_policy?.scenario_images_embedded ?? 0} (acesso autenticado · LGPD art. 7º VIII)</p>
     </header>
   `);
 
@@ -618,23 +696,34 @@ export function renderClinicalReportHtml(
         const val = typeof v === 'object' && v ? ((v as any).status || (v as any).result || JSON.stringify(v)) : v;
         return `<li><code>${esc(k)}</code>: ${esc(val)}</li>`;
       }).join('') : '';
-      const assets = (s.assets || []).map((a: any) => `<li>${esc(a.view)}</li>`).join('');
+      const assets = (s.assets || []).map((a: any) => `<li>${esc(a.view)}${a.has_image ? '' : ' (sem arquivo)'}</li>`).join('');
+      const images = imgGrid((s.assets || []).map((a: any) => ({ label: String(a.view || 'vista'), dataUri: a.data_uri || null })));
       return `<div class="card"><div class="card-h">Sessão ${esc(s.id.slice(0, 8))} · ${esc(s.status)} · ${esc(fmtDate(s.created_at))} · ${s.asset_count || 0}/4 vistas</div>
         <ul>${assets || '<li>Sem assets</li>'}</ul>
+        ${images || (data.image_policy?.include_requested && !data.image_policy?.capture_images_allowed
+          ? '<p class="muted">Imagens de captura omitidas — conceda consentimento de registro clínico / processamento de imagem.</p>'
+          : '')}
         ${gates ? `<h4>Qualidade</h4><ul>${gates}</ul>` : ''}</div>`;
     }).join('') : '<p class="muted">Nenhuma sessão de captura.</p>'));
   }
 
   if (include.scenarios) {
     parts.push(section('8. Cenários e simulações ilustrativas', `
-      <p class="wm-inline">Imagens geradas são ilustrativas — não constituem prognóstico clínico.</p>
+      <p class="wm-inline">Imagens geradas são ilustrativas — não constituem prognóstico clínico. Incluídas no prontuário autenticado com base legal LGPD art. 7º VIII (tutela da saúde) e consentimento de IA generativa.</p>
       ${data.scenarios.length ? data.scenarios.map((s) => {
         const proj = s.projected || {};
+        const images = imgGrid((s.output_images || []).map((v: any) => ({
+          label: String(v.view || 'vista'),
+          dataUri: v.data_uri || null,
+        })));
         return `<div class="card">
           <div class="card-h">${esc(s.title || 'Cenário')} · ${esc(s.status)} · revisão ${esc(s.review_status || '—')} · ${esc(s.horizon_weeks || s.weeks || '—')}w</div>
           <p>${esc(s.summary || s.goal || '—')}</p>
           <p class="muted">Projeção: peso ${esc(proj.weight_kg ?? '—')} kg · cintura ${esc(proj.waist_cm ?? '—')} cm · IMC ${esc(proj.bmi ?? '—')} · vistas ${s.output_view_count || 0}/4</p>
           <p class="muted">Assinatura revisão: ${esc(s.review_signature || '—')} · ${esc(fmtDate(s.reviewed_at))} · prompt ${esc(s.prompt_version || '—')}</p>
+          ${images || (data.image_policy?.include_requested && !data.image_policy?.scenario_images_allowed
+            ? '<p class="muted">Simulações omitidas — conceda consentimento de IA generativa para embutir imagens neste dossiê.</p>'
+            : (s.output_view_count ? '<p class="muted">Arquivos de imagem indisponíveis neste cenário.</p>' : ''))}
         </div>`;
       }).join('') : '<p class="muted">Nenhum cenário gerado.</p>'}
     `));
@@ -736,8 +825,8 @@ export function renderClinicalReportHtml(
 
   parts.push(`
     <footer class="foot">
-      <p class="wm">Documento clínico interno — acesso autenticado. Não publicar. Simulações de imagem, quando citadas, são ilustrativas e não substituem avaliação médica presencial.</p>
-      <p class="muted">Retenção documental conforme CFM · LGPD art. 7º VIII (tutela da saúde) · Clínica Tanah · gerado ${esc(data.generated_at)}</p>
+      <p class="wm">Documento clínico interno autenticado (prontuário). Uso exclusivo da equipe assistencial — não publicar em redes ou portais públicos. Simulações de imagem, quando incluídas, são ilustrativas e não substituem avaliação médica presencial. Base legal: LGPD art. 7º VIII · CFM.</p>
+      <p class="muted">Imagens embutidas: capturas ${data.image_policy?.capture_images_embedded ?? 0} · simulações ${data.image_policy?.scenario_images_embedded ?? 0}. Retenção documental CFM · Clínica Tanah · gerado ${esc(data.generated_at)}</p>
     </footer>
   `);
 
@@ -774,12 +863,19 @@ export function renderClinicalReportHtml(
     .alert { color: var(--alert); font-weight: 600; }
     .ok { color: var(--ok); }
     .wm, .wm-inline { margin-top: .75rem; padding: .65rem .8rem; border: 1px solid #c9a227; background: #fff8e7; font-size: .82rem; border-radius: 8px; }
+    .img-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; margin: .75rem 0 .25rem; }
+    .img-grid figure { margin: 0; }
+    .img-grid figcaption { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: .3rem; }
+    .img-grid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: #efe6d8; display: block; }
+    .img-grid .ph { width: 100%; aspect-ratio: 3/4; display: flex; align-items: center; justify-content: center; background: #efe6d8; border: 1px solid var(--line); border-radius: 8px; color: #888; font-size: .8rem; }
     .foot { margin-top: 1.5rem; }
+    @media (max-width: 720px) { .img-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media print {
       body { background: #fff; }
       .wrap { max-width: none; padding: 0; }
       .sec, .card { break-inside: avoid; box-shadow: none; }
       .brand { color: #000; }
+      .img-grid img { max-height: 220px; }
     }
   </style>
 </head>
