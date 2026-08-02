@@ -1,10 +1,6 @@
-/**
- * Audit Log + LGPD consent service
- * Every read/write of patient medical data must be logged with a legal basis.
- * Required by LGPD art. 37, art. 7º and CFM 2.314/2022 for medical record access.
- */
 import { v4 as uuid } from 'uuid';
-import { db } from '../db/schema';
+import { db, DEFAULT_TENANT_ID } from '../db/schema';
+import { redactForAudit } from './phiCrypto';
 
 export type LgpdLegalBasis =
   | 'consent_art7_I'
@@ -26,13 +22,16 @@ export interface AuditEntry {
   ipAddress?: string;
   userAgent?: string;
   legalBasis?: LgpdLegalBasis;
+  tenantId?: string;
 }
 
 export function logAudit(entry: AuditEntry): void {
+  const before = entry.beforeValue != null ? redactForAudit(entry.beforeValue) : null;
+  const after = entry.afterValue != null ? redactForAudit(entry.afterValue) : null;
   db.prepare(`
     INSERT INTO audit_log (id, actor_id, actor_email, action, resource_type, resource_id,
-                           before_value, after_value, ip_address, user_agent, lgpd_legal_basis)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           before_value, after_value, ip_address, user_agent, lgpd_legal_basis, tenant_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     uuid(),
     entry.actorId ?? null,
@@ -40,11 +39,12 @@ export function logAudit(entry: AuditEntry): void {
     entry.action,
     entry.resourceType ?? null,
     entry.resourceId ?? null,
-    entry.beforeValue ? JSON.stringify(entry.beforeValue) : null,
-    entry.afterValue ? JSON.stringify(entry.afterValue) : null,
+    before ? JSON.stringify(before) : null,
+    after ? JSON.stringify(after) : null,
     entry.ipAddress ?? null,
     entry.userAgent ?? null,
-    entry.legalBasis ?? null
+    entry.legalBasis ?? null,
+    entry.tenantId ?? DEFAULT_TENANT_ID
   );
 }
 
@@ -52,20 +52,22 @@ export function logAudit(entry: AuditEntry): void {
 export function recordConsent(args: {
   subjectType: 'patient' | 'employee' | 'vendor';
   subjectId: string;
-  consentType: 'data_processing' | 'marketing' | 'whatsapp_communication' | 'health_data_processing';
+  consentType: string;
   granted: boolean;
   policyVersion: string;
   ipAddress?: string;
   userAgent?: string;
   evidence?: string;
+  tenantId?: string;
 }): string {
   const id = uuid();
   db.prepare(`
-    INSERT INTO lgpd_consents (id, subject_type, subject_id, consent_type, granted,
+    INSERT INTO lgpd_consents (id, tenant_id, subject_type, subject_id, consent_type, granted,
                                policy_version, granted_at, ip_address, user_agent, evidence)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
   `).run(
     id,
+    args.tenantId ?? DEFAULT_TENANT_ID,
     args.subjectType,
     args.subjectId,
     args.consentType,
