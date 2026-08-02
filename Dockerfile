@@ -22,6 +22,12 @@ ENV NODE_ENV=production
 ENV PORT=10000
 ENV DB_DIR=/data
 
+# Local silhouette morph + before/after similarity checks (bodyImage.ts)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-pil \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -c "from PIL import Image; print('pil_ok')"
+
 RUN mkdir -p /data /app/seed-data && chown -R node:node /data /app
 
 COPY --from=build /app/backend/package.json /app/backend/package-lock.json ./backend/

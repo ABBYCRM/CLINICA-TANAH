@@ -455,17 +455,32 @@ function localMorphFallback(
   }
 
   const contentType = referencePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const morphed = applyLocalSilhouetteMorph(referencePath, guidance);
-  if (morphed) {
+  const morphResult = applyLocalSilhouetteMorphDetailed(referencePath, guidance);
+  if (morphResult.bytes) {
     return {
       provider: 'local_morph',
       status: 'completed',
-      imageBytes: morphed,
+      imageBytes: morphResult.bytes,
       contentType: 'image/jpeg',
       raw: {
         note: 'identity_preserving_silhouette_morph',
         morph_guidance: guidance || null,
+        morph_engine: morphResult.engine,
       },
+    };
+  }
+
+  const sil = Math.abs(Number(guidance?.silhouette_delta_pct ?? 0));
+  const weight = Math.abs(Number(guidance?.weight_delta_kg ?? 0));
+  const mustChange = sil >= 3 || weight >= 2;
+  // Never return an identical copy when the clinician asked for a visible Δ —
+  // that made live AFTER photos look unchanged (python missing → silent noop).
+  if (mustChange) {
+    return {
+      provider: 'local_morph',
+      status: 'failed',
+      error: morphResult.error || 'local_morph_engine_failed',
+      raw: { note: 'morph_required_but_engine_failed', morph_error: morphResult.error },
     };
   }
 
@@ -475,7 +490,7 @@ function localMorphFallback(
     status: 'completed',
     imageBytes,
     contentType,
-    raw: { note: 'identity_preserving_noop_morph' },
+    raw: { note: 'identity_preserving_noop_morph', morph_error: morphResult.error || null },
   };
 }
 
@@ -570,6 +585,13 @@ function applyLocalSilhouetteMorph(
   referencePath: string,
   guidance?: MorphGuidance | null,
 ): Buffer | null {
+  return applyLocalSilhouetteMorphDetailed(referencePath, guidance).bytes;
+}
+
+function applyLocalSilhouetteMorphDetailed(
+  referencePath: string,
+  guidance?: MorphGuidance | null,
+): { bytes: Buffer | null; error?: string; engine?: string } {
   try {
     const { spawnSync } = require('child_process') as typeof import('child_process');
     const sil = Number(guidance?.silhouette_delta_pct ?? -7);
@@ -633,21 +655,34 @@ canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.2, percent=70, threshold
 out_path = sys.argv[2]
 canvas.save(out_path, 'JPEG', quality=90, optimize=True)
 `;
-    const tmpOut = `${referencePath}.morph-${process.pid}.jpg`;
+    const tmpOut = `${referencePath}.morph-${process.pid}-${Date.now()}.jpg`;
     const res = spawnSync(
       'python3',
       ['-c', py, referencePath, tmpOut, String(sil), String(waist), String(abdomen), String(hip), String(silCap)],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', timeout: 60_000 },
     );
     if (res.status === 0 && fs.existsSync(tmpOut)) {
       const bytes = fs.readFileSync(tmpOut);
       try { fs.unlinkSync(tmpOut); } catch { /* ignore */ }
-      return bytes;
+      if (bytes.equals(fs.readFileSync(referencePath))) {
+        return { bytes: null, error: 'local_morph_produced_identical_bytes', engine: 'python_pil' };
+      }
+      return { bytes, engine: 'python_pil' };
     }
-  } catch {
-    /* fall through */
+    const err = [
+      res.error?.message,
+      res.stderr && String(res.stderr).slice(0, 400),
+      res.stdout && String(res.stdout).slice(0, 200),
+      res.status != null ? `exit_${res.status}` : null,
+    ].filter(Boolean).join(' | ') || 'python3_morph_failed';
+    console.error('[local_morph]', err);
+    try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch { /* */ }
+    return { bytes: null, error: err };
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    console.error('[local_morph] exception', msg);
+    return { bytes: null, error: msg };
   }
-  return null;
 }
 
 /** Public HTTPS URL for A2E reference (temporary signed local file via APP_ORIGIN if available). */
