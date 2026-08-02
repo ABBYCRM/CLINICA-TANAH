@@ -307,6 +307,7 @@
       "appointments_open_scheduler": "Open scheduler",
       "appointments_timeline": "Appointment history",
       "tab_clinical": "Clinical",
+      "tab_hair_transplant": "Hair transplant",
       "tab_whatsapp": "WhatsApp",
       "whatsapp_heading": "Patient WhatsApp",
       "whatsapp_hint": "Thread, send, and automations wired to the WhatsApp API (dry-run until Meta is configured).",
@@ -423,7 +424,13 @@
       "task_cat_no_show": "No-show",
       "task_cat_billing_followup": "Billing follow-up",
       "task_cat_clinical": "Clinical",
-      "task_cat_admin": "Admin"
+      "task_cat_admin": "Admin",
+      "hair_transplant_heading": "Hair transplant",
+      "hair_transplant_hint": "Visual outcome simulation for hair transplant from the patient photo (coming soon).",
+      "hair_transplant_stub_title": "Image generation coming soon",
+      "hair_transplant_stub_body": "This space will host before/after image generation for hair-transplant planning, with facial identity preserved. Stub only for now.",
+      "hair_transplant_generate": "Generate simulation",
+      "hair_transplant_coming_soon": "Coming soon"
     },
     "inspector": {
       "eyebrow": "Live activity",
