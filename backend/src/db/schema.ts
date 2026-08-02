@@ -1043,7 +1043,7 @@ function ensurePreTriageIntakeForm(tenantId: string): void {
           policy_version = '2.0',
           consent_text = ?,
           name = 'Pré-consulta / pré-triagem (CFM + LGPD)',
-          description = 'Formulário público exhaustivo de pré-consulta: identificação CFM, anamnese (HDA/HPP/HF/HS/ROS), sinais de alerta e consentimentos LGPD. Envie por link ou incorpore via iframe.'
+          description = NULL
         WHERE id = ?
       `).run(consent, exists.id);
     } catch { /* */ }
@@ -1053,7 +1053,7 @@ function ensurePreTriageIntakeForm(tenantId: string): void {
     db.prepare(`
       INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text, kind)
       VALUES (?, ?, 'Pré-consulta / pré-triagem (CFM + LGPD)', 'pre-triagem-paciente',
-        'Formulário público exhaustivo de pré-consulta: identificação CFM, anamnese, sinais de alerta e consentimentos LGPD. Envie por link ou incorpore via iframe.',
+        NULL,
         1, '2.0', ?, 'pre_triage')
     `).run(`form_pretriagem_${tenantId}`, tenantId, consent);
   } catch (e: any) {
@@ -1061,7 +1061,7 @@ function ensurePreTriageIntakeForm(tenantId: string): void {
       db.prepare(`
         INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text)
         VALUES (?, ?, 'Pré-consulta / pré-triagem (CFM + LGPD)', 'pre-triagem-paciente',
-          'Pré-consulta completa (CFM + LGPD).',
+          NULL,
           1, '2.0', ?)
       `).run(`form_pretriagem_${tenantId}`, tenantId, consent);
       try { db.prepare(`UPDATE intake_forms SET kind = 'pre_triage' WHERE slug = 'pre-triagem-paciente' AND tenant_id = ?`).run(tenantId); } catch { /* */ }
