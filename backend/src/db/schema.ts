@@ -1029,28 +1029,40 @@ function ensureDefaultIntakeForm(tenantId: string): void {
 
 function ensurePreTriageIntakeForm(tenantId: string): void {
   const db = openDb();
-  const exists = db.prepare(`SELECT id FROM intake_forms WHERE tenant_id = ? AND slug = 'pre-triagem-paciente'`).get(tenantId);
-  if (exists) return;
-  // Dynamic import avoided — inline consent from template semantics
+  const exists = db.prepare(`SELECT id, policy_version FROM intake_forms WHERE tenant_id = ? AND slug = 'pre-triagem-paciente'`).get(tenantId) as any;
   const consent =
-    'Declaro que sou a pessoa identificada neste formulário de pré-triagem / pré-consulta e autorizo a Clínica Tanah a tratar meus dados pessoais e de saúde conforme a LGPD (Lei 13.709/2018), para cadastro, avaliação clínica inicial, atendimento e comunicações administrativas. '
-    + 'Entendo que este formulário NÃO substitui atendimento de urgência/emergência: em caso de dor no peito, falta de ar intensa, sangramento grave, febre muito alta, déficit neurológico ou reação alérgica grave, devo procurar serviço de emergência (SAMU 192 / PS). '
-    + 'Autorizo, se marcado abaixo, contato via WhatsApp, SMS e telefone para lembretes e confirmações, podendo revogar a qualquer momento (SAIR no WhatsApp ou solicitação à clínica).';
+    'Declaro que sou a pessoa identificada (ou seu responsável legal) neste formulário de pré-consulta / pré-triagem e autorizo a Clínica Tanah a tratar meus dados pessoais e dados sensíveis de saúde conforme a LGPD (Lei 13.709/2018), para cadastro, composição de prontuário (CFM 1.638/2002 e CFM 2.416/2024), avaliação clínica inicial, atendimento e comunicações administrativas. '
+    + 'Fui informado(a) sobre a finalidade da coleta, o caráter sensível dos dados de saúde, a possibilidade de exercer direitos do titular junto ao Encarregado/DPO e de consultar a Política de Privacidade. '
+    + 'Entendo que este formulário NÃO substitui atendimento de urgência/emergência e NÃO constitui diagnóstico médico: em dor no peito, falta de ar intensa, sangramento grave, febre muito alta, déficit neurológico, reação alérgica grave ou risco a si/outros, devo procurar serviço de emergência (SAMU 192 / Pronto-Socorro). '
+    + 'Autorizo, se marcado abaixo de forma independente, contato via WhatsApp, SMS, e-mail e telefone para lembretes e confirmações; marketing exige consentimento específico e é revogável (SAIR no WhatsApp ou solicitação à clínica).';
+  if (exists) {
+    try {
+      db.prepare(`
+        UPDATE intake_forms SET
+          kind = 'pre_triage',
+          policy_version = '2.0',
+          consent_text = ?,
+          name = 'Pré-consulta / pré-triagem (CFM + LGPD)',
+          description = 'Formulário público exhaustivo de pré-consulta: identificação CFM, anamnese (HDA/HPP/HF/HS/ROS), sinais de alerta e consentimentos LGPD. Envie por link ou incorpore via iframe.'
+        WHERE id = ?
+      `).run(consent, exists.id);
+    } catch { /* */ }
+    return;
+  }
   try {
     db.prepare(`
       INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text, kind)
-      VALUES (?, ?, 'Pré-triagem / novo paciente', 'pre-triagem-paciente',
-        'Pré-cadastro e pré-triagem clínica para novos pacientes: queixa, alergias, medicações, comorbidades e sinais de alerta. Pode ser enviado por e-mail antes da consulta.',
-        1, '1.1', ?, 'pre_triage')
+      VALUES (?, ?, 'Pré-consulta / pré-triagem (CFM + LGPD)', 'pre-triagem-paciente',
+        'Formulário público exhaustivo de pré-consulta: identificação CFM, anamnese, sinais de alerta e consentimentos LGPD. Envie por link ou incorpore via iframe.',
+        1, '2.0', ?, 'pre_triage')
     `).run(`form_pretriagem_${tenantId}`, tenantId, consent);
   } catch (e: any) {
-    // kind column might not exist on very first create before ALTER — retry without kind
     try {
       db.prepare(`
         INSERT INTO intake_forms (id, tenant_id, name, slug, description, active, policy_version, consent_text)
-        VALUES (?, ?, 'Pré-triagem / novo paciente', 'pre-triagem-paciente',
-          'Pré-cadastro e pré-triagem clínica para novos pacientes.',
-          1, '1.1', ?)
+        VALUES (?, ?, 'Pré-consulta / pré-triagem (CFM + LGPD)', 'pre-triagem-paciente',
+          'Pré-consulta completa (CFM + LGPD).',
+          1, '2.0', ?)
       `).run(`form_pretriagem_${tenantId}`, tenantId, consent);
       try { db.prepare(`UPDATE intake_forms SET kind = 'pre_triage' WHERE slug = 'pre-triagem-paciente' AND tenant_id = ?`).run(tenantId); } catch { /* */ }
     } catch { /* duplicate */ }

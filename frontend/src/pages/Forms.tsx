@@ -53,9 +53,17 @@ type SendInviteResult = {
   id: string;
   status: string;
   link: string;
+  embed?: string;
   mailto_url?: string | null;
   mailer_configured?: boolean;
   error?: string | null;
+};
+
+type LastShare = {
+  link: string;
+  embed: string;
+  mailto_url?: string | null;
+  name?: string;
 };
 
 async function copyText(text: string) {
@@ -91,6 +99,7 @@ export default function Forms() {
   const [inviteChannel, setInviteChannel] = useState<'email' | 'whatsapp' | 'both'>('email');
   const [sending, setSending] = useState(false);
   const [lastMailto, setLastMailto] = useState<string | null>(null);
+  const [lastShare, setLastShare] = useState<LastShare | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -136,6 +145,7 @@ export default function Forms() {
     setError('');
     setOkMsg('');
     setLastMailto(null);
+    setLastShare(null);
     try {
       const res: SendInviteResult = await api.post(`/api/forms/${selectedId}/send-invite`, {
         full_name: inviteName.trim() || null,
@@ -143,11 +153,19 @@ export default function Forms() {
         phone: invitePhone.trim() || null,
         channel: inviteChannel,
       });
+      const current = forms.find((f) => f.id === selectedId);
+      const share: LastShare = {
+        link: res.link || current?.urls.link || '',
+        embed: res.embed || current?.urls.embed || '',
+        mailto_url: res.mailto_url || null,
+        name: inviteName.trim() || undefined,
+      };
+      setLastShare(share);
       if (res.mailto_url) {
         setLastMailto(res.mailto_url);
         setOkMsg(t('forms.invite_mailto_hint'));
       } else {
-        setOkMsg(t('forms.invite_sent'));
+        setOkMsg(t('forms.invite_sent_share'));
       }
       setInviteName('');
       setInviteEmail('');
@@ -155,8 +173,16 @@ export default function Forms() {
       const inv = await api.get(`/api/forms/${selectedId}/invites`);
       setInvites(inv.invites || []);
     } catch (err) {
-      if (err instanceof ApiError && err.body?.mailto_url) {
-        setLastMailto(err.body.mailto_url);
+      if (err instanceof ApiError && (err.body?.mailto_url || err.body?.link)) {
+        const body = err.body as SendInviteResult;
+        const current = forms.find((f) => f.id === selectedId);
+        setLastShare({
+          link: body.link || current?.urls.link || '',
+          embed: body.embed || current?.urls.embed || '',
+          mailto_url: body.mailto_url || null,
+          name: inviteName.trim() || undefined,
+        });
+        if (body.mailto_url) setLastMailto(body.mailto_url);
         setOkMsg(t('forms.invite_mailto_hint'));
         try {
           const inv = await api.get(`/api/forms/${selectedId}/invites`);
@@ -249,56 +275,61 @@ export default function Forms() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-1.5">
-                    {t('forms.public_link')}
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
+                <div className="rounded-lg border border-[var(--moss)]/25 bg-[var(--moss)]/5 p-4 space-y-4" data-testid="form-share-primary">
+                  <div>
+                    <h3 className="font-semibold text-[var(--ink)]">{t('forms.share_primary_title')}</h3>
+                    <p className="text-sm text-[var(--ink-muted)] mt-1">{t('forms.share_primary_help')}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-1.5">
+                      {t('forms.public_link')}
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        readOnly
+                        className="input flex-1 font-mono text-sm"
+                        value={selected.urls.link}
+                        data-testid="form-public-link"
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary shrink-0"
+                        onClick={() => onCopy('link', selected.urls.link)}
+                        data-testid="copy-form-link"
+                      >
+                        {copied === 'link' ? t('forms.copied') : t('forms.copy_link')}
+                      </button>
+                      <a
+                        href={selected.urls.link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-primary shrink-0 text-center"
+                        data-testid="open-form-link"
+                      >
+                        {t('forms.open')}
+                      </a>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-1.5">
+                      {t('forms.embed_code')}
+                    </label>
+                    <textarea
                       readOnly
-                      className="input flex-1 font-mono text-sm"
-                      value={selected.urls.link}
-                      data-testid="form-public-link"
+                      rows={3}
+                      className="input w-full font-mono text-xs"
+                      value={selected.urls.embed}
+                      data-testid="form-embed-code"
                     />
                     <button
                       type="button"
-                      className="btn-secondary shrink-0"
-                      onClick={() => onCopy('link', selected.urls.link)}
-                      data-testid="copy-form-link"
+                      className="btn-secondary mt-2"
+                      onClick={() => onCopy('embed', selected.urls.embed)}
+                      data-testid="copy-form-embed"
                     >
-                      {copied === 'link' ? t('forms.copied') : t('forms.copy_link')}
+                      {copied === 'embed' ? t('forms.copied') : t('forms.copy_embed')}
                     </button>
-                    <a
-                      href={selected.urls.link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-primary shrink-0 text-center"
-                      data-testid="open-form-link"
-                    >
-                      {t('forms.open')}
-                    </a>
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)] mb-1.5">
-                    {t('forms.embed_code')}
-                  </label>
-                  <textarea
-                    readOnly
-                    rows={3}
-                    className="input w-full font-mono text-xs"
-                    value={selected.urls.embed}
-                    data-testid="form-embed-code"
-                  />
-                  <button
-                    type="button"
-                    className="btn-secondary mt-2"
-                    onClick={() => onCopy('embed', selected.urls.embed)}
-                    data-testid="copy-form-embed"
-                  >
-                    {copied === 'embed' ? t('forms.copied') : t('forms.copy_embed')}
-                  </button>
                 </div>
 
                 <div className="rounded-lg border border-[var(--edge-soft)] bg-[var(--paper-mid)]/40 p-3 text-sm text-[var(--ink-muted)]">
@@ -306,6 +337,32 @@ export default function Forms() {
                   <p className="mt-1">{t('forms.proof_body')}</p>
                 </div>
               </div>
+
+              {lastShare && (
+                <div className="card p-5 space-y-3 border-[var(--moss)]/30" data-testid="form-last-share">
+                  <h3 className="font-semibold text-[var(--ink)]">{t('forms.last_share_title')}</h3>
+                  {lastShare.name ? (
+                    <p className="text-sm text-[var(--ink-muted)]">{t('forms.last_share_for', { name: lastShare.name })}</p>
+                  ) : null}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input readOnly className="input flex-1 font-mono text-sm" value={lastShare.link} data-testid="last-share-link" />
+                    <button type="button" className="btn-secondary shrink-0" onClick={() => onCopy('last-link', lastShare.link)}>
+                      {copied === 'last-link' ? t('forms.copied') : t('forms.copy_link')}
+                    </button>
+                  </div>
+                  <textarea readOnly rows={2} className="input w-full font-mono text-xs" value={lastShare.embed} data-testid="last-share-embed" />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="btn-secondary" onClick={() => onCopy('last-embed', lastShare.embed)}>
+                      {copied === 'last-embed' ? t('forms.copied') : t('forms.copy_embed')}
+                    </button>
+                    {lastShare.mailto_url ? (
+                      <a href={lastShare.mailto_url} className="btn-secondary" data-testid="last-share-mailto">
+                        {t('forms.open_mailto')}
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              )}
 
               <div className="card p-5 space-y-4" data-testid="form-send-invite">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -389,6 +446,7 @@ export default function Forms() {
                           <th className="px-2 py-2">{t('common.email')}</th>
                           <th className="px-2 py-2">{t('forms.channel')}</th>
                           <th className="px-2 py-2">{t('common.status')}</th>
+                          <th className="px-2 py-2">{t('forms.public_link')}</th>
                           <th className="px-2 py-2">{t('common.date')}</th>
                         </tr>
                       </thead>
@@ -399,6 +457,20 @@ export default function Forms() {
                             <td className="px-2 py-2 font-mono text-xs">{inv.email || inv.phone || '—'}</td>
                             <td className="px-2 py-2 text-xs">{inv.channel}</td>
                             <td className="px-2 py-2 text-xs">{inv.status}</td>
+                            <td className="px-2 py-2">
+                              {inv.link ? (
+                                <button
+                                  type="button"
+                                  className="text-xs underline"
+                                  onClick={() => onCopy(`inv-${inv.id}`, inv.link!)}
+                                  data-testid={`copy-invite-link-${inv.id}`}
+                                >
+                                  {copied === `inv-${inv.id}` ? t('forms.copied') : t('forms.copy_link')}
+                                </button>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="px-2 py-2 text-xs whitespace-nowrap">
                               {new Date((inv.sent_at || inv.created_at) + ((inv.sent_at || inv.created_at).includes('Z') ? '' : 'Z')).toLocaleString(locale)}
                             </td>

@@ -26,23 +26,32 @@ function allowedOrigins(): string[] {
 }
 
 /** Security headers on every response (helmet-equivalent, zero deps). */
-export function securityHeaders(_req: Request, res: Response, next: NextFunction): void {
+export function securityHeaders(req: Request, res: Response, next: NextFunction): void {
+  const path = String(req.path || req.url || '');
+  // Public pré-consulta form must be iframe-embeddable on clinic sites / partners
+  const allowEmbed =
+    path.startsWith('/f/') ||
+    path === '/f' ||
+    path.startsWith('/api/public/forms');
+
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('X-XSS-Protection', '0');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  if (!allowEmbed) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  }
   if (process.env.NODE_ENV === 'production') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
-  // CSP: SPA + same-origin API; allow inline for Vite legacy only in non-prod if needed
+  const frameAncestors = allowEmbed ? "frame-ancestors *" : "frame-ancestors 'self'";
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
       "base-uri 'self'",
-      "frame-ancestors 'self'",
+      frameAncestors,
       "form-action 'self'",
       "img-src 'self' data: blob:",
       "font-src 'self' data: https://fonts.gstatic.com",

@@ -9,7 +9,9 @@ import { db } from '../db/schema';
 import { authenticate, requireRole } from '../middleware/auth';
 import { logAudit, recordConsent } from '../services/audit';
 import { blindIndex, seal, sealJson, revealPatientRow } from '../services/phiCrypto';
-import { fieldsForKind, PRE_TRIAGE_CONSENT_PT } from '../services/intakeTemplates';
+import {
+  fieldsForKind, PRE_TRIAGE_CONSENT_PT, localizeFields, localizeConsentBoxes, sectionTitle,
+} from '../services/intakeTemplates';
 import { buildIntakeInviteEmail, mailerConfigured, sendEmail } from '../services/mailer';
 import { sendTextMessage } from '../services/whatsapp';
 import { upsertPatientDocumentPointer } from '../services/patientDocumentsVault';
@@ -35,7 +37,7 @@ function formPublicUrls(req: Request, slug: string, pixelToken?: string) {
   const base = publicBase(req);
   return {
     link: `${base}/f/${slug}`,
-    embed: `<iframe src="${base}/f/${slug}" title="Cadastro Clínica Tanah" width="100%" height="720" style="border:0;border-radius:12px;max-width:640px" loading="lazy"></iframe>`,
+    embed: `<iframe src="${base}/f/${slug}?embed=1" title="Pré-consulta Clínica Tanah" width="100%" height="900" style="border:0;border-radius:12px;max-width:720px" loading="lazy" allow="clipboard-write" referrerpolicy="no-referrer-when-downgrade"></iframe>`,
     pixel: pixelToken ? `${base}/api/public/forms/pixel.gif?t=${encodeURIComponent(pixelToken)}` : null,
   };
 }
@@ -187,9 +189,9 @@ formsRouter.post('/:id/send-invite', requireRole('admin', 'receptionist', 'docto
     id: inviteId,
     status,
     link: urls.link,
+    embed: urls.embed,
     mailto_url: mailto,
     mailer_configured: mailerConfigured(),
-    results,
     error: errorMsg,
   });
 });
@@ -292,7 +294,16 @@ publicFormsRouter.get('/:slug', (req: Request, res: Response) => {
       consent_text: form.consent_text || (kind === 'pre_triage' ? PRE_TRIAGE_CONSENT_PT : form.consent_text),
       policy_version: form.policy_version,
       kind,
-      fields: fieldsForKind(kind),
+      fields: localizeFields(fieldsForKind(kind), String(req.headers['accept-language'] || 'pt-BR')),
+      consent_boxes: kind === 'pre_triage'
+        ? localizeConsentBoxes(String(req.headers['accept-language'] || 'pt-BR'))
+        : localizeConsentBoxes(String(req.headers['accept-language'] || 'pt-BR')).filter((c) =>
+            ['self_attested', 'consent_lgpd', 'consent_privacy_ack', 'consent_whatsapp', 'consent_marketing', 'consent_calls'].includes(c.key)),
+      sections: ['identity', 'guardian', 'insurance', 'clinical', 'history', 'ros', 'lifestyle', 'safety', 'consent'],
+      section_titles: Object.fromEntries(
+        (['identity', 'guardian', 'insurance', 'clinical', 'history', 'ros', 'lifestyle', 'safety', 'consent'] as const)
+          .map((s) => [s, sectionTitle(s, String(req.headers['accept-language'] || 'pt-BR'))]),
+      ),
       emergency_notice: kind === 'pre_triage',
     },
     clinic: {
@@ -329,33 +340,77 @@ const submitSchema = z.object({
   pixel_token: z.string().min(8),
   full_name: z.string().min(2).max(160),
   birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  phone: z.string().min(8).max(20),
+  phone: z.string().min(8).max(40),
   email: z.string().email().optional().nullable().or(z.literal('')),
-  cpf: z.string().regex(/^\d{11}$/).optional().nullable().or(z.literal('')),
+  cpf: z.string().max(14).optional().nullable().or(z.literal('')),
   city: z.string().max(80).optional().nullable(),
   state: z.string().max(2).optional().nullable(),
-  notes: z.string().max(500).optional().nullable(),
-  gender: z.enum(['F', 'M', 'O', 'N']).optional().nullable(),
-  // Pré-triagem
+  notes: z.string().max(2000).optional().nullable(),
+  gender: z.string().max(8).optional().nullable(),
+  // Pré-consulta / CFM anamnesis — exhaustive optional bag (validated lightly)
+  social_name: z.string().max(160).optional().nullable(),
+  sex_at_birth: z.string().max(8).optional().nullable(),
+  marital_status: z.string().max(40).optional().nullable(),
+  race_color: z.string().max(40).optional().nullable(),
+  religion: z.string().max(80).optional().nullable(),
+  occupation: z.string().max(120).optional().nullable(),
+  nationality: z.string().max(80).optional().nullable(),
+  place_of_birth: z.string().max(120).optional().nullable(),
+  mother_name: z.string().max(160).optional().nullable(),
+  father_name: z.string().max(160).optional().nullable(),
+  rg: z.string().max(40).optional().nullable(),
+  phone_secondary: z.string().max(40).optional().nullable(),
+  address_zip: z.string().max(12).optional().nullable(),
+  address_street: z.string().max(160).optional().nullable(),
+  address_number: z.string().max(40).optional().nullable(),
+  address_complement: z.string().max(80).optional().nullable(),
+  address_neighborhood: z.string().max(80).optional().nullable(),
+  emergency_contact_name: z.string().max(160).optional().nullable(),
+  emergency_contact_phone: z.string().max(40).optional().nullable(),
+  emergency_contact_relation: z.string().max(80).optional().nullable(),
+  is_minor: z.string().max(8).optional().nullable(),
+  guardian_name: z.string().max(160).optional().nullable(),
+  guardian_cpf: z.string().max(14).optional().nullable(),
+  guardian_phone: z.string().max(40).optional().nullable(),
+  guardian_relationship: z.string().max(80).optional().nullable(),
+  health_insurance: z.string().max(120).optional().nullable(),
+  health_insurance_number: z.string().max(80).optional().nullable(),
+  blood_type: z.string().max(16).optional().nullable(),
   chief_complaint: z.string().max(4000).optional().nullable(),
+  hpi: z.string().max(8000).optional().nullable(),
   symptom_duration: z.string().max(40).optional().nullable(),
+  prior_care: z.string().max(2000).optional().nullable(),
   allergies: z.string().max(2000).optional().nullable(),
-  current_medications: z.string().max(2000).optional().nullable(),
+  allergy_severity: z.string().max(40).optional().nullable(),
+  current_medications: z.string().max(4000).optional().nullable(),
   chronic_conditions: z.array(z.string()).optional().default([]),
+  hospitalizations: z.string().max(2000).optional().nullable(),
   prior_surgeries: z.string().max(2000).optional().nullable(),
-  family_history: z.string().max(2000).optional().nullable(),
+  transfusions: z.string().max(40).optional().nullable(),
+  vaccines_uptodate: z.string().max(40).optional().nullable(),
+  family_history: z.string().max(4000).optional().nullable(),
+  ros: z.array(z.string()).optional().default([]),
+  ros_details: z.string().max(4000).optional().nullable(),
   pregnancy_status: z.string().max(40).optional().nullable(),
   smoking: z.string().max(40).optional().nullable(),
   alcohol: z.string().max(40).optional().nullable(),
+  illicit_drugs: z.string().max(40).optional().nullable(),
+  physical_activity: z.string().max(40).optional().nullable(),
+  sleep_hours: z.string().max(40).optional().nullable(),
+  diet_notes: z.string().max(2000).optional().nullable(),
+  height_cm: z.union([z.string(), z.number()]).optional().nullable(),
+  weight_kg: z.union([z.string(), z.number()]).optional().nullable(),
   red_flags: z.array(z.string()).optional().default([]),
   urgency_self: z.string().max(40).optional().nullable(),
-  additional_notes: z.string().max(2000).optional().nullable(),
+  additional_notes: z.string().max(4000).optional().nullable(),
   consent_lgpd: z.literal(true),
+  consent_privacy_ack: z.boolean().optional().default(false),
   consent_whatsapp: z.boolean().default(false),
   consent_marketing: z.boolean().default(false),
   consent_calls: z.boolean().default(false),
+  consent_telehealth_image: z.boolean().optional().default(false),
   self_attested: z.literal(true),
-});
+}).passthrough();
 
 publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   const form = db.prepare(`
@@ -371,12 +426,26 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   const d = parsed.data;
   const kind = form.kind || (form.slug === 'pre-triagem-paciente' ? 'pre_triage' : 'cadastro');
   if (kind === 'pre_triage') {
-    if (!d.chief_complaint?.trim()) {
-      res.status(400).json({ error: 'validation', message: 'Informe a queixa principal / motivo da consulta.' });
-      return;
+    const missing: string[] = [];
+    if (!d.mother_name?.trim()) missing.push('nome da mãe (filiação)');
+    if (!String(d.cpf || '').replace(/\D/g, '') || String(d.cpf || '').replace(/\D/g, '').length !== 11) missing.push('CPF');
+    if (!d.address_zip?.trim() || !d.address_street?.trim() || !d.address_number?.trim() || !d.address_neighborhood?.trim() || !d.city?.trim() || !d.state?.trim()) {
+      missing.push('endereço completo');
     }
-    if (!d.red_flags?.length) {
-      res.status(400).json({ error: 'validation', message: 'Responda aos sinais de alerta (ou marque nenhum).' });
+    if (!d.emergency_contact_name?.trim() || !d.emergency_contact_phone?.trim()) missing.push('contato de emergência');
+    if (!d.chief_complaint?.trim()) missing.push('queixa principal');
+    if (!d.hpi?.trim()) missing.push('história da doença atual');
+    if (!d.allergies?.trim()) missing.push('alergias');
+    if (!d.current_medications?.trim()) missing.push('medicamentos em uso');
+    if (!d.chronic_conditions?.length) missing.push('condições crônicas');
+    if (!d.family_history?.trim()) missing.push('história familiar');
+    if (!d.ros?.length) missing.push('interrogatório por sistemas');
+    if (!d.smoking) missing.push('tabagismo');
+    if (!d.alcohol) missing.push('álcool');
+    if (!d.red_flags?.length) missing.push('sinais de alerta');
+    if (!d.urgency_self) missing.push('urgência autodeclarada');
+    if (missing.length) {
+      res.status(400).json({ error: 'validation', message: `Pré-consulta incompleta (CFM/LGPD): ${missing.join(', ')}.` });
       return;
     }
   }
@@ -397,11 +466,19 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   const { ip, ua } = clientMeta(req);
   const phone = d.phone.replace(/\s+/g, '');
   const email = d.email || null;
-  const cpf = d.cpf || null;
+  const cpfRaw = String(d.cpf || '').replace(/\D/g, '');
+  const cpf = cpfRaw.length === 11 ? cpfRaw : null;
+
+  if (kind === 'pre_triage' && !d.consent_privacy_ack) {
+    res.status(400).json({ error: 'validation', message: 'Confirme o acesso à Política de Privacidade.' });
+    return;
+  }
 
   const triageNotes = [
     d.notes,
+    d.social_name ? `Nome social: ${d.social_name}` : null,
     d.chief_complaint ? `Queixa: ${d.chief_complaint}` : null,
+    d.hpi ? `HDA: ${d.hpi}` : null,
     d.urgency_self ? `Urgência autodeclarada: ${d.urgency_self}` : null,
     d.additional_notes,
   ].filter(Boolean).join('\n') || null;
@@ -409,9 +486,10 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   const allergyList = (d.allergies || '')
     .split(/[,;\n]+/)
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter((s) => s && !/^nega/i.test(s) && !/^nenhum/i.test(s) && !/^no known/i.test(s));
   const chronicList = (d.chronic_conditions || []).filter((c) => c && c !== 'none');
   const medsText = d.current_medications?.trim() || null;
+  const rosList = (d.ros || []).filter((c: string) => c && c !== 'none');
 
   let patientId: string | null = null;
   let status = 'patient_created';
@@ -438,6 +516,23 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
         lgpd_consent_version = ?,
         email = COALESCE(email, ?),
         gender = COALESCE(gender, ?),
+        social_name = COALESCE(social_name, ?),
+        mother_name = COALESCE(mother_name, ?),
+        occupation = COALESCE(occupation, ?),
+        address_zip = COALESCE(address_zip, ?),
+        address_street = COALESCE(address_street, ?),
+        address_number = COALESCE(address_number, ?),
+        address_complement = COALESCE(address_complement, ?),
+        address_neighborhood = COALESCE(address_neighborhood, ?),
+        address_city = COALESCE(address_city, ?),
+        address_state = COALESCE(address_state, ?),
+        emergency_contact_name = COALESCE(emergency_contact_name, ?),
+        emergency_contact_phone = COALESCE(emergency_contact_phone, ?),
+        guardian_name = COALESCE(guardian_name, ?),
+        guardian_phone = COALESCE(guardian_phone, ?),
+        health_insurance = COALESCE(health_insurance, ?),
+        health_insurance_number = COALESCE(health_insurance_number, ?),
+        blood_type = COALESCE(blood_type, ?),
         notes = COALESCE(?, notes),
         allergies = COALESCE(?, allergies),
         chronic_conditions = COALESCE(?, chronic_conditions),
@@ -445,7 +540,15 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
         updated_at = datetime('now')
       WHERE id = ?
     `).run(
-      now, ip, form.policy_version, sealedEmail, d.gender || null,
+      now, ip, form.policy_version, sealedEmail, d.gender || d.sex_at_birth || null,
+      d.social_name || null, d.mother_name || null, d.occupation || null,
+      d.address_zip || null, d.address_street || null, d.address_number || null,
+      d.address_complement || null, d.address_neighborhood || null,
+      d.city || null, d.state || null,
+      d.emergency_contact_name || null, d.emergency_contact_phone || null,
+      d.guardian_name || null, d.guardian_phone || null,
+      d.health_insurance || null, d.health_insurance_number || null,
+      d.blood_type && d.blood_type !== 'unknown' ? d.blood_type : null,
       sealedNotes, sealedAllergies, sealedChronic, sealedMeds, patientId,
     );
   } else {
@@ -453,15 +556,27 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
     try {
       db.prepare(`
         INSERT INTO patients (
-          id, tenant_id, full_name, birth_date, cpf, cpf_blind, gender, phone, email,
-          address_city, address_state, notes, allergies, chronic_conditions, medications_in_use,
+          id, tenant_id, full_name, social_name, birth_date, cpf, cpf_blind, rg, gender, phone, email,
+          address_zip, address_street, address_number, address_complement, address_neighborhood,
+          address_city, address_state, mother_name, occupation,
+          emergency_contact_name, emergency_contact_phone,
+          guardian_name, guardian_phone, guardian_relationship,
+          health_insurance, health_insurance_number, blood_type,
+          notes, allergies, chronic_conditions, medications_in_use,
           referral_source, lgpd_consent_at, lgpd_consent_ip, lgpd_consent_version,
           lifecycle_stage, preferred_language, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'prospect', 'pt-BR', datetime('now'), datetime('now'))
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'prospect', 'pt-BR', datetime('now'), datetime('now'))
       `).run(
-        patientId, form.tenant_id, d.full_name.trim(), d.birth_date, sealedCpf, cpfBlind,
-        d.gender || null, phone, sealedEmail,
-        d.city || null, d.state || null, sealedNotes, sealedAllergies, sealedChronic, sealedMeds,
+        patientId, form.tenant_id, d.full_name.trim(), d.social_name || null, d.birth_date,
+        sealedCpf, cpfBlind, d.rg || null, d.gender || d.sex_at_birth || null, phone, sealedEmail,
+        d.address_zip || null, d.address_street || null, d.address_number || null,
+        d.address_complement || null, d.address_neighborhood || null,
+        d.city || null, d.state || null, d.mother_name || null, d.occupation || null,
+        d.emergency_contact_name || null, d.emergency_contact_phone || null,
+        d.guardian_name || null, d.guardian_phone || null, d.guardian_relationship || null,
+        d.health_insurance || null, d.health_insurance_number || null,
+        d.blood_type && d.blood_type !== 'unknown' ? d.blood_type : null,
+        sealedNotes, sealedAllergies, sealedChronic, sealedMeds,
         kind === 'pre_triage' ? 'pre_triage_intake' : 'intake_form',
         now, ip, form.policy_version,
       );
@@ -500,19 +615,34 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
         uuid(), form.tenant_id, patientId, patientId, stamp.signed_at,
         d.chief_complaint || null,
         [
+          d.hpi || null,
           d.symptom_duration ? `Duração: ${d.symptom_duration}` : null,
+          d.prior_care ? `Cuidados prévios: ${d.prior_care}` : null,
           d.urgency_self ? `Urgência autodeclarada: ${d.urgency_self}` : null,
           (d.red_flags || []).length ? `Sinais de alerta: ${(d.red_flags || []).join(', ')}` : null,
+          rosList.length ? `ROS: ${rosList.join(', ')}` : null,
+          d.ros_details ? `ROS detalhe: ${d.ros_details}` : null,
         ].filter(Boolean).join('\n') || null,
         [
           chronicList.length ? `Comorbidades: ${chronicList.join(', ')}` : null,
+          d.hospitalizations ? `Internações: ${d.hospitalizations}` : null,
           d.prior_surgeries ? `Cirurgias: ${d.prior_surgeries}` : null,
+          d.transfusions ? `Transfusões: ${d.transfusions}` : null,
+          d.vaccines_uptodate ? `Vacinas: ${d.vaccines_uptodate}` : null,
+          d.allergy_severity ? `Gravidade alergia: ${d.allergy_severity}` : null,
         ].filter(Boolean).join('\n') || null,
         d.family_history || null,
         [
           d.smoking ? `Tabagismo: ${d.smoking}` : null,
           d.alcohol ? `Álcool: ${d.alcohol}` : null,
+          d.illicit_drugs ? `Substâncias: ${d.illicit_drugs}` : null,
           d.pregnancy_status ? `Gestação/amamentação: ${d.pregnancy_status}` : null,
+          d.physical_activity ? `Atividade física: ${d.physical_activity}` : null,
+          d.sleep_hours ? `Sono: ${d.sleep_hours}` : null,
+          d.diet_notes ? `Dieta: ${d.diet_notes}` : null,
+          d.height_cm ? `Altura: ${d.height_cm} cm` : null,
+          d.weight_kg ? `Peso: ${d.weight_kg} kg` : null,
+          d.occupation ? `Ocupação: ${d.occupation}` : null,
         ].filter(Boolean).join('\n') || null,
         medsText,
         stamp.signer_name, null, null, stamp.signed_at,
@@ -542,9 +672,11 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
     submission_id: session.id,
     pixel_viewed_at: session.pixel_viewed_at || now,
     self_attested: true,
+    consent_privacy_ack: !!d.consent_privacy_ack,
     consent_whatsapp: d.consent_whatsapp,
     consent_marketing: d.consent_marketing,
     consent_calls: d.consent_calls,
+    consent_telehealth_image: !!d.consent_telehealth_image,
     triage: kind === 'pre_triage' ? {
       chief_complaint: d.chief_complaint,
       symptom_duration: d.symptom_duration,
@@ -567,9 +699,11 @@ publicFormsRouter.post('/:slug/submit', (req: Request, res: Response) => {
   const sealedPayload = sealJson(evidenceObj);
 
   const consents: string[] = ['health_data_processing', 'data_processing'];
+  if (d.consent_privacy_ack) consents.push('privacy_policy_ack', 'transparency_lgpd');
   if (d.consent_whatsapp) consents.push('whatsapp_communication', 'whatsapp_admin', 'appointment_reminders');
   if (d.consent_marketing) consents.push('marketing_news', 'promotions_events');
   if (d.consent_calls) consents.push('phone_calls', 'post_visit_survey');
+  if (d.consent_telehealth_image) consents.push('telehealth', 'clinical_images');
 
   for (const ctype of consents) {
     recordConsent({
