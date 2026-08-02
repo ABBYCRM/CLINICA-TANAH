@@ -21,6 +21,50 @@ export type ImageGenResult = {
   raw?: unknown;
 };
 
+/** Quantitative guidance from If/Then body-composition envelope → after-image morph. */
+export type MorphGuidance = {
+  silhouette_delta_pct: number;
+  regional_deltas_pct: Record<string, number>;
+  weight_delta_kg?: number | null;
+  fat_delta_kg?: number | null;
+  waist_delta_cm?: number | null;
+  identity_locks?: string[];
+  effective_silhouette_delta_pct?: number;
+};
+
+/** Extract morph guidance from enriched scenario execution_plan / anatomical envelope. */
+export function morphGuidanceFromEnvelope(envelope: any | null | undefined): MorphGuidance | null {
+  if (!envelope) return null;
+  const pipe = envelope.img2img_pipeline_config || envelope.anatomicalEnvelope?.img2img_pipeline_config;
+  const regions = envelope.regional_anatomical_deltas_pct
+    || envelope.anatomicalEnvelope?.regional_anatomical_deltas_pct
+    || Object.fromEntries(
+      (envelope.anatomicalEnvelope?.regions || []).map((r: any) => [r.region, r.deltaPct]),
+    );
+  const silRaw = Number(
+    pipe?.effective_silhouette_delta_pct
+      ?? envelope.silhouette_delta_pct
+      ?? 0,
+  );
+  // Prefer signed silhouette from envelope (negative = loss)
+  const silSigned = Number(envelope.silhouette_delta_pct ?? 0);
+  const silhouette = silSigned !== 0
+    ? Math.max(-7, Math.min(7, silSigned))
+    : (silRaw ? -Math.min(7, Math.abs(silRaw)) : -5);
+  const locks = pipe?.identity_locks || [
+    'face', 'height', 'limb_lengths', 'skin_marks', 'clothing', 'pose', 'background',
+  ];
+  return {
+    silhouette_delta_pct: Math.round(silhouette * 100) / 100,
+    regional_deltas_pct: regions || {},
+    weight_delta_kg: envelope.deltas?.weight_kg ?? null,
+    fat_delta_kg: envelope.deltas?.fat_mass_kg ?? null,
+    waist_delta_cm: envelope.deltas?.waist_cm ?? null,
+    identity_locks: locks,
+    effective_silhouette_delta_pct: Math.abs(silhouette),
+  };
+}
+
 const A2E_BASE = process.env.A2E_BASE_URL || 'https://video.a2e.ai';
 const A2E_MODEL = process.env.A2E_MODEL || 'nano-banana-pro';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
@@ -390,8 +434,11 @@ async function generateBitdeer(opts: {
   return { provider: 'bitdeer', status: 'failed', error: 'bitdeer_no_image', raw: json };
 }
 
-/** Identity-preserving morph: slight silhouette slim for visible before/after when clouds fail. */
-function localMorphFallback(referencePath?: string | null): ImageGenResult {
+/** Identity-preserving morph: silhouette/regional morph driven by If/Then calculator. */
+function localMorphFallback(
+  referencePath?: string | null,
+  guidance?: MorphGuidance | null,
+): ImageGenResult {
   if (!localMorphEnabled()) {
     return { provider: 'local_morph', status: 'failed', error: 'local_morph_disabled' };
   }
@@ -400,14 +447,17 @@ function localMorphFallback(referencePath?: string | null): ImageGenResult {
   }
 
   const contentType = referencePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const morphed = applyLocalSilhouetteMorph(referencePath);
+  const morphed = applyLocalSilhouetteMorph(referencePath, guidance);
   if (morphed) {
     return {
       provider: 'local_morph',
       status: 'completed',
       imageBytes: morphed,
       contentType: 'image/jpeg',
-      raw: { note: 'identity_preserving_silhouette_morph' },
+      raw: {
+        note: 'identity_preserving_silhouette_morph',
+        morph_guidance: guidance || null,
+      },
     };
   }
 
@@ -421,28 +471,76 @@ function localMorphFallback(referencePath?: string | null): ImageGenResult {
   };
 }
 
-/** Narrow silhouette ~7% and soft-brighten midtones so after ≠ before in demos. */
-function applyLocalSilhouetteMorph(referencePath: string): Buffer | null {
+/** Narrow/widen silhouette from If/Then calculator guidance (identity-preserving). */
+function applyLocalSilhouetteMorph(
+  referencePath: string,
+  guidance?: MorphGuidance | null,
+): Buffer | null {
   try {
-    // Prefer Pillow when available in the runtime (DO/local e2e images).
     const { spawnSync } = require('child_process') as typeof import('child_process');
+    const sil = Number(guidance?.silhouette_delta_pct ?? -7);
+    const regions = guidance?.regional_deltas_pct || {};
+    const waist = Number(regions.waist ?? regions.abdomen ?? sil * 0.3);
+    const abdomen = Number(regions.abdomen ?? waist);
+    const hip = Number(regions.hip ?? waist * 0.6);
     const py = `
 from PIL import Image, ImageEnhance, ImageFilter
 import sys
 im = Image.open(sys.argv[1]).convert('RGB')
 w, h = im.size
-nw = max(8, int(w * 0.93))
-slim = im.resize((nw, h), Image.Resampling.LANCZOS)
-canvas = Image.new('RGB', (w, h), (245, 240, 232))
-canvas.paste(slim, ((w - nw) // 2, 0))
-canvas = ImageEnhance.Contrast(canvas).enhance(1.06)
-canvas = ImageEnhance.Color(canvas).enhance(0.97)
-canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.2, percent=60, threshold=2))
-out = sys.argv[2]
-canvas.save(out, 'JPEG', quality=90, optimize=True)
+sil = float(sys.argv[3])
+waist = float(sys.argv[4])
+abdomen = float(sys.argv[5])
+hip = float(sys.argv[6])
+# Overall silhouette → horizontal scale (cap 12%)
+abs_sil = min(0.12, abs(sil) / 100.0)
+sign = 1.0 if sil > 0 else -1.0
+base = 1.0 + sign * abs_sil * 0.9
+base = max(0.86, min(1.12, base))
+# Mid-torso extra squeeze from waist/abdomen (clinical soft-tissue)
+mid = min(0.08, (abs(waist) + abs(abdomen)) / 200.0)
+hip_extra = min(0.05, abs(hip) / 200.0)
+out = Image.new('RGB', (w, h), (245, 240, 232))
+px = im.load()
+opx = out.load()
+for y in range(h):
+    t = y / max(1, h - 1)
+    # torso band 0.28–0.72 gets waist/abdomen; hips 0.55–0.85
+    torso = 0.0
+    if 0.28 <= t <= 0.72:
+        # peak at mid-abdomen ~0.48
+        torso = 1.0 - abs(t - 0.48) / 0.24
+        torso = max(0.0, min(1.0, torso))
+    hips = 0.0
+    if 0.55 <= t <= 0.88:
+        hips = 1.0 - abs(t - 0.70) / 0.18
+        hips = max(0.0, min(1.0, hips))
+    row_scale = base + sign * (mid * torso + hip_extra * hips)
+    row_scale = max(0.82, min(1.14, row_scale))
+    nw = max(8, int(round(w * row_scale)))
+    # nearest-neighbor sample from source row into centered narrower/wider row
+    x0 = (w - nw) // 2
+    for x in range(w):
+        sx = int((x - x0) * (w - 1) / max(1, nw - 1))
+        if 0 <= sx < w and x0 <= x < x0 + nw:
+            opx[x, y] = px[sx, y]
+        elif x < x0 or x >= x0 + nw:
+            # soft edge fill from nearest edge pixel
+            edge = 0 if x < x0 else w - 1
+            opx[x, y] = px[edge, y]
+canvas = out
+canvas = ImageEnhance.Contrast(canvas).enhance(1.05)
+canvas = ImageEnhance.Color(canvas).enhance(0.98)
+canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.1, percent=55, threshold=2))
+out_path = sys.argv[2]
+canvas.save(out_path, 'JPEG', quality=90, optimize=True)
 `;
     const tmpOut = `${referencePath}.morph-${process.pid}.jpg`;
-    const res = spawnSync('python3', ['-c', py, referencePath, tmpOut], { encoding: 'utf8' });
+    const res = spawnSync(
+      'python3',
+      ['-c', py, referencePath, tmpOut, String(sil), String(waist), String(abdomen), String(hip)],
+      { encoding: 'utf8' },
+    );
     if (res.status === 0 && fs.existsSync(tmpOut)) {
       const bytes = fs.readFileSync(tmpOut);
       try { fs.unlinkSync(tmpOut); } catch { /* ignore */ }
@@ -460,6 +558,8 @@ export async function generateBodyScenarioImage(opts: {
   prompt: string;
   referencePath?: string | null;
   referencePublicUrl?: string | null;
+  /** If/Then calculator output — drives local_morph and is reflected in cloud prompts */
+  morphGuidance?: MorphGuidance | null;
 }): Promise<ImageGenResult> {
   const order = providerOrder();
   if (!order.length) {
@@ -521,7 +621,7 @@ export async function generateBodyScenarioImage(opts: {
         continue;
       }
       if (provider === 'local_morph') {
-        last = localMorphFallback(opts.referencePath);
+        last = localMorphFallback(opts.referencePath, opts.morphGuidance);
         if (last.status !== 'failed') return last;
         errors.push(`local_morph:${last.error || 'failed'}`);
       }

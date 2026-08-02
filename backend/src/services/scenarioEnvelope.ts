@@ -197,6 +197,23 @@ export function buildPhotorealScenarioPrompt(opts: {
   const ae = opts.envelope.anatomicalEnvelope;
   const pipe = opts.envelope.img2img_pipeline_config || ae?.img2img_pipeline_config;
   const silCap = pipe?.effective_silhouette_delta_pct ?? ae?.maxAbsDeltaPct ?? 7;
+  const calcBlock = [
+    'CALCULATED AFTER (apply quantitatively to THIS reference photo — do not invent a new person):',
+    opts.envelope.deltas
+      ? `weight_delta_kg=${opts.envelope.deltas.weight_kg}; fat_delta_kg=${opts.envelope.deltas.fat_mass_kg}; ffm_delta_kg=${opts.envelope.deltas.ffm_kg}; waist_delta_cm=${opts.envelope.deltas.waist_cm}; silhouette_delta_pct=${opts.envelope.silhouette_delta_pct ?? silCap}.`
+      : '',
+    ae?.regions?.length
+      ? `regional_anatomical_deltas_pct={${ae.regions.map((r) => `${r.region}:${r.deltaPct}`).join(',')}}.`
+      : '',
+    p.weight_kg != null
+      ? `projected_metrics={weight_kg:${p.weight_kg}, waist_cm:${p.waist_cm ?? 'n/a'}, body_fat_pct:${p.body_fat_pct ?? 'n/a'}, bmi:${p.bmi ?? 'n/a'}}.`
+      : '',
+    pipe
+      ? `img2img_pipeline_config={version:${pipe.version}, identity_locks:[${(pipe.identity_locks || []).join(',')}], effective_silhouette_delta_pct:${pipe.effective_silhouette_delta_pct}, clothing_drape:${pipe.clothing_drape || 'preserve_garments_show_fit_change'}}.`
+      : '',
+    'Visually realize these deltas: reduce/increase soft tissue in marked regions; same clothes must change drape/fit accordingly; face/height/limb lengths/skin marks/pose/background unchanged.',
+  ].filter(Boolean).join(' ');
+
   const regional = ae?.regions?.length
     ? `Regional anatomical guidance (educational img2img, clamp |Δ|≤${ae.maxAbsDeltaPct}%, effective silhouette ≤${silCap}%): ${
         ae.regions
@@ -210,6 +227,7 @@ export function buildPhotorealScenarioPrompt(opts: {
     : '';
 
   const compositionBits = [
+    calcBlock,
     vg ? `Visual change: ${vg.soft_tissue}; ${vg.muscle_tone}; intensity=${vg.intensity}.` : '',
     regional,
     profiles,
