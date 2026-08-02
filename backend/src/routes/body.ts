@@ -398,8 +398,8 @@ async function generateAndPersistOneView(opts: {
       || result.provider === 'bitdeer'
       || String(result.provider).startsWith('gemini')
       || String(result.provider).startsWith('a2e');
-    // Restore straight doors/cabinets from BEFORE outside the person silhouette
-    if (generative) {
+    // Restore straight doors/cabinets — front only (rembg is heavy; 4× parallel OOMs small DO boxes)
+    if (generative && opts.view === 'front' && process.env.ARCHITECTURE_LOCK !== '0') {
       const locked = await lockArchitectureFromBefore(opts.referencePath, imageBytes);
       if (locked?.length) {
         imageBytes = locked;
@@ -512,8 +512,8 @@ async function runGenerate(
   let anyOk = false;
   const errors: string[] = [];
 
-  // Generate all capture views in parallel (each uses its own reference photo).
-  await Promise.all(viewsToGenerate.map(async (view) => {
+  // Generate capture views sequentially — parallel rembg/Gemini spikes memory on small DO boxes.
+  for (const view of viewsToGenerate) {
     const asset = assetsByView[view];
     const viewPrompt = envelope
       ? buildPhotorealScenarioPrompt({
@@ -548,7 +548,7 @@ async function runGenerate(
       output[view] = { view, has_image: false, error: e?.message || String(e) };
       errors.push(`${view}:${e?.message || e}`);
     }
-  }));
+  }
 
   writeOutputViews(scenarioId, output);
 
