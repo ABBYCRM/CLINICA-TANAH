@@ -390,31 +390,35 @@ async function generateAndPersistOneView(opts: {
     };
   }
 
-  // HARDENED RAG: after must reflect calculator math — reject near-copies of before
+  // HARDENED RAG + architecture lock (front generative)
   let providerLabel = result.provider;
-  if (opts.referencePath && opts.morphGuidance && fs.existsSync(opts.referencePath)) {
-    const generative = result.provider === 'gemini'
-      || result.provider === 'a2e'
-      || result.provider === 'bitdeer'
-      || String(result.provider).startsWith('gemini')
-      || String(result.provider).startsWith('a2e');
-    // Restore straight doors/cabinets — front only (rembg is heavy; 4× parallel OOMs small DO boxes)
-    if (generative && opts.view === 'front' && process.env.ARCHITECTURE_LOCK !== '0') {
-      const locked = await lockArchitectureFromBefore(opts.referencePath, imageBytes);
-      if (locked?.length) {
-        imageBytes = locked;
-        providerLabel = `${result.provider}+bg_lock` as any;
-        result = {
-          ...result,
-          imageBytes,
-          provider: providerLabel,
-          raw: {
-            ...(typeof result.raw === 'object' && result.raw ? result.raw as object : {}),
-            architecture_locked: true,
-          },
-        };
-      }
+  const generative = result.provider === 'gemini'
+    || result.provider === 'a2e'
+    || result.provider === 'bitdeer'
+    || String(result.provider).startsWith('gemini')
+    || String(result.provider).startsWith('a2e');
+
+  if (opts.referencePath && fs.existsSync(opts.referencePath) && generative
+      && opts.view === 'front' && process.env.ARCHITECTURE_LOCK !== '0') {
+    const locked = await lockArchitectureFromBefore(opts.referencePath, imageBytes);
+    if (locked?.length) {
+      imageBytes = locked;
+      providerLabel = `${result.provider}+bg_lock` as any;
+      result = {
+        ...result,
+        imageBytes,
+        provider: providerLabel,
+        raw: {
+          ...(typeof result.raw === 'object' && result.raw ? result.raw as object : {}),
+          architecture_locked: true,
+        },
+      };
+    } else {
+      console.warn('[arch_lock] skipped_or_failed', opts.view, opts.scenarioId);
     }
+  }
+
+  if (opts.referencePath && opts.morphGuidance && fs.existsSync(opts.referencePath)) {
     const enforced = enforceAfterReflectsMath({
       referencePath: opts.referencePath,
       afterBytes: imageBytes,
@@ -423,7 +427,7 @@ async function generateAndPersistOneView(opts: {
     });
     if (enforced.enforced) {
       imageBytes = enforced.bytes;
-      providerLabel = `${result.provider}+morph_rag` as any;
+      providerLabel = `${String(providerLabel).replace(/\+morph_rag$/, '')}+morph_rag` as any;
       result = {
         ...result,
         imageBytes,
