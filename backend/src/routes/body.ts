@@ -19,6 +19,7 @@ import {
   bodyUploadsDir,
   buildScenarioPrompt,
   calcBmi,
+  enforceAfterReflectsMath,
   generateBodyScenarioImage,
   imageProvidersStatus,
   morphGuidanceFromEnvelope,
@@ -387,7 +388,35 @@ async function generateAndPersistOneView(opts: {
     };
   }
 
-  const ext = (result.contentType || '').includes('png') ? 'png' : 'jpg';
+  // HARDENED RAG: after must reflect calculator math — reject near-copies of before
+  let providerLabel = result.provider;
+  if (opts.referencePath && opts.morphGuidance && fs.existsSync(opts.referencePath)) {
+    const enforced = enforceAfterReflectsMath({
+      referencePath: opts.referencePath,
+      afterBytes: imageBytes,
+      guidance: opts.morphGuidance,
+    });
+    if (enforced.enforced) {
+      imageBytes = enforced.bytes;
+      providerLabel = `${result.provider}+morph_rag` as any;
+      result = {
+        ...result,
+        imageBytes,
+        contentType: enforced.contentType,
+        provider: providerLabel,
+        raw: {
+          ...(typeof result.raw === 'object' && result.raw ? result.raw as object : {}),
+          rag_enforced: true,
+          before_after_similarity: enforced.similarity,
+          rule: 'img2img-after-must-reflect-math',
+        },
+      };
+    }
+  }
+
+  const ext = (result.contentType || '').includes('png') && !String(providerLabel).includes('morph')
+    ? 'png'
+    : 'jpg';
   const imagePath = path.join(dir, `scenario-${opts.scenarioId}-${opts.view}.${ext}`);
   fs.writeFileSync(imagePath, imageBytes);
 
@@ -401,14 +430,14 @@ async function generateAndPersistOneView(opts: {
              provider_task_id = COALESCE(?, provider_task_id),
              error = NULL, updated_at = datetime('now')
        WHERE id = ?
-    `).run(result.provider, legacy, result.imageUrl || null, result.taskId || null, opts.scenarioId);
+    `).run(providerLabel, legacy, result.imageUrl || null, result.taskId || null, opts.scenarioId);
   }
 
   return {
     view: opts.view,
     has_image: true,
     path: imagePath,
-    provider: result.provider,
+    provider: providerLabel,
     error: null,
   };
 }

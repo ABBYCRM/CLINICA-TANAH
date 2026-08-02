@@ -85,6 +85,7 @@ describe('anatomicalEnvelope', () => {
     expect(ruleIds).toEqual(expect.arrayContaining([
       'R_IMG2IMG_PIPELINE',
       'R_BEFORE_AFTER_IDENTITY',
+      'R_AFTER_MUST_REFLECT_MATH',
       'R_IDENTITY',
       'R_MAGNITUDE',
       'R_SYNERGY',
@@ -152,8 +153,7 @@ describe('anatomicalEnvelope', () => {
     expect(prompt).toMatch(/Regional anatomical guidance/i);
     expect(prompt).toMatch(/SIMULACAO ILUSTRATIVA/);
     expect(prompt).toMatch(/waist|abdomen/i);
-    expect(prompt).toMatch(/HARD IDENTITY LOCKS|same clothes drape|clothing_drape/i);
-    expect(prompt).toMatch(/img2img pipeline v5/i);
+    expect(prompt).toMatch(/HARDENED RAG|MANDATORY VISIBLE CHANGE|img2img-after-must-reflect-math/i);
     expect(prompt).toMatch(/CALCULATED AFTER/i);
     expect(prompt).toMatch(/regional_anatomical_deltas_pct/i);
   });

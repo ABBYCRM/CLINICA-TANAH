@@ -414,6 +414,14 @@ export function enrichEnvelopeWithAnatomy(input: {
   }
 
   pushRule(
+    'R_AFTER_MUST_REFLECT_MATH',
+    'Δpeso/silhueta |Δ| ≥ 3% OU |fat_delta_kg| ≥ 2',
+    'HARDENED RAG img2img-after-must-reflect-math: AFTER ≠ BEFORE; aplicar waist/abdomen/hip regionais; cópia idêntica é falha de regra; se o modelo falhar, morph determinístico do envelope é obrigatório',
+    Math.abs(sil) >= 3 || Math.abs(wDelta) >= 2,
+    sil,
+  );
+
+  pushRule(
     'R_IDENTITY',
     'sempre',
     'preservar face, altura, comprimento de membros, marcas de pele, roupa, pose e fundo — transformação estilo before/after clínico',
