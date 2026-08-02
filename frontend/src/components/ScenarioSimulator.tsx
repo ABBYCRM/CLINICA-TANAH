@@ -5,25 +5,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
-import CatalogPicker from './CatalogPicker';
 import {
   ADHERENCE_OPTIONS,
   ALCOHOL_OPTIONS,
-  CALORIE_PRESETS,
-  CARDIO_MODALITIES,
-  DEFICIT_PRESETS,
-  EXERCISE_TEMPLATES,
   HORIZON_OPTIONS,
-  INTENSITY_OPTIONS,
   MAGNITUDE_OPTIONS,
-  NUTRITION_TEMPLATES,
-  SESSION_MINUTES,
   SLEEP_HOURS,
-  STEPS_TARGETS,
   STRESS_LEVELS,
-  TRAINING_STYLES,
   pickLabel,
 } from '../lib/lifestyleCatalogs';
+import { normalizeHeightCm, parsePlanParams } from '../lib/bodyMetrics';
 
 const HORIZONS = [4, 8, 12, 16, 24, 36, 52];
 const ADHERENCE = ['low', 'moderate', 'high'] as const;
@@ -196,8 +187,6 @@ export default function ScenarioSimulator({
   const [comorbidity, setComorbidity] = useState(true);
   const [dailyCalories, setDailyCalories] = useState('');
   const [deficitKcal, setDeficitKcal] = useState('');
-  const [nutOverrideId, setNutOverrideId] = useState('');
-  const [exOverrideId, setExOverrideId] = useState('');
   const [trainingStyle, setTrainingStyle] = useState('full_body');
   const [cardioModality, setCardioModality] = useState('walking');
   const [intensity, setIntensity] = useState('moderate');
@@ -228,6 +217,49 @@ export default function ScenarioSimulator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.medications?.length, data?.plans?.length]);
 
+  /** Serial SOT: hydrate calories / training volume from Dieta·treino plans — no parallel editors. */
+  useEffect(() => {
+    const nutPlan = nutrition.find((p: any) => nutIds.includes(p.id)) || nutrition[0];
+    if (nutPlan) {
+      const p = parsePlanParams(nutPlan);
+      const cal = nutPlan.daily_calories ?? p.daily_calories;
+      const def = nutPlan.deficit_kcal ?? p.deficit_kcal;
+      if (cal != null) setDailyCalories(String(cal));
+      if (def != null) setDeficitKcal(String(def));
+      if (p.protein_emphasis != null) setProtein(!!p.protein_emphasis);
+      else if (p.protein_g != null || p.protein_g_per_kg != null) setProtein(true);
+    }
+    const exPlan = exercise.find((p: any) => exIds.includes(p.id)) || exercise[0];
+    if (exPlan) {
+      const p = parsePlanParams(exPlan);
+      if (p.resistance_days_per_week != null) setResistDays(Number(p.resistance_days_per_week) || 0);
+      if (p.cardio_days_per_week != null) setCardioDays(Number(p.cardio_days_per_week) || 0);
+      if (p.training_style) setTrainingStyle(String(p.training_style));
+      if (p.cardio_modality) setCardioModality(String(p.cardio_modality));
+      if (p.intensity) setIntensity(String(p.intensity));
+      if (p.resistance_minutes != null) setResistMinutes(String(p.resistance_minutes));
+      if (p.cardio_minutes != null) setCardioMinutes(String(p.cardio_minutes));
+      if (p.steps_target != null) setStepsTarget(String(p.steps_target));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nutIds.join('|'), exIds.join('|'), data?.plans]);
+
+  const photoReady = useMemo(() => {
+    const assets = session?.assets || {};
+    return ['front', 'left', 'right', 'back'].filter((v) => assets[v]?.preview_url || assets[v]?.has_image).length;
+  }, [session]);
+
+  const heightCm = normalizeHeightCm(summary.height_cm ?? latest?.height_cm) ?? summary.height_cm ?? latest?.height_cm;
+  const measuresReady = !!(latest?.weight_kg && heightCm && Number(heightCm) >= 50);
+  const plansReady = nutrition.length > 0 || exercise.length > 0;
+  const workflow = [
+    { id: 'capture', ok: photoReady >= 1, detail: photoReady >= 4 ? '4/4' : `${photoReady}/4` },
+    { id: 'measurements', ok: measuresReady, detail: measuresReady ? `${heightCm} cm · ${latest?.weight_kg} kg` : '—' },
+    { id: 'medications', ok: medications.length > 0, detail: String(medications.length) },
+    { id: 'lifestyle', ok: plansReady, detail: `${nutrition.length}N · ${exercise.length}T` },
+    { id: 'scenarios', ok: true, detail: String(scenarios.length) },
+  ] as const;
+
   useEffect(() => {
     if (!scenarios.length) {
       setSelectedId(null);
@@ -255,29 +287,6 @@ export default function ScenarioSimulator({
     ? Math.min(104, Math.max(1, Number(customHorizon) || horizon))
     : horizon;
 
-  const applyNutOverride = (id: string) => {
-    setNutOverrideId(id);
-    const tpl = NUTRITION_TEMPLATES.find((x) => x.id === id);
-    if (!tpl || !id || id === 'nut_custom') return;
-    if (tpl.daily_calories != null) setDailyCalories(String(tpl.daily_calories));
-    if (tpl.deficit_kcal != null) setDeficitKcal(String(tpl.deficit_kcal));
-    if (tpl.protein_g != null) setProtein(true);
-  };
-
-  const applyExOverride = (id: string) => {
-    setExOverrideId(id);
-    const tpl = EXERCISE_TEMPLATES.find((x) => x.id === id);
-    if (!tpl || !id || id === 'ex_custom') return;
-    if (tpl.training_style) setTrainingStyle(tpl.training_style);
-    if (tpl.resistance_days != null) setResistDays(tpl.resistance_days);
-    if (tpl.cardio_days != null) setCardioDays(tpl.cardio_days);
-    if (tpl.resistance_minutes != null) setResistMinutes(String(tpl.resistance_minutes));
-    if (tpl.cardio_minutes != null) setCardioMinutes(String(tpl.cardio_minutes));
-    if (tpl.cardio_modality) setCardioModality(tpl.cardio_modality);
-    if (tpl.intensity) setIntensity(tpl.intensity);
-    if (tpl.steps_target != null) setStepsTarget(String(tpl.steps_target));
-  };
-
   const planConfig = useMemo(() => ({
     medication_record_ids: medIds,
     nutrition_plan_ids: nutIds,
@@ -288,17 +297,18 @@ export default function ScenarioSimulator({
     resistance_days_per_week: resistDays,
     cardio_days_per_week: cardioDays,
     protein_emphasis: protein,
+    // Hydrated from Dieta/treino plans (serial pipeline) — not parallel scenario editors
     daily_calories: dailyCalories ? Number(dailyCalories) : null,
     deficit_kcal: deficitKcal ? Number(deficitKcal) : null,
-    nutrition_template_id: nutOverrideId || null,
-    exercise_template_id: exOverrideId || null,
+    nutrition_template_id: null,
+    exercise_template_id: null,
     training_style: trainingStyle || null,
     cardio_modality: cardioModality || null,
     intensity: intensity || null,
     resistance_minutes: resistMinutes ? Number(resistMinutes) : null,
     cardio_minutes: cardioMinutes ? Number(cardioMinutes) : null,
     steps_target: stepsTarget ? Number(stepsTarget) : null,
-  }), [medIds, nutIds, exIds, medAdh, nutAdh, exAdh, resistDays, cardioDays, protein, dailyCalories, deficitKcal, nutOverrideId, exOverrideId, trainingStyle, cardioModality, intensity, resistMinutes, cardioMinutes, stepsTarget]);
+  }), [medIds, nutIds, exIds, medAdh, nutAdh, exAdh, resistDays, cardioDays, protein, dailyCalories, deficitKcal, trainingStyle, cardioModality, intensity, resistMinutes, cardioMinutes, stepsTarget]);
 
   const assumptions = useMemo(() => ({
     sleep_adequate: sleep,
@@ -563,17 +573,32 @@ export default function ScenarioSimulator({
         <h3 className="crm-record-panel-title !mb-0">{t('body.sim_title')}</h3>
         <p className="text-sm text-[color:var(--ink)] leading-relaxed line-clamp-2 sm:line-clamp-none">{t('body.sim_intro')}</p>
         <p className="text-xs text-[#8b3a2a] leading-relaxed">{t('body.sim_disclaimer')}</p>
+        <p className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_serial_hint')}</p>
       </header>
 
-      <nav className="flex flex-wrap gap-1 text-xs text-[color:var(--ink-muted)]">
-        {(['capture', 'measurements', 'medications', 'lifestyle'] as const).map((tab, i) => (
-          <span key={tab} className="inline-flex items-center gap-1">
-            {i > 0 && <span>·</span>}
-            <button type="button" className="underline-offset-2 hover:underline" onClick={() => onNavigate?.(tab)}>
-              {t(`body.tabs.${tab === 'lifestyle' ? 'lifestyle' : tab}`)}
-            </button>
-          </span>
-        ))}
+      <nav className="crm-inset-panel !py-2" data-testid="sim-workflow-strip" aria-label={t('body.sim_workflow')}>
+        <ol className="flex flex-wrap items-stretch gap-1.5">
+          {workflow.map((step, i) => (
+            <li key={step.id} className="flex items-center gap-1.5 min-w-0">
+              {i > 0 && <span className="text-[color:var(--ink-muted)] text-xs" aria-hidden>→</span>}
+              <button
+                type="button"
+                onClick={() => onNavigate?.(step.id)}
+                className={`rounded-md border px-2.5 py-1.5 text-left min-w-0 transition-colors ${
+                  step.ok
+                    ? 'border-[rgba(60,120,80,0.35)] bg-[rgba(60,120,80,0.08)]'
+                    : 'border-[rgba(176,183,192,0.45)] bg-[var(--paper)]'
+                }`}
+                data-testid={`sim-workflow-${step.id}`}
+              >
+                <div className="text-[10px] uppercase tracking-wide font-semibold text-[color:var(--ink-muted)]">
+                  {i + 1}. {t(`body.tabs.${step.id}`)}
+                </div>
+                <div className="text-xs tabular-nums text-[color:var(--ink)] truncate">{step.detail}</div>
+              </button>
+            </li>
+          ))}
+        </ol>
       </nav>
 
       {generatePanel}
@@ -593,20 +618,22 @@ export default function ScenarioSimulator({
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">Weight</div>
+            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">{t('body.height')}</div>
+            <div className="font-display text-lg sm:text-xl tabular-nums">{heightCm ?? '—'} <span className="text-sm">cm</span></div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">{t('body.weight')}</div>
             <div className="font-display text-lg sm:text-xl tabular-nums">{summary.weight_kg ?? latest?.weight_kg ?? '—'} <span className="text-sm">kg</span></div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">Body fat</div>
-            <div className="font-display text-lg sm:text-xl tabular-nums">{summary.body_fat_pct ?? latest?.body_fat_pct ?? '—'}{summary.body_fat_pct != null || latest?.body_fat_pct != null ? '%' : ''}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">Waist</div>
+            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">{t('body.waist')}</div>
             <div className="font-display text-lg sm:text-xl tabular-nums">{summary.waist_cm ?? latest?.waist_cm ?? '—'} <span className="text-sm">cm</span></div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">BMI</div>
-            <div className="font-display text-lg sm:text-xl tabular-nums">{summary.bmi ?? latest?.bmi ?? '—'}</div>
+            <div className="text-[10px] uppercase tracking-wider text-[color:var(--ink-muted)] font-semibold">{t('body.bmi')}</div>
+            <div className="font-display text-lg sm:text-xl tabular-nums" data-testid="sim-baseline-bmi">
+              {summary.bmi ?? latest?.bmi ?? '—'}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-2 max-w-md">
@@ -835,110 +862,54 @@ export default function ScenarioSimulator({
           </label>
         </div>
 
-        <CatalogPicker
-          items={NUTRITION_TEMPLATES}
-          value={nutOverrideId}
-          onChange={applyNutOverride}
-          label={t('body.sim_nut_override')}
-          placeholder={t('body.life_nut_search_ph')}
-          testId="sim-nut-override"
-        />
-
-        <CatalogPicker
-          items={EXERCISE_TEMPLATES}
-          value={exOverrideId}
-          onChange={applyExOverride}
-          label={t('body.sim_ex_override')}
-          placeholder={t('body.life_ex_search_ph')}
-          testId="sim-ex-override"
-        />
-
-        <div className="grid sm:grid-cols-3 gap-2">
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_resist')}
-            <input className="input mt-1 w-full" type="number" min={0} max={7} value={resistDays} onChange={(e) => setResistDays(Number(e.target.value) || 0)} data-testid="sim-resist" />
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_cardio')}
-            <input className="input mt-1 w-full" type="number" min={0} max={7} value={cardioDays} onChange={(e) => setCardioDays(Number(e.target.value) || 0)} data-testid="sim-cardio" />
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_magnitude')}
-            <select className="input mt-1 w-full" value={magnitude} onChange={(e) => setMagnitude(e.target.value as any)} data-testid="sim-magnitude">
-              {MAGNITUDE_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
+        <div
+          className="rounded-md border border-[rgba(176,183,192,0.45)] bg-[var(--paper-mid)]/50 px-3 py-2.5 space-y-2"
+          data-testid="sim-plan-source"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold text-[color:var(--ink)]">{t('body.sim_plans_source_title')}</div>
+              <p className="text-[11px] text-[color:var(--ink-muted)] mt-0.5">{t('body.sim_plans_source_hint')}</p>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary text-xs !py-1"
+              onClick={() => onNavigate?.('lifestyle')}
+              data-testid="sim-edit-lifestyle"
+            >
+              {t('body.sim_edit_in_lifestyle')}
+            </button>
+          </div>
+          <dl className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="flex justify-between gap-2">
+              <dt className="text-[color:var(--ink-muted)]">{t('body.life_calories')}</dt>
+              <dd className="tabular-nums font-medium">{dailyCalories ? `${dailyCalories} kcal/d` : '—'}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-[color:var(--ink-muted)]">{t('body.life_deficit')}</dt>
+              <dd className="tabular-nums font-medium">{deficitKcal ? `${deficitKcal} kcal` : '—'}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-[color:var(--ink-muted)]">{t('body.sim_resist')}</dt>
+              <dd className="tabular-nums font-medium">{resistDays}× · {resistMinutes} min</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-[color:var(--ink-muted)]">{t('body.sim_cardio')}</dt>
+              <dd className="tabular-nums font-medium">{cardioDays}× · {cardioMinutes} min · {cardioModality}</dd>
+            </div>
+          </dl>
+          {!plansReady && (
+            <p className="text-[11px] text-[#8b3a2a]">{t('body.sim_plans_missing')}</p>
+          )}
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_training_style')}
-            <select className="input mt-1 w-full" value={trainingStyle} onChange={(e) => setTrainingStyle(e.target.value)} data-testid="sim-training-style">
-              {TRAINING_STYLES.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_cardio_modality')}
-            <select className="input mt-1 w-full" value={cardioModality} onChange={(e) => setCardioModality(e.target.value)} data-testid="sim-cardio-modality">
-              {CARDIO_MODALITIES.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_intensity')}
-            <select className="input mt-1 w-full" value={intensity} onChange={(e) => setIntensity(e.target.value)} data-testid="sim-intensity">
-              {INTENSITY_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_steps')}
-            <select className="input mt-1 w-full" value={stepsTarget} onChange={(e) => setStepsTarget(e.target.value)} data-testid="sim-steps">
-              {STEPS_TARGETS.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-2">
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_resist_min')}
-            <select className="input mt-1 w-full" value={resistMinutes} onChange={(e) => setResistMinutes(e.target.value)} data-testid="sim-resist-min">
-              {SESSION_MINUTES.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_cardio_min')}
-            <select className="input mt-1 w-full" value={cardioMinutes} onChange={(e) => setCardioMinutes(e.target.value)} data-testid="sim-cardio-min">
-              {SESSION_MINUTES.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-2">
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_calories')}
-            <select className="input mt-1 w-full" value={dailyCalories} onChange={(e) => setDailyCalories(e.target.value)} data-testid="sim-calories-preset">
-              <option value="">{t('body.sim_calories_ph')}</option>
-              {CALORIE_PRESETS.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-            <input className="input mt-1 w-full" type="number" min={800} max={6000} value={dailyCalories}
-              onChange={(e) => setDailyCalories(e.target.value)} placeholder={t('body.sim_calories_ph')} data-testid="sim-calories" />
-          </label>
-          <label className="text-xs text-[color:var(--ink-muted)]">{t('body.life_deficit')}
-            <select className="input mt-1 w-full" value={deficitKcal} onChange={(e) => setDeficitKcal(e.target.value)} data-testid="sim-deficit-preset">
-              <option value="">{t('body.catalog_custom')}</option>
-              {DEFICIT_PRESETS.map((o) => (
-                <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
-              ))}
-            </select>
-            <input className="input mt-1 w-full" type="number" min={0} max={1500} value={deficitKcal}
-              onChange={(e) => setDeficitKcal(e.target.value)} placeholder="500" data-testid="sim-deficit" />
-          </label>
-        </div>
+        <label className="text-xs text-[color:var(--ink-muted)] block max-w-xs">{t('body.sim_magnitude')}
+          <select className="input mt-1 w-full" value={magnitude} onChange={(e) => setMagnitude(e.target.value as any)} data-testid="sim-magnitude">
+            {MAGNITUDE_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>{pickLabel(o.labels, locale)}</option>
+            ))}
+          </select>
+        </label>
 
         <div className="grid sm:grid-cols-3 gap-2">
           <label className="text-xs text-[color:var(--ink-muted)]">{t('body.sim_sleep_hours')}

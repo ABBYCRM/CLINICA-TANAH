@@ -116,7 +116,11 @@ function flattenMeasurement(row: any) {
     waist_cm: row.waist_cm ?? payload.waist_cm ?? null,
     bmi: calcBmi(row.height_cm, row.weight_kg) ?? row.bmi ?? null,
     whr: row.whr ?? null,
-    whtr: row.whtr ?? null,
+    whtr: (() => {
+      const waist = row.waist_cm ?? payload.waist_cm ?? null;
+      if (waist && heightCm) return Math.round((waist / heightCm) * 100) / 100;
+      return row.whtr ?? null;
+    })(),
     device_label: row.device_label || payload.device_label || null,
     fasting_state: row.fasting_state || payload.fasting_state || 'unknown',
     clothing_note: row.clothing_note || payload.clothing_note || null,
@@ -125,7 +129,7 @@ function flattenMeasurement(row: any) {
     notes,
     ...payload,
     // camelCase aliases for BodyPath-style consumers
-    heightCm: row.height_cm,
+    heightCm,
     weightKg: row.weight_kg,
     waistCm: row.waist_cm ?? payload.waist_cm ?? null,
     neckCm: payload.neck_cm ?? null,
@@ -1562,6 +1566,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   `).all(req.tenantId, patient.id) as any[];
   const consents = consentMap(req.tenantId!, patient.id);
   const bmi = latest?.bmi ?? calcBmi(latest?.height_cm, latest?.weight_kg);
+  const heightForSummary = normalizeHeightCm(latest?.height_cm) ?? latest?.height_cm ?? null;
 
   const parsedScenarios = scenarios.map((s) => {
     const output_views = publicOutputViews(s.output_views);
@@ -1597,7 +1602,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     },
     purpose: 'care_record_scenario_visualization',
     clinical_summary: {
-      height_cm: latest?.height_cm ?? null,
+      height_cm: heightForSummary,
       weight_kg: latest?.weight_kg ?? null,
       waist_cm: latest?.waist_cm ?? null,
       body_fat_pct: latest?.body_fat_pct ?? null,

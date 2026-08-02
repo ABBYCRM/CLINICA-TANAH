@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../hooks/useI18n';
+import { calcBmi, normalizeHeightCm } from '../lib/bodyMetrics';
 
 type FormState = Record<string, string>;
 
@@ -64,6 +65,9 @@ export default function MeasurementsPanel({
       const v = latest[k] ?? latest[k.replace(/_([a-z])/g, (_, c) => c.toUpperCase())];
       if (v != null && v !== '') next[k] = String(v);
     }
+    // Normalize meters-as-cm so the form never shows "1.8 cm"
+    const hNorm = normalizeHeightCm(num(next.height_cm) ?? null);
+    if (hNorm != null) next.height_cm = String(hNorm);
     if (latest.device_label || latest.deviceLabel) next.device_label = String(latest.device_label || latest.deviceLabel);
     if (latest.fasting_state || latest.fastingState) next.fasting_state = String(latest.fasting_state || latest.fastingState);
     if (latest.notes) next.notes = String(latest.notes);
@@ -73,18 +77,25 @@ export default function MeasurementsPanel({
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const preview = useMemo(() => {
-    const h = num(form.height_cm); const w = num(form.weight_kg);
-    const waist = num(form.waist_cm); const hip = num(form.hip_cm);
+    const hRaw = num(form.height_cm);
+    const h = normalizeHeightCm(hRaw ?? null);
+    const w = num(form.weight_kg);
+    const waist = num(form.waist_cm);
+    const hip = num(form.hip_cm);
     if (!h || !w) return null;
     return {
-      bmi: Number((w / (h / 100) ** 2).toFixed(1)),
+      bmi: calcBmi(h, w),
+      height_cm: h,
+      height_normalized: hRaw != null && h !== hRaw,
       whr: waist && hip ? Number((waist / hip).toFixed(2)) : null,
       whtr: waist ? Number((waist / h).toFixed(2)) : null,
     };
   }, [form]);
 
   const save = async () => {
-    const height_cm = num(form.height_cm); const weight_kg = num(form.weight_kg);
+    const heightRaw = num(form.height_cm);
+    const height_cm = normalizeHeightCm(heightRaw ?? null);
+    const weight_kg = num(form.weight_kg);
     if (!height_cm || !weight_kg) {
       setMsg(t('body.meas_required'));
       return;
@@ -203,6 +214,7 @@ export default function MeasurementsPanel({
           {preview && (
             <p className="text-xs text-[color:var(--ink-muted)] mt-2">
               {t('body.meas_preview')}: IMC {preview.bmi}
+              {preview.height_normalized ? ` · ${t('body.meas_height_normalized', { cm: preview.height_cm })}` : ''}
               {preview.whr != null ? ` · RCQ ${preview.whr}` : ''}
               {preview.whtr != null ? ` · RCE ${preview.whtr}` : ''}
             </p>
