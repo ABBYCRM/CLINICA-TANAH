@@ -115,6 +115,7 @@ const ROUTES: Array<{ name: string; path: string; prep?: (page: Page) => Promise
   },
   { name: 'lgpd', path: '/lgpd' },
   { name: 'manual', path: '/manual' },
+  { name: 'apps', path: '/apps' },
   { name: 'team', path: '/team' },
   { name: 'settings', path: '/settings' },
   { name: 'clinics', path: '/clinics' },

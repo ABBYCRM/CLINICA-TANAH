@@ -63,8 +63,8 @@ export default function Apps() {
   return (
     <div className="space-y-6" data-testid="apps-page">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">{t('apps.title')}</h1>
-        <p className="text-sm text-slate-500 mt-1">{t('apps.subtitle')}</p>
+        <h1 className="page-title">{t('apps.title')}</h1>
+        <p className="page-subtitle">{t('apps.subtitle')}</p>
       </div>
 
       <div className="card p-5">
@@ -100,10 +100,17 @@ export default function Apps() {
         </form>
       </div>
 
-      {loading && <div className="text-slate-400 text-sm">{t('common.loading')}</div>}
+      {loading && (
+        <div className="text-sm text-[color:var(--leather-muted)]" data-testid="apps-loading">
+          {t('common.loading')}
+        </div>
+      )}
 
       {!loading && apps.length === 0 && (
-        <div className="card p-10 text-center text-slate-400" data-testid="apps-empty">
+        <div
+          className="card p-10 text-center text-sm text-[color:var(--ink-muted)]"
+          data-testid="apps-empty"
+        >
           {t('apps.empty')}
         </div>
       )}
@@ -119,12 +126,12 @@ export default function Apps() {
                 className="flex min-w-0 flex-1 items-center gap-3"
                 data-testid="app-open"
               >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-clinic-400 to-clinic-600 text-lg font-semibold text-white shadow-sm">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--brass)] to-[var(--brass-deep)] text-lg font-semibold text-[#2a1f16] shadow-sm">
                   {initialOf(app.label)}
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate font-medium text-slate-900">{app.label}</div>
-                  <div className="truncate text-xs text-slate-500">{hostOf(app.url)}</div>
+                  <div className="truncate font-medium text-[color:var(--ink)]">{app.label}</div>
+                  <div className="truncate text-xs text-[color:var(--ink-muted)]">{hostOf(app.url)}</div>
                 </div>
               </a>
               <button
@@ -133,7 +140,7 @@ export default function Apps() {
                 title={t('common.delete')}
                 aria-label={t('common.delete')}
                 data-testid="app-delete"
-                className="shrink-0 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                className="shrink-0 rounded-lg p-1.5 text-[color:var(--ink-muted)] transition-colors hover:bg-[rgba(154,101,72,0.15)] hover:text-[color:var(--clay)]"
               >
                 <IconTrash />
               </button>
