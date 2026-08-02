@@ -110,9 +110,25 @@ export function retainBodyPhotoCopy(opts: {
 }
 
 export function calcBmi(heightCm?: number | null, weightKg?: number | null): number | null {
-  if (!heightCm || !weightKg || heightCm <= 0 || weightKg <= 0) return null;
-  const m = heightCm / 100;
+  const h = normalizeHeightCm(heightCm);
+  if (!h || !weightKg || weightKg <= 0) return null;
+  const m = h / 100;
   return Math.round((weightKg / (m * m)) * 10) / 10;
+}
+
+/**
+ * Normalize height to centimeters.
+ * Values in (0.5, 2.5] are treated as meters mistakenly stored as height_cm
+ * (e.g. 1.80 → 180), which otherwise yields BMI ~400000.
+ */
+export function normalizeHeightCm(height?: number | null): number | null {
+  if (height == null || !Number.isFinite(height) || height <= 0) return null;
+  let cm = height;
+  if (height > 0.5 && height <= 2.5) {
+    cm = Math.round(height * 1000) / 10; // 1.75 → 175.0
+  }
+  if (cm < 50 || cm > 250) return null;
+  return cm;
 }
 
 export function buildScenarioPrompt(opts: {
@@ -446,8 +462,16 @@ function localMorphFallback(
     return { provider: 'local_morph', status: 'failed', error: 'local_morph_no_reference' };
   }
 
-  const contentType = referencePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const morphed = applyLocalSilhouetteMorph(referencePath, guidance);
+  // Default modest loss guidance when cloud providers failed without an envelope —
+  // never return a byte-identical "completed" after image.
+  const effective: MorphGuidance = guidance && Number.isFinite(guidance.silhouette_delta_pct)
+    ? guidance
+    : {
+      silhouette_delta_pct: -5,
+      regional_deltas_pct: { waist: -1.5, abdomen: -1.8, hip: -1.2 },
+    };
+
+  const morphed = applyLocalSilhouetteMorph(referencePath, effective);
   if (morphed) {
     return {
       provider: 'local_morph',
@@ -456,46 +480,82 @@ function localMorphFallback(
       contentType: 'image/jpeg',
       raw: {
         note: 'identity_preserving_silhouette_morph',
-        morph_guidance: guidance || null,
+        morph_guidance: effective,
+        engine: 'node_jpeg',
       },
     };
   }
 
-  const imageBytes = fs.readFileSync(referencePath);
+  // Never mark success with a before-copy — that produced identical Antes/Depois in prod.
   return {
     provider: 'local_morph',
-    status: 'completed',
-    imageBytes,
-    contentType,
-    raw: { note: 'identity_preserving_noop_morph' },
+    status: 'failed',
+    error: 'local_morph_unavailable',
+    raw: { note: 'morph_failed_no_noop_copy', morph_guidance: effective },
   };
 }
 
-/** Mean absolute pixel difference 0–1 between before path and after bytes (resized). */
+function decodeRaster(filePath: string): { width: number; height: number; data: Buffer } | null {
+  try {
+    const jpeg = require('jpeg-js') as typeof import('jpeg-js');
+    const buf = fs.readFileSync(filePath);
+    // PNG magic — clinical captures are almost always JPEG; refuse silent wrong decode
+    if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50) {
+      return null;
+    }
+    const decoded = jpeg.decode(buf, { useTArray: true, formatAsRGBA: false, tolerantDecoding: true });
+    if (!decoded?.width || !decoded?.height || !decoded?.data) return null;
+    return {
+      width: decoded.width,
+      height: decoded.height,
+      data: Buffer.from(decoded.data),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resizeRgbNearest(
+  src: { width: number; height: number; data: Buffer },
+  tw: number,
+  th: number,
+): Buffer {
+  const out = Buffer.alloc(tw * th * 3);
+  for (let y = 0; y < th; y++) {
+    const sy = Math.min(src.height - 1, Math.floor((y / th) * src.height));
+    for (let x = 0; x < tw; x++) {
+      const sx = Math.min(src.width - 1, Math.floor((x / tw) * src.width));
+      const si = (sy * src.width + sx) * 3;
+      const di = (y * tw + x) * 3;
+      out[di] = src.data[si];
+      out[di + 1] = src.data[si + 1];
+      out[di + 2] = src.data[si + 2];
+    }
+  }
+  return out;
+}
+
+/** Mean absolute pixel difference 0–1 between before path and after bytes (resized). Pure Node — no Python. */
 export function afterImageSimilarity(beforePath: string, afterBytes: Buffer): number | null {
   try {
-    const { spawnSync } = require('child_process') as typeof import('child_process');
-    const tmpAfter = `${beforePath}.cmp-after-${process.pid}.jpg`;
-    fs.writeFileSync(tmpAfter, afterBytes);
-    const py = `
-from PIL import Image
-import sys
-a = Image.open(sys.argv[1]).convert('RGB').resize((160, 240))
-b = Image.open(sys.argv[2]).convert('RGB').resize((160, 240))
-pa = list(a.getdata())
-pb = list(b.getdata())
-s = 0.0
-n = 0
-for (r1,g1,b1), (r2,g2,b2) in zip(pa, pb):
-    s += abs(r1-r2) + abs(g1-g2) + abs(b1-b2)
-    n += 3
-print((s / n / 255.0) if n else 1.0)
-`;
-    const res = spawnSync('python3', ['-c', py, beforePath, tmpAfter], { encoding: 'utf8' });
-    try { fs.unlinkSync(tmpAfter); } catch { /* */ }
-    if (res.status !== 0) return null;
-    const v = Number(String(res.stdout || '').trim());
-    return Number.isFinite(v) ? v : null;
+    const jpeg = require('jpeg-js') as typeof import('jpeg-js');
+    const before = decodeRaster(beforePath);
+    if (!before) return null;
+    let afterDecoded: { width: number; height: number; data: Buffer };
+    try {
+      const d = jpeg.decode(afterBytes, { useTArray: true, formatAsRGBA: false, tolerantDecoding: true });
+      afterDecoded = { width: d.width, height: d.height, data: Buffer.from(d.data) };
+    } catch {
+      return null;
+    }
+    const tw = 160;
+    const th = 240;
+    const a = resizeRgbNearest(before, tw, th);
+    const b = resizeRgbNearest(afterDecoded, tw, th);
+    let s = 0;
+    const n = a.length;
+    for (let i = 0; i < n; i++) s += Math.abs(a[i] - b[i]);
+    return n ? s / n / 255 : 1;
   } catch {
     return null;
   }
@@ -511,7 +571,7 @@ export function enforceAfterReflectsMath(opts: {
   guidance?: MorphGuidance | null;
   /** Mean-abs threshold below which after is treated as an illegal copy (default 0.04). */
   maxCopySimilarity?: number;
-}): { bytes: Buffer; enforced: boolean; similarity: number | null; contentType: string } {
+}): { bytes: Buffer; enforced: boolean; similarity: number | null; contentType: string; failed?: boolean } {
   const sil = Math.abs(Number(opts.guidance?.silhouette_delta_pct ?? 0));
   const weight = Math.abs(Number(opts.guidance?.weight_delta_kg ?? 0));
   const mustChange = sil >= 3 || weight >= 2;
@@ -548,90 +608,95 @@ export function enforceAfterReflectsMath(opts: {
   };
   const morphed = applyLocalSilhouetteMorph(opts.referencePath, amplified);
   if (!morphed) {
-    return { bytes: opts.afterBytes, enforced: false, similarity, contentType: 'image/jpeg' };
+    // Do not keep an illegal copy when math demands a visible change
+    return {
+      bytes: opts.afterBytes,
+      enforced: false,
+      similarity,
+      contentType: 'image/jpeg',
+      failed: true,
+    };
   }
   return { bytes: morphed, enforced: true, similarity, contentType: 'image/jpeg' };
 }
 
-/** Narrow/widen silhouette from If/Then calculator guidance (identity-preserving). */
+/** Narrow/widen silhouette from If/Then calculator guidance (identity-preserving). Pure Node (jpeg-js). */
 function applyLocalSilhouetteMorph(
   referencePath: string,
   guidance?: MorphGuidance | null,
 ): Buffer | null {
   try {
-    const { spawnSync } = require('child_process') as typeof import('child_process');
+    const jpeg = require('jpeg-js') as typeof import('jpeg-js');
+    const img = decodeRaster(referencePath);
+    if (!img) return null;
+    const w = img.width;
+    const h = img.height;
+    const px = img.data;
     const sil = Number(guidance?.silhouette_delta_pct ?? -7);
     const regions = guidance?.regional_deltas_pct || {};
     const waist = Number(regions.waist ?? regions.abdomen ?? sil * 0.3);
     const abdomen = Number(regions.abdomen ?? waist);
     const hip = Number(regions.hip ?? waist * 0.6);
-    const py = `
-from PIL import Image, ImageEnhance, ImageFilter
-import sys
-im = Image.open(sys.argv[1]).convert('RGB')
-w, h = im.size
-sil = float(sys.argv[3])
-waist = float(sys.argv[4])
-abdomen = float(sys.argv[5])
-hip = float(sys.argv[6])
-# Overall silhouette → horizontal scale (cap 12%)
-abs_sil = min(0.12, abs(sil) / 100.0)
-sign = 1.0 if sil > 0 else -1.0
-base = 1.0 + sign * abs_sil * 0.9
-base = max(0.86, min(1.12, base))
-# Mid-torso extra squeeze from waist/abdomen (clinical soft-tissue)
-mid = min(0.08, (abs(waist) + abs(abdomen)) / 200.0)
-hip_extra = min(0.05, abs(hip) / 200.0)
-out = Image.new('RGB', (w, h), (245, 240, 232))
-px = im.load()
-opx = out.load()
-for y in range(h):
-    t = y / max(1, h - 1)
-    # torso band 0.28–0.72 gets waist/abdomen; hips 0.55–0.85
-    torso = 0.0
-    if 0.28 <= t <= 0.72:
-        # peak at mid-abdomen ~0.48
-        torso = 1.0 - abs(t - 0.48) / 0.24
-        torso = max(0.0, min(1.0, torso))
-    hips = 0.0
-    if 0.55 <= t <= 0.88:
-        hips = 1.0 - abs(t - 0.70) / 0.18
-        hips = max(0.0, min(1.0, hips))
-    row_scale = base + sign * (mid * torso + hip_extra * hips)
-    row_scale = max(0.82, min(1.14, row_scale))
-    nw = max(8, int(round(w * row_scale)))
-    # nearest-neighbor sample from source row into centered narrower/wider row
-    x0 = (w - nw) // 2
-    for x in range(w):
-        sx = int((x - x0) * (w - 1) / max(1, nw - 1))
-        if 0 <= sx < w and x0 <= x < x0 + nw:
-            opx[x, y] = px[sx, y]
-        elif x < x0 or x >= x0 + nw:
-            # soft edge fill from nearest edge pixel
-            edge = 0 if x < x0 else w - 1
-            opx[x, y] = px[edge, y]
-canvas = out
-canvas = ImageEnhance.Contrast(canvas).enhance(1.05)
-canvas = ImageEnhance.Color(canvas).enhance(0.98)
-canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.1, percent=55, threshold=2))
-out_path = sys.argv[2]
-canvas.save(out_path, 'JPEG', quality=90, optimize=True)
-`;
-    const tmpOut = `${referencePath}.morph-${process.pid}.jpg`;
-    const res = spawnSync(
-      'python3',
-      ['-c', py, referencePath, tmpOut, String(sil), String(waist), String(abdomen), String(hip)],
-      { encoding: 'utf8' },
-    );
-    if (res.status === 0 && fs.existsSync(tmpOut)) {
-      const bytes = fs.readFileSync(tmpOut);
-      try { fs.unlinkSync(tmpOut); } catch { /* ignore */ }
-      return bytes;
+
+    const absSil = Math.min(0.12, Math.abs(sil) / 100);
+    const sign = sil > 0 ? 1 : -1;
+    let base = 1 + sign * absSil * 0.9;
+    base = Math.max(0.86, Math.min(1.12, base));
+    const mid = Math.min(0.08, (Math.abs(waist) + Math.abs(abdomen)) / 200);
+    const hipExtra = Math.min(0.05, Math.abs(hip) / 200);
+
+    const out = Buffer.alloc(w * h * 3);
+    // Soft studio fill
+    for (let i = 0; i < out.length; i += 3) {
+      out[i] = 245;
+      out[i + 1] = 240;
+      out[i + 2] = 232;
     }
+
+    for (let y = 0; y < h; y++) {
+      const t = y / Math.max(1, h - 1);
+      let torso = 0;
+      if (t >= 0.28 && t <= 0.72) {
+        torso = 1 - Math.abs(t - 0.48) / 0.24;
+        torso = Math.max(0, Math.min(1, torso));
+      }
+      let hips = 0;
+      if (t >= 0.55 && t <= 0.88) {
+        hips = 1 - Math.abs(t - 0.7) / 0.18;
+        hips = Math.max(0, Math.min(1, hips));
+      }
+      let rowScale = base + sign * (mid * torso + hipExtra * hips);
+      rowScale = Math.max(0.82, Math.min(1.14, rowScale));
+      const nw = Math.max(8, Math.round(w * rowScale));
+      const x0 = Math.floor((w - nw) / 2);
+      for (let x = 0; x < w; x++) {
+        const di = (y * w + x) * 3;
+        let sx: number;
+        if (x >= x0 && x < x0 + nw) {
+          sx = Math.round(((x - x0) * (w - 1)) / Math.max(1, nw - 1));
+        } else {
+          sx = x < x0 ? 0 : w - 1;
+        }
+        sx = Math.max(0, Math.min(w - 1, sx));
+        const si = (y * w + sx) * 3;
+        out[di] = px[si];
+        out[di + 1] = px[si + 1];
+        out[di + 2] = px[si + 2];
+      }
+    }
+
+    // Mild contrast bump (matches prior Pillow enhance ~1.05)
+    for (let i = 0; i < out.length; i++) {
+      const v = out[i];
+      const c = Math.round((v - 128) * 1.05 + 128);
+      out[i] = Math.max(0, Math.min(255, c));
+    }
+
+    const encoded = jpeg.encode({ width: w, height: h, data: out }, 90);
+    return Buffer.from(encoded.data);
   } catch {
-    /* fall through */
+    return null;
   }
-  return null;
 }
 
 /** Public HTTPS URL for A2E reference (temporary signed local file via APP_ORIGIN if available). */

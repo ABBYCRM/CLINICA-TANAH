@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import jpeg from 'jpeg-js';
 import { generateBodyScenarioImage, imageProvidersStatus } from '../src/services/bodyImage';
 
 const ENV_KEYS = [
@@ -22,6 +23,27 @@ function restoreEnv() {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
   }
+}
+
+function writeViewJpeg(filePath: string, tone: number) {
+  const w = 80;
+  const h = 120;
+  const data = Buffer.alloc(w * h * 3);
+  for (let i = 0; i < data.length; i += 3) {
+    data[i] = tone;
+    data[i + 1] = Math.max(0, tone - 20);
+    data[i + 2] = Math.max(0, tone - 40);
+  }
+  // Distinct vertical band so left/right refs differ after morph too
+  for (let y = 30; y < 90; y++) {
+    for (let x = 25; x < 55; x++) {
+      const i = (y * w + x) * 3;
+      data[i] = 220;
+      data[i + 1] = 180;
+      data[i + 2] = 150;
+    }
+  }
+  fs.writeFileSync(filePath, jpeg.encode({ width: w, height: h, data }, 90).data);
 }
 
 describe('body image providers', () => {
@@ -57,8 +79,8 @@ describe('body image providers', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'body-img-'));
     const left = path.join(dir, 'left.jpg');
     const right = path.join(dir, 'right.jpg');
-    fs.writeFileSync(left, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x01, 0x02, 0x03, 0x04]));
-    fs.writeFileSync(right, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x05, 0x06, 0x07, 0x08]));
+    writeViewJpeg(left, 100);
+    writeViewJpeg(right, 160);
 
     const leftRes = await generateBodyScenarioImage({
       name: 'test-left',
@@ -75,11 +97,12 @@ describe('body image providers', () => {
 
     expect(leftRes.status).toBe('completed');
     expect(leftRes.provider).toBe('local_morph');
-    expect(leftRes.imageBytes?.equals(fs.readFileSync(left))).toBe(true);
+    // Must NOT be a noop copy of before (prod bug)
+    expect(leftRes.imageBytes?.equals(fs.readFileSync(left))).toBe(false);
 
     expect(rightRes.status).toBe('completed');
     expect(rightRes.provider).toBe('local_morph');
-    expect(rightRes.imageBytes?.equals(fs.readFileSync(right))).toBe(true);
+    expect(rightRes.imageBytes?.equals(fs.readFileSync(right))).toBe(false);
     // Distinct per-view references — not a shared front hallucination
     expect(leftRes.imageBytes?.equals(rightRes.imageBytes!)).toBe(false);
 

@@ -10,6 +10,7 @@ import CaptureStudio from './CaptureStudio';
 import MeasurementsPanel from './MeasurementsPanel';
 import LifestylePanel from './LifestylePanel';
 import ScenarioSimulator from './ScenarioSimulator';
+import { calcBmi, normalizeHeightCm } from '../lib/bodyMetrics';
 
 type BodyTab = 'capture' | 'measurements' | 'medications' | 'lifestyle' | 'scenarios' | 'reports';
 
@@ -174,6 +175,8 @@ export default function BodyProntuario({ patientId }: {
   };
 
   const summary = data?.clinical_summary || {};
+  const displayHeight = normalizeHeightCm(summary.height_cm) ?? summary.height_cm;
+  const displayBmi = calcBmi(summary.height_cm, summary.weight_kg) ?? summary.bmi;
   const consents = data?.consents || {};
   const counts = data?.counts || {};
 
@@ -254,7 +257,7 @@ export default function BodyProntuario({ patientId }: {
     return <div className="p-4 text-sm text-[color:var(--ink-muted)]">{t('common.loading')}</div>;
   }
 
-  const showSummaryStrip = tab === 'capture' || tab === 'medications' || tab === 'reports';
+  const showSummaryStrip = tab !== 'reports';
   const publicExportBlocked = flags?.public_export === false;
 
   return (
@@ -285,10 +288,10 @@ export default function BodyProntuario({ patientId }: {
               <div>
                 <h3 className="crm-record-panel-title !mb-2">{t('body.clinical_summary')}</h3>
                 <div className="flex flex-wrap gap-x-6 gap-y-3">
-                  <Metric label={t('body.height')} value={summary.height_cm} unit="cm" />
+                  <Metric label={t('body.height')} value={displayHeight} unit="cm" />
                   <Metric label={t('body.weight')} value={summary.weight_kg} unit="kg" />
                   <Metric label={t('body.waist')} value={summary.waist_cm} unit="cm" />
-                  <Metric label={t('body.bmi')} value={summary.bmi} />
+                  <Metric label={t('body.bmi')} value={displayBmi} />
                 </div>
               </div>
               <p className="text-[11px] text-[#8b3a2a] max-w-xs leading-snug">{t('body.urgent')}</p>
@@ -443,7 +446,12 @@ export default function BodyProntuario({ patientId }: {
         )}
 
         {tab === 'lifestyle' && (
-          <LifestylePanel patientId={patientId} plans={data?.plans || []} onSaved={load} />
+          <LifestylePanel
+            patientId={patientId}
+            plans={data?.plans || []}
+            onSaved={load}
+            onContinueToScenarios={() => setTab('scenarios')}
+          />
         )}
 
         {tab === 'capture' && (

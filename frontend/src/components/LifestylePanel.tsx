@@ -24,8 +24,13 @@ import {
 } from '../lib/lifestyleCatalogs';
 
 export default function LifestylePanel({
-  patientId, plans, onSaved,
-}: { patientId: string; plans: any[]; onSaved: () => void }) {
+  patientId, plans, onSaved, onContinueToScenarios,
+}: {
+  patientId: string;
+  plans: any[];
+  onSaved: () => void;
+  onContinueToScenarios?: () => void;
+}) {
   const { t, locale } = useI18n();
   const [planType, setPlanType] = useState<'nutrition' | 'exercise'>('nutrition');
   const [templateId, setTemplateId] = useState('');
@@ -151,6 +156,7 @@ export default function LifestylePanel({
       resetForm();
       setMsg(t('body.life_saved'));
       onSaved();
+      onContinueToScenarios?.();
     } catch (e: any) {
       setMsg(e?.message || t('errors.generic'));
     } finally {

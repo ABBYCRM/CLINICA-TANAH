@@ -19,6 +19,7 @@ import {
   bodyUploadsDir,
   buildScenarioPrompt,
   calcBmi,
+  normalizeHeightCm,
   enforceAfterReflectsMath,
   generateBodyScenarioImage,
   imageProvidersStatus,
@@ -105,16 +106,21 @@ function flattenMeasurement(row: any) {
   if (!row) return null;
   const payload = row.payload ? (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) : {};
   const notes = row.notes ? (open(row.notes) || row.notes) : null;
+  const heightCm = normalizeHeightCm(row.height_cm) ?? row.height_cm;
   return {
     id: row.id,
     recorded_at: row.recorded_at,
     measured_at: row.recorded_at,
-    height_cm: row.height_cm,
+    height_cm: heightCm,
     weight_kg: row.weight_kg,
     waist_cm: row.waist_cm ?? payload.waist_cm ?? null,
-    bmi: row.bmi ?? calcBmi(row.height_cm, row.weight_kg),
+    bmi: calcBmi(row.height_cm, row.weight_kg) ?? row.bmi ?? null,
     whr: row.whr ?? null,
-    whtr: row.whtr ?? null,
+    whtr: (() => {
+      const waist = row.waist_cm ?? payload.waist_cm ?? null;
+      if (waist && heightCm) return Math.round((waist / heightCm) * 100) / 100;
+      return row.whtr ?? null;
+    })(),
     device_label: row.device_label || payload.device_label || null,
     fasting_state: row.fasting_state || payload.fasting_state || 'unknown',
     clothing_note: row.clothing_note || payload.clothing_note || null,
@@ -123,7 +129,7 @@ function flattenMeasurement(row: any) {
     notes,
     ...payload,
     // camelCase aliases for BodyPath-style consumers
-    heightCm: row.height_cm,
+    heightCm,
     weightKg: row.weight_kg,
     waistCm: row.waist_cm ?? payload.waist_cm ?? null,
     neckCm: payload.neck_cm ?? null,
@@ -396,6 +402,14 @@ async function generateAndPersistOneView(opts: {
       afterBytes: imageBytes,
       guidance: opts.morphGuidance,
     });
+    if (enforced.failed) {
+      return {
+        view: opts.view,
+        has_image: false,
+        provider: result.provider,
+        error: 'after_must_reflect_math_morph_unavailable',
+      };
+    }
     if (enforced.enforced) {
       imageBytes = enforced.bytes;
       providerLabel = `${result.provider}+morph_rag` as any;
@@ -1552,6 +1566,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
   `).all(req.tenantId, patient.id) as any[];
   const consents = consentMap(req.tenantId!, patient.id);
   const bmi = latest?.bmi ?? calcBmi(latest?.height_cm, latest?.weight_kg);
+  const heightForSummary = normalizeHeightCm(latest?.height_cm) ?? latest?.height_cm ?? null;
 
   const parsedScenarios = scenarios.map((s) => {
     const output_views = publicOutputViews(s.output_views);
@@ -1587,7 +1602,7 @@ router.get('/:patientId', requireRole(...CLINICAL_ROLES), (req: Request, res: Re
     },
     purpose: 'care_record_scenario_visualization',
     clinical_summary: {
-      height_cm: latest?.height_cm ?? null,
+      height_cm: heightForSummary,
       weight_kg: latest?.weight_kg ?? null,
       waist_cm: latest?.waist_cm ?? null,
       body_fat_pct: latest?.body_fat_pct ?? null,
@@ -1663,9 +1678,13 @@ router.post('/:patientId/measurements', requireRole('doctor', 'nurse', 'admin'),
     posture_note: d.posture_note ?? null,
     fasting_state: d.fasting_state ?? 'unknown',
   };
-  const bmi = calcBmi(d.height_cm, d.weight_kg);
+  const heightCm = normalizeHeightCm(d.height_cm);
+  if (heightCm == null) {
+    return res.status(400).json({ error: 'invalid_height_cm', message: 'Height must be in centimeters (50–250), or meters (0.5–2.5) which will be converted.' });
+  }
+  const bmi = calcBmi(heightCm, d.weight_kg);
   const whr = d.waist_cm && d.hip_cm ? Math.round((d.waist_cm / d.hip_cm) * 100) / 100 : null;
-  const whtr = d.waist_cm && d.height_cm ? Math.round((d.waist_cm / d.height_cm) * 100) / 100 : null;
+  const whtr = d.waist_cm && heightCm ? Math.round((d.waist_cm / heightCm) * 100) / 100 : null;
   const id = uuid();
   db.prepare(`
     INSERT INTO body_measurements
@@ -1674,7 +1693,7 @@ router.post('/:patientId/measurements', requireRole('doctor', 'nurse', 'admin'),
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, req.tenantId, patient.id,
-    d.height_cm, d.weight_kg, d.waist_cm ?? null,
+    heightCm, d.weight_kg, d.waist_cm ?? null,
     d.notes ? seal(d.notes) : null,
     d.measured_at || d.recorded_at || new Date().toISOString(),
     req.user!.id,
