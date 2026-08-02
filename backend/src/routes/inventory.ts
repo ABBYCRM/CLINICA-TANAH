@@ -10,6 +10,7 @@ import {
   getSyncMeta,
   syncAnvisaSanitaryAlerts,
 } from '../services/anvisaSanitaryAlerts';
+import { getAnvisaSyncScheduleInfo } from '../services/anvisaSyncJob';
 
 const router = Router();
 router.use(authenticate);
@@ -357,6 +358,7 @@ router.get('/alerts', (req: Request, res: Response) => {
   ensureAnvisaSanitaryAlerts(db);
   const anvisa_recalls = getMatchedAlertsForTenant(db, req.tenantId!);
   const anvisa_meta = getSyncMeta(db);
+  const anvisa_sync_schedule = getAnvisaSyncScheduleInfo(db);
 
   res.json({
     low_stock: lowStock,
@@ -365,6 +367,7 @@ router.get('/alerts', (req: Request, res: Response) => {
     anvisa_synced_at: anvisa_meta.last_sync_at,
     anvisa_sync_source: anvisa_meta.last_sync_source,
     anvisa_portal_url: anvisa_meta.portal_url,
+    anvisa_sync_schedule,
   });
 });
 

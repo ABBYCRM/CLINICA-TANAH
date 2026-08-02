@@ -250,8 +250,12 @@ Or in the [DigitalOcean dashboard](https://cloud.digitalocean.com/apps):
 1. **Create App** → GitHub → `ABBYCRM/CLINICA-TANAH`
 2. Use the Dockerfile at the repo root (or paste `.do/app.yaml`)
 3. Set secret `JWT_SECRET` (and optional Meta WhatsApp vars)
-4. Confirm volume mount `/data` for SQLite persistence
-5. Deploy → frontend + API share the same HTTPS origin (required for PWA install)
+4. Optional ANVISA alerts sync env:
+   - `ANVISA_SYNC_ENABLED` (default `true`) — daily in-process refresh of curated ANVISA sanitary alerts / recalls shown in Estoque → Alertas
+   - `ANVISA_SYNC_HOUR_UTC` (default `6`) — hour of day (UTC) for the daily run
+   - `ANVISA_ALERTS_FEED_URL` — optional JSON feed URL; without it the job re-seeds the curated catalog
+5. Confirm volume mount `/data` for SQLite persistence
+6. Deploy → frontend + API share the same HTTPS origin (required for PWA install)
 
 **Frontend URL** = the App Platform default ingress, e.g.  
 `https://clinica-tanah-xxxxx.ondigitalocean.app`  

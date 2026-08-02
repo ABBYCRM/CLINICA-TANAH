@@ -18,6 +18,7 @@ export default function Inventory() {
     anvisa_synced_at: null,
     anvisa_sync_source: null,
     anvisa_portal_url: null,
+    anvisa_sync_schedule: null,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -131,6 +132,20 @@ export default function Inventory() {
                       date: new Date(alerts.anvisa_synced_at).toLocaleString(locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es' : 'en'),
                     })}
                     {alerts.anvisa_sync_source ? ` · ${alerts.anvisa_sync_source}` : ''}
+                  </p>
+                )}
+                {alerts.anvisa_sync_schedule?.enabled && alerts.anvisa_sync_schedule?.next_run_at && (
+                  <p className="text-xs text-[color:var(--ink-muted)] mt-0.5" data-testid="anvisa-next-sync">
+                    {t('inventory.anvisa_next_sync', {
+                      date: new Date(alerts.anvisa_sync_schedule.next_run_at).toLocaleString(
+                        locale === 'pt-BR' ? 'pt-BR' : locale === 'es' ? 'es' : 'en',
+                      ),
+                    })}
+                  </p>
+                )}
+                {alerts.anvisa_sync_schedule && alerts.anvisa_sync_schedule.enabled === false && (
+                  <p className="text-xs text-[color:var(--ink-muted)] mt-0.5" data-testid="anvisa-sync-disabled">
+                    {t('inventory.anvisa_auto_sync_off')}
                   </p>
                 )}
               </div>
