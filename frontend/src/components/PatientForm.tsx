@@ -107,7 +107,7 @@ export function PatientForm({
         <Section title={t('patients.section_id')}>
           <F k="full_name" label={t('patients.full_name')} required span testId="patient-name" />
           <F k="social_name" label={t('patients.social_name')} />
-          <F k="birth_date" label={t('patients.birth_date')} required type="date" />
+          <F k="birth_date" label={t('patients.birth_date')} required type="date" testId="patient-birth-date" />
           <F k="cpf" label={t('patients.cpf')} placeholder="12345678900" maxLength={11} />
           <F k="rg" label={t('patients.rg')} />
           <F k="rg_issuer" label={t('patients.rg_issuer')} placeholder="SSP-SP" />

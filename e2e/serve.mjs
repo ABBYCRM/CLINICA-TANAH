@@ -18,7 +18,15 @@ const frontendDist = path.join(root, 'frontend', 'dist');
 const dataDir = path.join(root, 'e2e', '.data');
 const port = process.env.E2E_PORT || '3100';
 
-const env = { ...process.env, DB_DIR: dataDir, PORT: port, NODE_ENV: 'test' };
+const env = {
+  ...process.env,
+  DB_DIR: dataDir,
+  PORT: port,
+  NODE_ENV: 'test',
+  // E2E suite expects seeded Juliana / 12345678 unless explicitly overridden by E2E_PASSWORD.
+  // Cloud/agent shells often export ADMIN_BOOTSTRAP_PASSWORD=1234 which would break hard-coded specs.
+  ADMIN_BOOTSTRAP_PASSWORD: process.env.E2E_PASSWORD || '12345678',
+};
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, { stdio: 'inherit', env, ...opts });

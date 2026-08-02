@@ -22,26 +22,27 @@ test.describe('Patients CRUD', () => {
     await signIn(page);
     await page.goto('/patients');
 
-    // create
+    // create → workspace (product navigates to /patients/:id after create)
     await page.getByTestId('new-patient').click();
     await page.getByTestId('patient-name').fill(name);
-    await page.locator('input[type="date"]').first().fill('1990-04-12');
+    await page.getByTestId('patient-birth-date').fill('1990-04-12');
     await page.locator('form input[placeholder="+5511999999999"]').fill(`+5511988${stamp.slice(0, 6)}`);
     await page.locator('form input[type="checkbox"]').check();
     await page.getByTestId('form-submit').click();
-    await expect(page.getByRole('cell', { name })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('patient-workspace')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name })).toBeVisible();
 
-    // edit
-    const row = page.getByRole('row', { name: new RegExp(stamp) });
-    await row.getByRole('button', { name: /editar|edit/i }).click();
+    // edit from workspace
+    await page.getByRole('button', { name: /editar|edit/i }).click();
     await page.getByTestId('patient-name').fill(`${name} Editado`);
     await page.getByTestId('form-submit').click();
-    await expect(page.getByRole('cell', { name: `${name} Editado` })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: `${name} Editado` })).toBeVisible({ timeout: 10_000 });
 
-    // delete
-    const editedRow = page.getByRole('row', { name: new RegExp(`${stamp}`) });
-    await editedRow.getByRole('button', { name: /excluir|eliminar|delete/i }).click();
+    // delete from workspace
+    await page.getByRole('button', { name: /excluir|eliminar|delete/i }).click();
     await page.getByTestId('confirm-delete').click();
+    await expect(page).toHaveURL(/\/patients\/?$/, { timeout: 10_000 });
+    await page.goto('/patients');
     await expect(page.getByRole('cell', { name: `${name} Editado` })).toHaveCount(0, { timeout: 10_000 });
   });
 });
@@ -116,7 +117,7 @@ test.describe('WhatsApp inbox', () => {
     await page.getByTestId('mode-send').click();
     await page.getByTestId('chat-input').fill('Olá, confirma sua consulta?');
     await page.getByTestId('chat-send').click();
-    await expect(page.getByText('Olá, confirma sua consulta?')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('wa-thread').getByText('Olá, confirma sua consulta?')).toBeVisible({ timeout: 10_000 });
 
     // delete the conversation
     const conv = page.locator('.group', { hasText: phone });

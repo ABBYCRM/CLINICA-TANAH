@@ -34,7 +34,7 @@ test('MedX-parity patient record: full sociodemographic + contact fields', async
   await expect(page.getByText(/sociodemogr/i)).toBeVisible();
 
   await page.getByTestId('patient-name').fill(name);
-  await page.locator('input[type="date"]').first().fill('1988-07-20');
+  await page.getByTestId('patient-birth-date').fill('1988-07-20');
   await page.locator('input[placeholder="12345678900"]').fill(stamp.padStart(11, '3'));
   await page.locator('input[placeholder="+5511999999999"]').fill(`+5511966${stamp.slice(0, 6)}`);
   await page.locator('input[placeholder="123456789012345"]').fill(stamp.padStart(15, '7')); // CNS
@@ -43,7 +43,9 @@ test('MedX-parity patient record: full sociodemographic + contact fields', async
   await page.locator('form input[type="checkbox"]').check();
   await page.getByTestId('form-submit').click();
 
-  await expect(page.getByRole('cell', { name })).toBeVisible({ timeout: 10_000 });
+  // create navigates to patient workspace
+  await expect(page.getByTestId('patient-workspace')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name })).toBeVisible();
 
   // the full record round-trips through the API
   const token = await apiToken(request, baseURL!);
@@ -100,8 +102,12 @@ test('NPS survey: dispatch → patient answers → KPI updates', async ({ page, 
   const seeded = (await patients.json()).patients[0];
   expect(seeded).toBeTruthy();
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const doctor = (await (await request.get(`${baseURL}/api/users/directory`, { headers })).json()).users
-    .find((u: any) => u.role === 'doctor');
+  const directory = (await (await request.get(`${baseURL}/api/users/directory`, { headers })).json()).users as any[];
+  // Seed ships Juliana as admin+CRM; prefer doctor when present, else any clinical/admin practitioner.
+  const doctor = directory.find((u) => u.role === 'doctor')
+    || directory.find((u) => u.role === 'admin')
+    || directory[0];
+  expect(doctor?.id).toBeTruthy();
   // a genuinely free slot — the sister project already booked 10:00
   const avail = await request.get(`${baseURL}/api/appointments/availability?practitioner_id=${doctor.id}&date=${yesterday}`, { headers });
   const freeSlot = (await avail.json()).available_slots[0];
