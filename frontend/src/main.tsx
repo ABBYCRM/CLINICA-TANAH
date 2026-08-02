@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
+import PatientRecord from './pages/PatientRecord';
 import Appointments from './pages/Appointments';
 import Encounters from './pages/Encounters';
 import Prescriptions from './pages/Prescriptions';
@@ -16,7 +17,20 @@ import Invoices from './pages/Invoices';
 import Payroll from './pages/Payroll';
 import WhatsApp from './pages/WhatsApp';
 import LGPD from './pages/LGPD';
+import Team from './pages/Team';
+import Settings from './pages/Settings';
+import Clinics from './pages/Clinics';
+import Manual from './pages/Manual';
+import Forms from './pages/Forms';
+import PublicIntake from './pages/PublicIntake';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import Apps from './pages/Apps';
+import InstallPrompt from './components/InstallPrompt';
+import { registerSW } from 'virtual:pwa-register';
 import './index.css';
+
+// Register the service worker (auto-updates when a new build is deployed)
+registerSW({ immediate: true });
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,9 +43,13 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/f/:slug" element={<PublicIntake />} />
+      <Route path="/privacidade" element={<PrivacyPolicy />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/" element={<Protected><Layout /></Protected>}>
         <Route index element={<Dashboard />} />
         <Route path="patients" element={<Patients />} />
+        <Route path="patients/:id" element={<PatientRecord />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="encounters" element={<Encounters />} />
         <Route path="prescriptions" element={<Prescriptions />} />
@@ -41,7 +59,13 @@ function AppRoutes() {
         <Route path="invoices" element={<Invoices />} />
         <Route path="payroll" element={<Payroll />} />
         <Route path="whatsapp" element={<WhatsApp />} />
+        <Route path="forms" element={<Forms />} />
         <Route path="lgpd" element={<LGPD />} />
+        <Route path="team" element={<Team />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="clinics" element={<Clinics />} />
+        <Route path="manual" element={<Manual />} />
+        <Route path="apps" element={<Apps />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -53,6 +77,7 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <InstallPrompt />
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>
