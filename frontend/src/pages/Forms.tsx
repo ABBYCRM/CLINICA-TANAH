@@ -14,6 +14,7 @@ type FormRow = {
   consent_text: string;
   submission_count: number;
   mailer_configured?: boolean;
+  mailer_provider?: 'resend' | 'smtp' | null;
   urls: { link: string; embed: string };
 };
 
@@ -56,6 +57,7 @@ type SendInviteResult = {
   embed?: string;
   mailto_url?: string | null;
   mailer_configured?: boolean;
+  mailer_provider?: 'resend' | 'smtp' | null;
   error?: string | null;
 };
 
@@ -161,11 +163,16 @@ export default function Forms() {
         name: inviteName.trim() || undefined,
       };
       setLastShare(share);
-      if (res.mailto_url) {
+      if (res.mailer_configured != null) setMailerConfigured(Boolean(res.mailer_configured));
+      if (res.status === 'sent' && !res.mailto_url) {
+        setOkMsg(t('forms.invite_sent'));
+      } else if (res.mailto_url) {
         setLastMailto(res.mailto_url);
         setOkMsg(t('forms.invite_mailto_hint'));
+        if (res.status === 'failed' && res.error) setError(String(res.error));
       } else {
         setOkMsg(t('forms.invite_sent_share'));
+        if (res.status === 'failed' && res.error) setError(String(res.error));
       }
       setInviteName('');
       setInviteEmail('');
@@ -184,6 +191,8 @@ export default function Forms() {
         });
         if (body.mailto_url) setLastMailto(body.mailto_url);
         setOkMsg(t('forms.invite_mailto_hint'));
+        if (body.error) setError(String(body.error));
+        if (body.mailer_configured != null) setMailerConfigured(Boolean(body.mailer_configured));
         try {
           const inv = await api.get(`/api/forms/${selectedId}/invites`);
           setInvites(inv.invites || []);
