@@ -1,9 +1,10 @@
 /**
  * Body composition scenario imagery — ultra-realistic clinical visualizations.
  *
- * Provider order: Gemini → A2E → Bitdeer → local_morph (last-resort only).
+ * Provider order: A2E → Gemini → Bitdeer → local_morph (last-resort only).
  * Doctor Δkg must use generative img2img first — never prefer silhouette squeeze
  * (that warps doors/cabinets). local_morph is fallback only when cloud fails.
+ * A2E CDN downloads require a browser User-Agent (see fetchProviderImageBytes).
  * Images illustrate professionally mediated scenarios — NOT autonomous diagnosis.
  */
 import fs from 'fs';
