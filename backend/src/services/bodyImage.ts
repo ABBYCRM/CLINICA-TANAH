@@ -582,21 +582,23 @@ except Exception as e:
 before = Image.open(sys.argv[1]).convert('RGB')
 after = Image.open(sys.argv[2]).convert('RGB').resize(before.size, Image.Resampling.LANCZOS)
 w, h = before.size
-cut = remove(before)
-alpha = cut.split()[-1]
-# Dilate + feather person mask so garment edges stay from AFTER
-mask = alpha.filter(ImageFilter.MaxFilter(11)).filter(ImageFilter.GaussianBlur(2))
-m = np.asarray(mask).astype(np.float32) / 255.0
-# Hard lock: outside person → exact BEFORE pixels (doors, cabinets, floor stay straight)
-person = m > 0.12
-arr_b = np.asarray(before).astype(np.float32)
+a_before = np.asarray(remove(before).split()[-1]).astype(np.float32) / 255.0
+a_after = np.asarray(remove(after).split()[-1]).astype(np.float32) / 255.0
+# Inpaint BEFORE under the original person so revealed room (door/cabinet) stays straight
+bgr = cv2.cvtColor(np.asarray(before), cv2.COLOR_RGB2BGR)
+mask = ((a_before > 0.15).astype(np.uint8) * 255)
+mask = cv2.dilate(mask, np.ones((9, 9), np.uint8), 1)
+bg = cv2.inpaint(bgr, mask, 7, cv2.INPAINT_TELEA)
+bg_rgb = cv2.cvtColor(bg, cv2.COLOR_BGR2RGB).astype(np.float32)
 arr_a = np.asarray(after).astype(np.float32)
-feather = np.asarray(alpha.filter(ImageFilter.GaussianBlur(2))).astype(np.float32) / 255.0
-out = arr_b.copy()
-# Soft composite only inside person footprint
-blend = arr_a * feather[:, :, None] + arr_b * (1.0 - feather[:, :, None])
-out[person] = blend[person]
-# Never-person pixels stay byte-identical to before
+# Paste only the AFTER person onto the restored room plate
+feather = np.asarray(
+  Image.fromarray((a_after * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1))
+).astype(np.float32) / 255.0
+out = arr_a * feather[:, :, None] + bg_rgb * (1.0 - feather[:, :, None])
+# Exact BEFORE outside any person footprint
+never = (a_before < 0.08) & (a_after < 0.08)
+out[never] = np.asarray(before).astype(np.float32)[never]
 Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).save(sys.argv[3], 'JPEG', quality=93, optimize=True)
 print('ok')
 `;
