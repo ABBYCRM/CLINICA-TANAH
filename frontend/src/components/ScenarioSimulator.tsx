@@ -114,6 +114,25 @@ function ScenarioCard({
     const tmr = setInterval(onRefresh, 5000);
     return () => clearInterval(tmr);
   }, [scenario.status, onRefresh]);
+
+  const lossKg = scenario.execution_plan?.doctor_predicted_loss_kg
+    ?? (scenario.execution_plan?.deltas?.weight_kg != null
+      ? Math.abs(Number(scenario.execution_plan.deltas.weight_kg))
+      : null);
+  const statusLabel = scenario.status === 'completed' || scenario.status === 'ready'
+    ? t('body.status_completed')
+    : scenario.status === 'generating' || scenario.status === 'pending'
+      ? t('body.generating')
+      : scenario.status === 'blocked'
+        ? t('body.status_blocked')
+        : scenario.status === 'failed'
+          ? t('body.failed')
+          : scenario.status;
+  const viewN = scenario.output_view_count
+    ?? (scenario.output_views
+      ? Object.values(scenario.output_views).filter((v: any) => v?.has_image).length
+      : (scenario.has_image ? 1 : 0));
+
   return (
     <button
       type="button"
@@ -130,22 +149,12 @@ function ScenarioCard({
       )}
       <div className="px-2 py-2 space-y-0.5">
         <div className="text-sm font-medium truncate">{scenario.title}</div>
-        <div className="text-[11px] text-[color:var(--ink-muted)]">
-          {scenario.review_status || 'pending_review'} · {scenario.status}
-          {scenario.horizon_weeks || scenario.weeks ? ` · ${scenario.horizon_weeks || scenario.weeks}w` : ''}
-          {(() => {
-            const n = scenario.output_view_count
-              ?? (scenario.output_views
-                ? Object.values(scenario.output_views).filter((v: any) => v?.has_image).length
-                : (scenario.has_image ? 1 : 0));
-            return n > 0 ? ` · ${n}/4` : '';
-          })()}
+        <div className="text-[11px] text-[color:var(--ink-muted)]" data-testid={`body-scenario-meta-${scenario.id}`}>
+          {lossKg != null && Number.isFinite(Number(lossKg)) ? `Δ −${Number(lossKg).toFixed(1)} kg · ` : ''}
+          {scenario.horizon_weeks || scenario.weeks ? `${scenario.horizon_weeks || scenario.weeks} sem · ` : ''}
+          {statusLabel}
+          {viewN > 0 ? ` · ${viewN}/4` : ''}
         </div>
-        {scenario.prompt_version && (
-          <div className="text-[10px] text-[color:var(--ink-muted)] truncate" data-testid={`body-scenario-prompt-${scenario.id}`}>
-            {scenario.prompt_version}
-          </div>
-        )}
       </div>
     </button>
   );
@@ -518,7 +527,6 @@ export default function ScenarioSimulator({
     ? `/api/clinical/body/${patientId}/scenarios/${selected.id}/image?view=${inspectView}`
     : null;
 
-  const providersOrder = data?.image_providers?.order;
   const simulationsAllowed = !!data?.simulations_allowed;
   const generateDisabled = busy === 'generate' || !simulationsAllowed || !stepPassword || !hasDoctorTarget;
   const generatePanelRef = useRef<HTMLElement | null>(null);
@@ -535,17 +543,16 @@ export default function ScenarioSimulator({
   const generatePanel = (
     <section
       ref={generatePanelRef}
-      className="sim-generate-panel space-y-3"
+      className="sim-generate-panel space-y-4"
       data-testid="sim-generate-panel"
     >
       <div className="space-y-1">
-        <h4 className="font-display text-lg sm:text-xl text-[color:var(--ink)]">
+        <h4 className="font-display text-xl sm:text-2xl text-[color:var(--ink)]">
           {t('body.sim_generate_panel_title')}
         </h4>
         <p className="text-sm text-[color:var(--ink)] leading-relaxed">
           {t('body.sim_generate_panel_hint')}
         </p>
-        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.sim_prontuario_context')}</p>
       </div>
 
       {!simulationsAllowed && (
@@ -561,18 +568,18 @@ export default function ScenarioSimulator({
       )}
 
       <div
-        className="rounded-xl border border-[color:var(--edge-soft)] bg-[color:var(--paper-mid)] p-3 space-y-3"
+        className="sim-doctor-loss rounded-xl border-2 border-[color:var(--brass)] bg-[#fff8ee] p-4 space-y-3"
         data-testid="sim-doctor-loss"
       >
         <div className="space-y-1">
-          <p className="font-display text-base text-[color:var(--ink)]">{t('body.sim_doctor_loss_title')}</p>
-          <p className="text-xs text-[color:var(--ink-muted)] leading-relaxed">{t('body.sim_doctor_loss_hint')}</p>
+          <p className="font-display text-lg text-[color:var(--ink)]">{t('body.sim_doctor_loss_title')}</p>
+          <p className="text-sm text-[color:var(--ink-muted)] leading-relaxed">{t('body.sim_doctor_loss_hint')}</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="text-xs text-[color:var(--ink-muted)] block">
+          <label className="text-sm font-semibold text-[color:var(--ink)] block">
             {t('body.sim_predicted_loss_kg')}
             <input
-              className="input mt-1 w-full tabular-nums"
+              className="input mt-1.5 w-full tabular-nums text-xl font-display min-h-[3rem]"
               type="number"
               min={0.1}
               step={0.1}
@@ -584,10 +591,10 @@ export default function ScenarioSimulator({
               disabled={!simulationsAllowed}
             />
           </label>
-          <label className="text-xs text-[color:var(--ink-muted)] block">
+          <label className="text-sm font-semibold text-[color:var(--ink)] block">
             {t('body.sim_target_weight_kg')}
             <input
-              className="input mt-1 w-full tabular-nums"
+              className="input mt-1.5 w-full tabular-nums text-xl font-display min-h-[3rem]"
               type="number"
               min={40}
               step={0.1}
@@ -601,7 +608,7 @@ export default function ScenarioSimulator({
           </label>
         </div>
         {baselineWeight != null && (
-          <p className="text-xs text-[color:var(--ink)]" data-testid="sim-doctor-loss-preview">
+          <p className="text-sm font-medium text-[color:var(--ink)]" data-testid="sim-doctor-loss-preview">
             {t('body.sim_doctor_loss_preview', {
               from: baselineWeight,
               to: previewTargetKg ?? '—',
@@ -612,7 +619,7 @@ export default function ScenarioSimulator({
           </p>
         )}
         {!hasDoctorTarget && (
-          <p className="text-xs text-[#8b3a2a]" data-testid="sim-doctor-loss-needed">
+          <p className="text-sm font-semibold text-[#8b3a2a]" data-testid="sim-doctor-loss-needed">
             {t('body.sim_doctor_loss_required')}
           </p>
         )}
@@ -658,6 +665,7 @@ export default function ScenarioSimulator({
           )}
         </div>
       </div>
+      <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.sim_prontuario_context')}</p>
       {error && <p className="text-sm text-[#8b3a2a]" data-testid="sim-error">{error}</p>}
     </section>
   );
@@ -776,7 +784,14 @@ export default function ScenarioSimulator({
                 <Thumb url={beforeUrl} label={t(`body.views.${inspectView}`)} />
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">{t('body.inspector_after')}</div>
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--ink-muted)] font-semibold mb-1">
+                  {t('body.inspector_after')}
+                  {selected?.execution_plan?.doctor_predicted_loss_kg != null
+                    ? ` · Δ −${Number(selected.execution_plan.doctor_predicted_loss_kg).toFixed(1)} kg`
+                    : selected?.execution_plan?.deltas?.weight_kg != null
+                      ? ` · Δ ${Number(selected.execution_plan.deltas.weight_kg) > 0 ? '+' : ''}${Number(selected.execution_plan.deltas.weight_kg).toFixed(1)} kg`
+                      : ''}
+                </div>
                 <Thumb url={afterUrl} label={selected?.title || t('body.tabs.scenarios')} />
               </div>
             </div>
@@ -1370,20 +1385,19 @@ export default function ScenarioSimulator({
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--ink-muted)] mb-1.5">{t('body.sim_provenance')}</div>
-            <p className="text-xs text-[color:var(--ink-muted)]">
-              {selected?.provider
-                ? `${selected.provider} · ${selected.status}${afterViewCount ? ` · ${afterViewCount}/4` : ''}`
-                : scenarios[0]?.provider
-                  ? `${scenarios[0].provider} · ${scenarios[0].status}`
-                  : t('body.sim_awaiting_gen')}
+            <p className="text-xs text-[color:var(--ink-muted)]" data-testid="sim-provenance">
+              {selected
+                ? `${afterViewCount ? `${afterViewCount}/4 vistas · ` : ''}${selected.status === 'completed' || selected.status === 'ready' ? t('body.status_completed') : selected.status}`
+                : t('body.sim_awaiting_gen')}
             </p>
-            {providersOrder?.length > 0 && (
-              <p className="text-[11px] text-[color:var(--ink-muted)] mt-1" data-testid="sim-providers-order">
-                {t('body.providers_order')}: {Array.isArray(providersOrder) ? providersOrder.join(' → ') : String(providersOrder)}
+            {selected?.execution_plan?.doctor_predicted_loss_kg != null && (
+              <p className="text-sm font-medium text-[color:var(--ink)] mt-1" data-testid="sim-selected-loss">
+                {t('body.sim_doctor_loss_preview', {
+                  from: baselineWeight ?? '—',
+                  to: selected.execution_plan.target_weight_kg ?? '—',
+                  loss: selected.execution_plan.doctor_predicted_loss_kg,
+                })}
               </p>
-            )}
-            {selected?.prompt_version && (
-              <p className="text-[11px] text-[color:var(--ink-muted)] mt-0.5">{selected.prompt_version}</p>
             )}
           </div>
 
@@ -1395,7 +1409,9 @@ export default function ScenarioSimulator({
                   : selected?.review_status === 'rejected' ? 'badge-slate'
                     : 'badge-yellow'
               }`}>
-                {selected?.review_status || t('body.sim_pending_review')}
+                {selected?.review_status === 'approved' ? t('body.review_approved')
+                  : selected?.review_status === 'rejected' ? t('body.review_rejected')
+                    : t('body.sim_pending_review')}
               </span>
             </p>
           </div>
@@ -1403,6 +1419,19 @@ export default function ScenarioSimulator({
       </div>
 
       <div className="sim-sticky-generate" data-testid="sim-sticky-generate">
+        <input
+          className="input sim-sticky-password tabular-nums"
+          type="number"
+          min={0.1}
+          step={0.1}
+          inputMode="decimal"
+          placeholder={t('body.sim_predicted_loss_ph')}
+          value={predictedLossKg}
+          onChange={(e) => setLossFromDoctor(e.target.value)}
+          data-testid="sim-sticky-loss"
+          disabled={!simulationsAllowed}
+          aria-label={t('body.sim_predicted_loss_kg')}
+        />
         <input
           className="input sim-sticky-password"
           type="password"

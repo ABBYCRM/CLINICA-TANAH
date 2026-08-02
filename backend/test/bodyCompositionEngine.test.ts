@@ -133,7 +133,7 @@ describe('body composition projection engine', () => {
     expect(p.deltas.weight_kg).toBeCloseTo(-40, 0);
     expect(p.projected.weight_kg).toBeCloseTo(52, 0);
     expect(p.target_weight_kg).toBe(52);
-    expect(Math.abs(p.silhouette_delta_pct)).toBeGreaterThan(7);
+    expect(Math.abs(p.silhouette_delta_pct)).toBeGreaterThanOrEqual(10);
     expect(p.visual_silhouette_cap_pct).toBe(18);
   });
 

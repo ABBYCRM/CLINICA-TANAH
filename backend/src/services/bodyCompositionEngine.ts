@@ -587,11 +587,15 @@ export function projectBodyComposition(input: {
   const waist0 = input.baseline.waist_cm ?? null;
   const waist1 = waist0 != null ? Math.round((waist0 + waistDelta) * 10) / 10 : null;
 
-  // Visual silhouette: auto mode ≤7%; doctor-predicted loss maps BW% → stronger morph (≤18%).
+  // Visual silhouette: auto mode ≤7%; doctor Δkg maps BW% aggressively (floor 10%, cap 18%)
+  // so AFTER photos are obviously different — clinicians expect a visible morph for their target.
   const silCap = hasDoctorOverride ? DOCTOR_IMG2IMG_SIL_CAP : DEFAULT_IMG2IMG_SIL_CAP;
   const weightPctRaw = w0 ? (netWeightDelta / w0) * 100 : 0;
   const silhouetteRaw = hasDoctorOverride
-    ? Math.sign(weightPctRaw) * Math.min(silCap, Math.abs(weightPctRaw) * 0.55)
+    ? Math.sign(weightPctRaw) * Math.min(
+      silCap,
+      Math.max(10, Math.abs(weightPctRaw) * 0.85),
+    )
     : Math.max(-maxAbsPct, Math.min(maxAbsPct, weightPctRaw));
   const silhouette = Math.max(-silCap, Math.min(silCap, silhouetteRaw));
   const absSil = Math.abs(silhouette);

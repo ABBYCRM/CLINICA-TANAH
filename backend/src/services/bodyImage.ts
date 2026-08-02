@@ -524,7 +524,9 @@ export function enforceAfterReflectsMath(opts: {
   const weight = Math.abs(Number(opts.guidance?.weight_delta_kg ?? 0));
   const mustChange = sil >= 3 || weight >= 2;
   let similarity = afterImageSimilarity(opts.referencePath, opts.afterBytes);
-  const threshold = opts.maxCopySimilarity ?? 0.04;
+  // Stricter for large clinician targets — near-copies must be remorphed
+  const threshold = opts.maxCopySimilarity
+    ?? (weight >= 8 || sil >= 8 ? 0.07 : 0.04);
   let identicalBytes = false;
   try {
     identicalBytes = opts.afterBytes.equals(fs.readFileSync(opts.referencePath));
@@ -585,46 +587,49 @@ sil = float(sys.argv[3])
 waist = float(sys.argv[4])
 abdomen = float(sys.argv[5])
 hip = float(sys.argv[6])
-# Overall silhouette → horizontal scale (cap from clinician guidance, default 12%)
-abs_sil = min(float(sys.argv[7]) / 100.0, abs(sil) / 100.0)
+# Overall silhouette → horizontal scale (full clinician Δ, no dampening)
+cap = float(sys.argv[7]) / 100.0
+abs_sil = min(cap, abs(sil) / 100.0)
 sign = 1.0 if sil > 0 else -1.0
-base = 1.0 + sign * abs_sil * 0.9
-base = max(0.80, min(1.18, base))
-# Mid-torso extra squeeze from waist/abdomen (clinical soft-tissue)
-mid = min(0.12, (abs(waist) + abs(abdomen)) / 200.0)
-hip_extra = min(0.08, abs(hip) / 200.0)
+base = 1.0 + sign * abs_sil
+base = max(0.72, min(1.22, base))
+# Mid-torso + hip extras (clinical soft-tissue) — stronger for large doctor Δkg
+mid = min(0.20, max(abs_sil * 0.55, (abs(waist) + abs(abdomen)) / 160.0))
+hip_extra = min(0.12, max(abs_sil * 0.35, abs(hip) / 160.0))
 out = Image.new('RGB', (w, h), (245, 240, 232))
 px = im.load()
 opx = out.load()
 for y in range(h):
     t = y / max(1, h - 1)
-    # torso band 0.28–0.72 gets waist/abdomen; hips 0.55–0.85
+    # face/shoulders locked; soft-tissue on torso/hips
+    face_lock = 1.0
+    if t < 0.22:
+        face_lock = max(0.0, t / 0.22)  # ramp: head stays identity
     torso = 0.0
-    if 0.28 <= t <= 0.72:
-        # peak at mid-abdomen ~0.48
-        torso = 1.0 - abs(t - 0.48) / 0.24
+    if 0.26 <= t <= 0.74:
+        torso = 1.0 - abs(t - 0.48) / 0.26
         torso = max(0.0, min(1.0, torso))
     hips = 0.0
-    if 0.55 <= t <= 0.88:
-        hips = 1.0 - abs(t - 0.70) / 0.18
+    if 0.52 <= t <= 0.90:
+        hips = 1.0 - abs(t - 0.70) / 0.20
         hips = max(0.0, min(1.0, hips))
-    row_scale = base + sign * (mid * torso + hip_extra * hips)
-    row_scale = max(0.78, min(1.20, row_scale))
+    row_scale = base + sign * (mid * torso + hip_extra * hips) * face_lock
+    # blend toward 1.0 at head so identity locks
+    row_scale = 1.0 + (row_scale - 1.0) * (0.15 + 0.85 * face_lock) if t < 0.22 else row_scale
+    row_scale = max(0.70, min(1.25, row_scale))
     nw = max(8, int(round(w * row_scale)))
-    # nearest-neighbor sample from source row into centered narrower/wider row
     x0 = (w - nw) // 2
     for x in range(w):
         sx = int((x - x0) * (w - 1) / max(1, nw - 1))
         if 0 <= sx < w and x0 <= x < x0 + nw:
             opx[x, y] = px[sx, y]
         elif x < x0 or x >= x0 + nw:
-            # soft edge fill from nearest edge pixel
             edge = 0 if x < x0 else w - 1
             opx[x, y] = px[edge, y]
 canvas = out
-canvas = ImageEnhance.Contrast(canvas).enhance(1.05)
-canvas = ImageEnhance.Color(canvas).enhance(0.98)
-canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.1, percent=55, threshold=2))
+canvas = ImageEnhance.Contrast(canvas).enhance(1.08)
+canvas = ImageEnhance.Color(canvas).enhance(0.97)
+canvas = canvas.filter(ImageFilter.UnsharpMask(radius=1.2, percent=70, threshold=2))
 out_path = sys.argv[2]
 canvas.save(out_path, 'JPEG', quality=90, optimize=True)
 `;
@@ -654,7 +659,14 @@ export async function generateBodyScenarioImage(opts: {
   /** If/Then calculator output — drives local_morph and is reflected in cloud prompts */
   morphGuidance?: MorphGuidance | null;
 }): Promise<ImageGenResult> {
-  const order = providerOrder();
+  // Large clinician Δkg → prefer deterministic morph first so AFTER is visibly thinner.
+  const doctorish = Math.abs(Number(opts.morphGuidance?.weight_delta_kg ?? 0)) >= 5
+    || Math.abs(Number(opts.morphGuidance?.silhouette_delta_pct ?? 0)) >= 8
+    || Math.abs(Number(opts.morphGuidance?.effective_silhouette_cap_pct ?? 0)) >= 12;
+  let order = providerOrder();
+  if (doctorish && localMorphEnabled()) {
+    order = ['local_morph', ...order.filter((p) => p !== 'local_morph')];
+  }
   if (!order.length) {
     return { provider: 'a2e', status: 'failed', error: 'no_image_provider_configured' };
   }
