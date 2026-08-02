@@ -8,12 +8,14 @@ import path from 'node:path';
 const SHOT = '/opt/cursor/artifacts/screenshots/sim-generate-cta';
 mkdirSync(SHOT, { recursive: true });
 
+const PASSWORD = process.env.ADMIN_BOOTSTRAP_PASSWORD || process.env.E2E_PASSWORD || '12345678';
+
 async function signIn(page: Page) {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('Juliana');
-  await page.getByTestId('login-password').fill('12345678');
+  await page.getByTestId('login-password').fill(PASSWORD);
   await page.getByTestId('login-submit').click();
-  await page.waitForURL(/\/$/, { timeout: 20_000 });
+  await page.waitForURL(/\/($|\?)/, { timeout: 25_000 });
 }
 
 async function openMariaScenarios(page: Page) {
@@ -63,9 +65,14 @@ test.describe('Sim generate CTA visibility', () => {
       });
     }, { timeout: 5_000 }).toBe(true);
 
+    // Doctor-predicted loss is required before Gerar imagem unlocks
+    await expect(page.getByTestId('sim-doctor-loss')).toBeVisible();
+    await expect(page.getByTestId('sim-doctor-loss-needed')).toBeVisible();
     const pwd = page.getByTestId('sim-step-password');
     await expect(gen).toBeDisabled();
-    await pwd.fill('12345678');
+    await page.getByTestId('sim-step-password').fill(PASSWORD);
+    await expect(gen).toBeDisabled();
+    await page.getByTestId('sim-predicted-loss').fill('12');
     await expect(gen).toBeEnabled();
 
     await expect(gen).toHaveText(/Gerar imagem|Generate image|Generar imagen/i);

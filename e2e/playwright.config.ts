@@ -34,5 +34,11 @@ export default defineConfig({
     timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
+    env: {
+      ...process.env,
+      // Deterministic morph in CI/cloud without external image APIs
+      IMAGE_PROVIDER_ORDER: process.env.IMAGE_PROVIDER_ORDER || 'local_morph',
+      LOCAL_MORPH_FALLBACK: process.env.LOCAL_MORPH_FALLBACK || '1',
+    },
   },
 });
