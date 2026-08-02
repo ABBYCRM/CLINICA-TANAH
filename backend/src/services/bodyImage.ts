@@ -558,17 +558,19 @@ print((s / n / 255.0) if n else 1.0)
  * After generative img2img, restore architecture from BEFORE outside the person mask.
  * Prevents wavy doors/cabinets when the model liquifies the frame.
  * Requires rembg + OpenCV at runtime; returns null when unavailable.
+ * Async (spawn, not spawnSync) so the Node event loop stays responsive under DO gateways.
  */
 export function lockArchitectureFromBefore(
   referencePath: string,
   afterBytes: Buffer,
-): Buffer | null {
-  try {
-    const { spawnSync } = require('child_process') as typeof import('child_process');
-    const tmpAfter = `${referencePath}.gen-after-${process.pid}-${Date.now()}.jpg`;
-    const tmpOut = `${referencePath}.arch-lock-${process.pid}-${Date.now()}.jpg`;
-    fs.writeFileSync(tmpAfter, afterBytes);
-    const py = `
+): Promise<Buffer | null> {
+  return new Promise((resolve) => {
+    try {
+      const { spawn } = require('child_process') as typeof import('child_process');
+      const tmpAfter = `${referencePath}.gen-after-${process.pid}-${Date.now()}.jpg`;
+      const tmpOut = `${referencePath}.arch-lock-${process.pid}-${Date.now()}.jpg`;
+      fs.writeFileSync(tmpAfter, afterBytes);
+      const py = `
 import sys
 try:
   from rembg import remove, new_session
@@ -581,50 +583,64 @@ except Exception as e:
 
 before = Image.open(sys.argv[1]).convert('RGB')
 after = Image.open(sys.argv[2]).convert('RGB').resize(before.size, Image.Resampling.LANCZOS)
-# Fast portable model (weights preloaded at U2NET_HOME)
 session = new_session('u2netp')
 a_before = np.asarray(remove(before, session=session).split()[-1]).astype(np.float32) / 255.0
 a_after = np.asarray(remove(after, session=session).split()[-1]).astype(np.float32) / 255.0
-# Inpaint BEFORE under the original person so revealed room (door/cabinet) stays straight
 bgr = cv2.cvtColor(np.asarray(before), cv2.COLOR_RGB2BGR)
 mask = ((a_before > 0.15).astype(np.uint8) * 255)
 mask = cv2.dilate(mask, np.ones((9, 9), np.uint8), 1)
 bg = cv2.inpaint(bgr, mask, 7, cv2.INPAINT_TELEA)
 bg_rgb = cv2.cvtColor(bg, cv2.COLOR_BGR2RGB).astype(np.float32)
 arr_a = np.asarray(after).astype(np.float32)
-# Paste only the AFTER person onto the restored room plate
 feather = np.asarray(
   Image.fromarray((a_after * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1))
 ).astype(np.float32) / 255.0
 out = arr_a * feather[:, :, None] + bg_rgb * (1.0 - feather[:, :, None])
-# Exact BEFORE outside any person footprint
 never = (a_before < 0.08) & (a_after < 0.08)
 out[never] = np.asarray(before).astype(np.float32)[never]
 Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).save(sys.argv[3], 'JPEG', quality=93, optimize=True)
 print('ok')
 `;
-    const res = spawnSync(
-      'python3',
-      ['-c', py, referencePath, tmpAfter, tmpOut],
-      {
-        encoding: 'utf8',
-        timeout: 45_000,
-        env: { ...process.env, U2NET_HOME: process.env.U2NET_HOME || '/opt/u2net' },
-      },
-    );
-    try { fs.unlinkSync(tmpAfter); } catch { /* */ }
-    if (res.status !== 0 || !fs.existsSync(tmpOut)) {
-      try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch { /* */ }
-      if (res.stderr) console.warn('[arch_lock]', String(res.stderr).slice(0, 300));
-      return null;
+      const child = spawn(
+        'python3',
+        ['-c', py, referencePath, tmpAfter, tmpOut],
+        {
+          env: { ...process.env, U2NET_HOME: process.env.U2NET_HOME || '/opt/u2net' },
+        },
+      );
+      let stderr = '';
+      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch { /* */ }
+      }, 45_000);
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        try { fs.unlinkSync(tmpAfter); } catch { /* */ }
+        if (code !== 0 || !fs.existsSync(tmpOut)) {
+          try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch { /* */ }
+          if (stderr) console.warn('[arch_lock]', stderr.slice(0, 300));
+          resolve(null);
+          return;
+        }
+        try {
+          const bytes = fs.readFileSync(tmpOut);
+          try { fs.unlinkSync(tmpOut); } catch { /* */ }
+          resolve(bytes);
+        } catch {
+          resolve(null);
+        }
+      });
+      child.on('error', (e) => {
+        clearTimeout(timer);
+        console.warn('[arch_lock] exception', e?.message || e);
+        try { fs.unlinkSync(tmpAfter); } catch { /* */ }
+        resolve(null);
+      });
+    } catch (e: any) {
+      console.warn('[arch_lock] exception', e?.message || e);
+      resolve(null);
     }
-    const bytes = fs.readFileSync(tmpOut);
-    try { fs.unlinkSync(tmpOut); } catch { /* */ }
-    return bytes;
-  } catch (e: any) {
-    console.warn('[arch_lock] exception', e?.message || e);
-    return null;
-  }
+  });
 }
 
 /**

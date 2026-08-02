@@ -400,7 +400,7 @@ async function generateAndPersistOneView(opts: {
       || String(result.provider).startsWith('a2e');
     // Restore straight doors/cabinets from BEFORE outside the person silhouette
     if (generative) {
-      const locked = lockArchitectureFromBefore(opts.referencePath, imageBytes);
+      const locked = await lockArchitectureFromBefore(opts.referencePath, imageBytes);
       if (locked?.length) {
         imageBytes = locked;
         providerLabel = `${result.provider}+bg_lock` as any;
