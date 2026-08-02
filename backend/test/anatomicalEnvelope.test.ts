@@ -84,6 +84,7 @@ describe('anatomicalEnvelope', () => {
     const ruleIds = enriched.rules.map((r) => r.id);
     expect(ruleIds).toEqual(expect.arrayContaining([
       'R_IMG2IMG_PIPELINE',
+      'R_BEFORE_AFTER_IDENTITY',
       'R_IDENTITY',
       'R_MAGNITUDE',
       'R_SYNERGY',
@@ -94,6 +95,15 @@ describe('anatomicalEnvelope', () => {
     const waist = enriched.anatomicalEnvelope.regions.find((r) => r.region === 'waist');
     expect(waist).toBeTruthy();
     expect(Math.abs(waist!.deltaPct)).toBeLessThanOrEqual(4.5);
+
+    expect(enriched.img2img_pipeline_config.version).toBe('v5');
+    expect(enriched.img2img_pipeline_config.identity_locks).toEqual(
+      expect.arrayContaining(['face', 'height', 'limb_lengths', 'skin_marks', 'clothing', 'pose', 'background']),
+    );
+    expect(enriched.img2img_pipeline_config.effective_silhouette_delta_pct).toBeLessThanOrEqual(7);
+    expect(enriched.anatomicalEnvelope.skinMarksLocked).toBe(true);
+    expect(enriched.anatomicalEnvelope.poseLocked).toBe(true);
+    expect(enriched.regional_anatomical_deltas_pct.waist).toBeDefined();
   });
 
   it('clamps moderate magnitude to 7 and near-zero for thyroid/context', () => {
@@ -142,5 +152,7 @@ describe('anatomicalEnvelope', () => {
     expect(prompt).toMatch(/Regional anatomical guidance/i);
     expect(prompt).toMatch(/SIMULACAO ILUSTRATIVA/);
     expect(prompt).toMatch(/waist|abdomen/i);
+    expect(prompt).toMatch(/HARD IDENTITY LOCKS|same clothes drape|clothing_drape/i);
+    expect(prompt).toMatch(/img2img pipeline v5/i);
   });
 });

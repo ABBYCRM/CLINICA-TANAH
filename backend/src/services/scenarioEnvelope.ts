@@ -55,16 +55,38 @@ export type ScenarioEnvelope = {
     faceLocked?: boolean;
     heightLocked?: boolean;
     limbLengthLocked?: boolean;
+    skinMarksLocked?: boolean;
+    poseLocked?: boolean;
     clothingPreserved?: boolean;
     backgroundPreserved?: boolean;
     photorealism?: boolean;
     fidelity?: string;
     uncertaintyBand?: string;
+    regional_anatomical_deltas_pct?: Record<string, number>;
+    img2img_pipeline_config?: {
+      version: string;
+      identity_locks: string[];
+      magnitude_ceiling_pct: number;
+      effective_silhouette_delta_pct: number;
+      rag_kg_preserved_pct: number;
+      clothing_drape?: string;
+      transformation_style?: string;
+    };
   };
   visualProfiles?: Array<{ medication: string; profileId: string; labelPt: string; kind: string }>;
   narrativePt?: string[];
   prompt_version?: string;
   watermark?: string;
+  img2img_pipeline_config?: {
+    version: string;
+    identity_locks: string[];
+    magnitude_ceiling_pct: number;
+    effective_silhouette_delta_pct: number;
+    rag_kg_preserved_pct: number;
+    clothing_drape?: string;
+    transformation_style?: string;
+  };
+  regional_anatomical_deltas_pct?: Record<string, number>;
 };
 
 function mergePlanCalories(
@@ -164,17 +186,24 @@ export function buildPhotorealScenarioPrompt(opts: {
   const d = opts.envelope.deltas;
   const e = opts.envelope.energy;
   const identity = opts.hasReferencePhoto
-    ? `Edit this clinical ${viewLabel}-view photograph of the SAME adult patient. Preserve absolute identity, facial features, skin tone, clothing style/color, pose, camera framing, and studio background. Keep the ${view} viewing angle unchanged.`
+    ? [
+        `Edit this clinical ${viewLabel}-view photograph of the SAME adult patient (clinical before→after).`,
+        'HARD IDENTITY LOCKS: keep the identical face, hair, skin tone, skin marks, height, limb lengths, pose (hand placement / stance), camera framing, lighting, garment identity (same shirt/pants/shoes/colors), and studio background.',
+        'Only change soft-tissue silhouette and how the SAME clothes drape: after weight loss, garments hang looser with natural folds; after gain, fabrics sit tighter — never change outfit, never invent a new person.',
+        `Keep the ${view} viewing angle unchanged.`,
+      ].join(' ')
     : `Create a photorealistic clinical full-body ${viewLabel}-view photograph of an adult ${sex} patient for body-composition educational visualization. Neutral studio lighting, accurate anatomy, natural skin texture, professional medical photography.`;
 
   const ae = opts.envelope.anatomicalEnvelope;
+  const pipe = opts.envelope.img2img_pipeline_config || ae?.img2img_pipeline_config;
+  const silCap = pipe?.effective_silhouette_delta_pct ?? ae?.maxAbsDeltaPct ?? 7;
   const regional = ae?.regions?.length
-    ? `Regional anatomical guidance (educational img2img, clamp |Δ|≤${ae.maxAbsDeltaPct}%): ${
+    ? `Regional anatomical guidance (educational img2img, clamp |Δ|≤${ae.maxAbsDeltaPct}%, effective silhouette ≤${silCap}%): ${
         ae.regions
           .filter((r) => Math.abs(r.deltaPct) >= 0.05)
           .map((r) => `${r.region} ${r.deltaPct > 0 ? '+' : ''}${r.deltaPct}%`)
           .join(', ') || 'near-zero regional change'
-      }. Locks: face=${ae.faceLocked !== false}, height=${ae.heightLocked !== false}, limbs=${ae.limbLengthLocked !== false}, clothing=${ae.clothingPreserved !== false}, background=${ae.backgroundPreserved !== false}.`
+      }. Locks: face=${ae.faceLocked !== false}, height=${ae.heightLocked !== false}, limbs=${ae.limbLengthLocked !== false}, skin_marks=${ae.skinMarksLocked !== false}, clothing=${ae.clothingPreserved !== false}, pose=${ae.poseLocked !== false}, background=${ae.backgroundPreserved !== false}.`
     : '';
   const profiles = opts.envelope.visualProfiles?.length
     ? `Visual profiles: ${opts.envelope.visualProfiles.map((v) => `${v.medication}→${v.profileId}`).join('; ')}.`
@@ -184,6 +213,9 @@ export function buildPhotorealScenarioPrompt(opts: {
     vg ? `Visual change: ${vg.soft_tissue}; ${vg.muscle_tone}; intensity=${vg.intensity}.` : '',
     regional,
     profiles,
+    pipe
+      ? `img2img pipeline ${pipe.version}: identity_locks=[${(pipe.identity_locks || []).join(',')}] · silhouette_delta≈${pipe.effective_silhouette_delta_pct}% · clothing_drape=${pipe.clothing_drape || 'preserve_garments_show_fit_change'}.`
+      : '',
     d ? `Illustrative compartment deltas (do not render numbers): weight ${d.weight_kg} kg, fat ${d.fat_mass_kg} kg, FFM ${d.ffm_kg} kg, waist ${d.waist_cm} cm.` : '',
     p.weight_kg != null ? `Target physique consistent with ~${p.weight_kg} kg and waist ~${p.waist_cm ?? 'n/a'} cm after ${opts.weeks} weeks (educational, not a promise).` : '',
     p.body_fat_pct != null ? `Body-fat appearance consistent with ~${p.body_fat_pct}% (natural, not extreme).` : '',
@@ -201,11 +233,11 @@ export function buildPhotorealScenarioPrompt(opts: {
 
   return [
     identity,
-    `Apply realistic ${opts.weeks}-week body-composition change grounded in medication curves, calorie balance, exercise, and anatomical region envelope — not fantasy transformation.`,
+    `Apply realistic ${opts.weeks}-week body-composition change grounded in medication curves, calorie balance, exercise, and anatomical region envelope — clinical before/after, not fantasy transformation.`,
     ...compositionBits,
     interventions ? `Clinical plan context (do not render text): ${interventions}.` : '',
     citations ? `Knowledge grounding ids: ${citations}.` : '',
-    'Stay true to nature: ultra-realistic professional 4K-grade imagery, natural proportions, no cartoon, no beauty-filter exaggeration, no surgical alteration, no impossible leanness.',
+    'Stay true to nature: ultra-realistic professional 4K-grade imagery, natural proportions, no cartoon, no beauty-filter exaggeration, no surgical alteration, no impossible leanness, no face swap.',
     `Photoreal only. Burn discreet watermark: ${watermark}.`,
     'Intended use: professionally mediated scenario visualization — not autonomous diagnosis or outcome guarantee.',
   ].filter(Boolean).join(' ');

@@ -482,7 +482,10 @@ export function projectBodyComposition(input: {
   const waist0 = input.baseline.waist_cm ?? null;
   const waist1 = waist0 != null ? Math.round((waist0 + waistDelta) * 10) / 10 : null;
 
-  const silhouette = w0 ? Math.max(-maxAbsPct, Math.min(maxAbsPct, (netWeightDelta / w0) * 100)) : 0;
+  // BW magnitude may use 8–12% caps; img2img visual silhouette is capped at 7% (pipeline v5).
+  const IMG2IMG_SIL_CAP = 7;
+  const silhouetteRaw = w0 ? Math.max(-maxAbsPct, Math.min(maxAbsPct, (netWeightDelta / w0) * 100)) : 0;
+  const silhouette = Math.max(-IMG2IMG_SIL_CAP, Math.min(IMG2IMG_SIL_CAP, silhouetteRaw));
   const absSil = Math.abs(silhouette);
   const intensity: CompositionProjection['visual_guidance']['intensity'] =
     absSil >= 6 ? 'noticeable' : absSil >= 3 ? 'modest' : 'subtle';
@@ -553,7 +556,7 @@ export function projectBodyComposition(input: {
     })),
     rag_context: ragContext,
     rules,
-    identity_locks: `Face/altura/membros bloqueados · teto |Δ| ${maxAbsPct}% PC · med ${medMonth.toFixed(2)} kg/mês · dieta ${dietMonth.toFixed(2)} kg/mês · sem promessa clínica`,
+    identity_locks: `Face/altura/membros/marcas/roupa/pose/fundo bloqueados · teto BW |Δ| ${maxAbsPct}% · silhueta img2img ≤7% · med ${medMonth.toFixed(2)} kg/mês · dieta ${dietMonth.toFixed(2)} kg/mês · sem promessa clínica`,
     summary: ok
       ? `${weeks}w · Δ ${netWeightDelta.toFixed(1)} kg (gordura ${fatDelta.toFixed(1)} / FFM ${ffmChange.toFixed(1)}) · déficit ${deficitDay != null ? Math.round(deficitDay) : '—'} kcal/d · RAG ${chunks.length} fontes`
       : blockers.join(' '),
