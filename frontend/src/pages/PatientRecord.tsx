@@ -8,6 +8,7 @@ import { PatientForm } from '../components/PatientForm';
 import ProntuarioChart from '../components/prontuario/ProntuarioChart';
 import TimelineInspector from '../components/TimelineInspector';
 import AppointmentForm from '../components/AppointmentForm';
+import HairTransplantStub from '../components/HairTransplantStub';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -32,7 +33,7 @@ function openAuthedFile(url: string) {
     .catch(() => { /* ignore */ });
 }
 type WorkspaceTab =
-  | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'whatsapp'
+  | 'overview' | 'timeline' | 'appointments' | 'clinical' | 'hair_transplant' | 'whatsapp'
   | 'surveys' | 'documents' | 'billing' | 'tasks' | 'privacy' | 'audit';
 
 const LIFECYCLES = [
@@ -562,6 +563,7 @@ export default function PatientRecord() {
     { id: 'timeline', label: t('patients.workspace.tab_timeline') },
     { id: 'appointments', label: t('patients.workspace.tab_appointments') },
     { id: 'clinical', label: t('patients.workspace.tab_clinical'), hide: !clinicalOk },
+    { id: 'hair_transplant', label: t('patients.workspace.tab_hair_transplant') },
     { id: 'whatsapp', label: t('patients.workspace.tab_whatsapp') },
     { id: 'surveys', label: t('patients.workspace.tab_surveys') },
     { id: 'documents', label: t('patients.workspace.tab_documents') },
@@ -848,6 +850,13 @@ export default function PatientRecord() {
               patientName={patient.full_name}
               birthDate={patient.birth_date}
               gender={patient.gender}
+            />
+          )}
+
+          {tab === 'hair_transplant' && patient && (
+            <HairTransplantStub
+              patientId={patient.id}
+              patientName={patient.social_name || patient.full_name}
             />
           )}
 
@@ -1296,7 +1305,7 @@ export default function PatientRecord() {
             </div>
           )}
 
-          {tab !== 'audit' && tab !== 'clinical' && (
+          {tab !== 'audit' && tab !== 'clinical' && tab !== 'hair_transplant' && (
           <div className="p-4 space-y-5">
             {grouped.length === 0 && tab !== 'tasks' && tab !== 'documents' && tab !== 'whatsapp' && tab !== 'appointments' && (
               <div className="text-center text-sm text-[color:var(--ink-muted)] py-10">{t('common.no_data')}</div>

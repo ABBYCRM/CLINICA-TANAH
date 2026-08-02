@@ -307,6 +307,7 @@
       "appointments_open_scheduler": "Ver en la agenda",
       "appointments_timeline": "Historial de citas",
       "tab_clinical": "Clínico",
+      "tab_hair_transplant": "Trasplante capilar",
       "tab_whatsapp": "WhatsApp",
       "whatsapp_heading": "WhatsApp del paciente",
       "whatsapp_hint": "Historial, envío y automatizaciones conectadas a la API de WhatsApp (simulación hasta configurar Meta).",
@@ -423,7 +424,13 @@
       "task_cat_no_show": "No-show",
       "task_cat_billing_followup": "Cobranza",
       "task_cat_clinical": "Clínico",
-      "task_cat_admin": "Administrativo"
+      "task_cat_admin": "Administrativo",
+      "hair_transplant_heading": "Trasplante capilar",
+      "hair_transplant_hint": "Simulación visual del resultado de trasplante capilar a partir de la foto del paciente (próximamente).",
+      "hair_transplant_stub_title": "Generación de imagen próximamente",
+      "hair_transplant_stub_body": "Este espacio recibirá la generación de imagen (antes/después) para planificación de trasplante capilar, preservando la identidad facial. Por ahora es un stub.",
+      "hair_transplant_generate": "Generar simulación",
+      "hair_transplant_coming_soon": "Disponible pronto"
     },
     "inspector": {
       "eyebrow": "Actividad en vivo",
