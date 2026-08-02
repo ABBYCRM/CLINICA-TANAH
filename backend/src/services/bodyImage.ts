@@ -258,12 +258,23 @@ async function startA2e(opts: {
 
 export async function pollA2e(taskId: string): Promise<ImageGenResult> {
   const key = process.env.A2E_API_KEY!;
-  const res = await fetch(`${A2E_BASE}/api/v1/userNanoBanana/detail/${taskId}`, {
-    headers: { Authorization: `Bearer ${key}` },
-  });
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok || json?.code !== 0) {
-    return { provider: 'a2e', taskId, status: 'failed', error: `a2e_poll_${res.status}`, raw: json };
+  let json: any = {};
+  let res: Response | null = null;
+  // Detail endpoint occasionally 404s mid-run — retry briefly
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch(`${A2E_BASE}/api/v1/userNanoBanana/detail/${taskId}`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    json = await res.json().catch(() => ({}));
+    if (res.ok && json?.code === 0) break;
+    if (res.status === 404 || res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      continue;
+    }
+    break;
+  }
+  if (!res || !res.ok || json?.code !== 0) {
+    return { provider: 'a2e', taskId, status: 'failed', error: `a2e_poll_${res?.status || 'err'}`, raw: json };
   }
   const data = json.data || {};
   const status = String(data.current_status || data.status || '').toLowerCase();
@@ -539,6 +550,72 @@ print((s / n / 255.0) if n else 1.0)
     const v = Number(String(res.stdout || '').trim());
     return Number.isFinite(v) ? v : null;
   } catch {
+    return null;
+  }
+}
+
+/**
+ * After generative img2img, restore architecture from BEFORE outside the person mask.
+ * Prevents wavy doors/cabinets when the model liquifies the frame.
+ * Requires rembg + OpenCV at runtime; returns null when unavailable.
+ */
+export function lockArchitectureFromBefore(
+  referencePath: string,
+  afterBytes: Buffer,
+): Buffer | null {
+  try {
+    const { spawnSync } = require('child_process') as typeof import('child_process');
+    const tmpAfter = `${referencePath}.gen-after-${process.pid}-${Date.now()}.jpg`;
+    const tmpOut = `${referencePath}.arch-lock-${process.pid}-${Date.now()}.jpg`;
+    fs.writeFileSync(tmpAfter, afterBytes);
+    const py = `
+import sys
+try:
+  from rembg import remove
+  import cv2
+  import numpy as np
+  from PIL import Image, ImageFilter
+except Exception as e:
+  print('deps_unavailable:' + str(e), file=sys.stderr)
+  sys.exit(2)
+
+before = Image.open(sys.argv[1]).convert('RGB')
+after = Image.open(sys.argv[2]).convert('RGB').resize(before.size, Image.Resampling.LANCZOS)
+w, h = before.size
+cut = remove(before)
+alpha = cut.split()[-1]
+# Dilate + feather person mask so garment edges stay from AFTER
+mask = alpha.filter(ImageFilter.MaxFilter(11)).filter(ImageFilter.GaussianBlur(2))
+m = np.asarray(mask).astype(np.float32) / 255.0
+# Hard lock: outside person → exact BEFORE pixels (doors, cabinets, floor stay straight)
+person = m > 0.12
+arr_b = np.asarray(before).astype(np.float32)
+arr_a = np.asarray(after).astype(np.float32)
+feather = np.asarray(alpha.filter(ImageFilter.GaussianBlur(2))).astype(np.float32) / 255.0
+out = arr_b.copy()
+# Soft composite only inside person footprint
+blend = arr_a * feather[:, :, None] + arr_b * (1.0 - feather[:, :, None])
+out[person] = blend[person]
+# Never-person pixels stay byte-identical to before
+Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)).save(sys.argv[3], 'JPEG', quality=93, optimize=True)
+print('ok')
+`;
+    const res = spawnSync(
+      'python3',
+      ['-c', py, referencePath, tmpAfter, tmpOut],
+      { encoding: 'utf8', timeout: 120_000 },
+    );
+    try { fs.unlinkSync(tmpAfter); } catch { /* */ }
+    if (res.status !== 0 || !fs.existsSync(tmpOut)) {
+      try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch { /* */ }
+      if (res.stderr) console.warn('[arch_lock]', String(res.stderr).slice(0, 300));
+      return null;
+    }
+    const bytes = fs.readFileSync(tmpOut);
+    try { fs.unlinkSync(tmpOut); } catch { /* */ }
+    return bytes;
+  } catch (e: any) {
+    console.warn('[arch_lock] exception', e?.message || e);
     return null;
   }
 }

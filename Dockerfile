@@ -22,11 +22,15 @@ ENV NODE_ENV=production
 ENV PORT=10000
 ENV DB_DIR=/data
 
-# Local silhouette morph + before/after similarity checks (bodyImage.ts)
+# Local silhouette morph + architecture lock (rembg person mask) + before/after checks
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-pil \
- && rm -rf /var/lib/apt/lists/* \
- && python3 -c "from PIL import Image; print('pil_ok')"
+ && apt-get install -y --no-install-recommends \
+      python3 python3-pil python3-opencv python3-pip \
+ && pip3 install --no-cache-dir --break-system-packages 'rembg[cpu]' onnxruntime \
+ && python3 -c "from PIL import Image; print('pil_ok')" \
+ && python3 -c "import cv2; print('cv2_ok', cv2.__version__)" \
+ && python3 -c "from rembg import new_session; new_session('u2net'); print('rembg_ok')" \
+ && rm -rf /var/lib/apt/lists/* /root/.cache/pip
 
 RUN mkdir -p /data /app/seed-data && chown -R node:node /data /app
 

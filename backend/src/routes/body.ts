@@ -24,6 +24,7 @@ import {
   fetchProviderImageBytes,
   generateBodyScenarioImage,
   imageProvidersStatus,
+  lockArchitectureFromBefore,
   morphGuidanceFromEnvelope,
   pollA2e,
   retainBodyPhotoCopy,
@@ -397,6 +398,23 @@ async function generateAndPersistOneView(opts: {
       || result.provider === 'bitdeer'
       || String(result.provider).startsWith('gemini')
       || String(result.provider).startsWith('a2e');
+    // Restore straight doors/cabinets from BEFORE outside the person silhouette
+    if (generative) {
+      const locked = lockArchitectureFromBefore(opts.referencePath, imageBytes);
+      if (locked?.length) {
+        imageBytes = locked;
+        providerLabel = `${result.provider}+bg_lock` as any;
+        result = {
+          ...result,
+          imageBytes,
+          provider: providerLabel,
+          raw: {
+            ...(typeof result.raw === 'object' && result.raw ? result.raw as object : {}),
+            architecture_locked: true,
+          },
+        };
+      }
+    }
     const enforced = enforceAfterReflectsMath({
       referencePath: opts.referencePath,
       afterBytes: imageBytes,
