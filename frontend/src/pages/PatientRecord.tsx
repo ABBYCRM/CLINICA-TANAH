@@ -476,6 +476,27 @@ export default function PatientRecord() {
     }
   };
 
+  const emailDocument = async (doc: any) => {
+    if (!id || !doc?.id) return;
+    setDocBusy(true);
+    setDocMsg('');
+    try {
+      const res = await api.post(`/api/patients/${id}/documents/${doc.id}/email`, {});
+      setDocMsg(t('patients.workspace.documents_emailed', { to: res.to || patient?.email || '' }));
+    } catch (e: any) {
+      const code = e?.body?.error || e?.error;
+      if (code === 'email_consent_required') {
+        setError(t('patients.workspace.documents_email_consent'));
+      } else if (code === 'patient_email_required') {
+        setError(t('patients.workspace.documents_email_missing'));
+      } else {
+        setError(e?.body?.message || e.message || t('errors.generic'));
+      }
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
   const sendWhatsApp = async () => {
     if (!id || !waDraft.trim()) return;
     setWaBusy(true);
@@ -1198,6 +1219,7 @@ export default function PatientRecord() {
               <div>
                 <h3 className="font-semibold text-sm">{t('patients.workspace.documents_heading')}</h3>
                 <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('patients.workspace.documents_hint')}</p>
+                {docMsg && <p className="text-xs text-[color:var(--ink)] mt-1" data-testid="documents-msg">{docMsg}</p>}
               </div>
 
               <div className="space-y-2 rounded-lg border border-[rgba(176,183,192,0.45)] bg-[color:var(--paper)]/60 p-3" data-testid="workspace-document-form">
@@ -1258,6 +1280,17 @@ export default function PatientRecord() {
                           onClick={() => openAuthedFile(d.download_url.startsWith('http') ? d.download_url : d.download_url)}
                         >
                           {t('patients.workspace.documents_download')}
+                        </button>
+                      )}
+                      {d.can_download && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          disabled={docBusy}
+                          data-testid={`doc-email-${d.id}`}
+                          onClick={() => emailDocument(d)}
+                        >
+                          {t('patients.workspace.documents_email')}
                         </button>
                       )}
                       {d.can_delete && (

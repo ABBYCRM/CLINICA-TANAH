@@ -170,8 +170,13 @@ export default function BodyProntuario({ patientId }: {
         : '';
       setReportMsg(`${t('body.full_report_created')}${imgNote}`);
       await reloadReports();
-      if (res?.html_url) {
+      if (res?.pdf_url) {
+        try { await openAuthHtml(res.pdf_url); } catch { /* list still refreshed */ }
+      } else if (res?.html_url) {
         try { await openAuthHtml(res.html_url); } catch { /* list still refreshed */ }
+      }
+      if (res?.document_id) {
+        setReportMsg((prev) => `${prev} · ${t('body.full_report_in_documents')}`);
       }
     } catch (e: any) {
       setReportMsg(e?.message || t('errors.generic'));
@@ -583,25 +588,52 @@ export default function BodyProntuario({ patientId }: {
                       {r.next_follow_up_date ? ` · FU ${r.next_follow_up_date}` : ''}
                     </span>
                   </span>
-                  <button
-                    type="button"
-                    className="btn-secondary text-xs"
-                    data-testid={`body-report-open-${r.id}`}
-                    onClick={async () => {
-                      try {
-                        await openAuthHtml(
-                          r.html_url
-                          || (r.kind === 'clinical_full' || !r.scenario_id
-                            ? `/api/clinical/body/clinical-reports/${r.id}/html`
-                            : `/api/clinical/body/reports/${r.id}/html`),
-                        );
-                      } catch (e: any) {
-                        setError(e?.message || t('errors.generic'));
-                      }
-                    }}
-                  >
-                    HTML
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    {(r.kind === 'clinical_full' || !r.scenario_id) && (
+                      <button
+                        type="button"
+                        className="btn-primary text-xs"
+                        data-testid={`body-report-pdf-${r.id}`}
+                        onClick={async () => {
+                          try {
+                            await openAuthHtml(
+                              r.pdf_url || `/api/clinical/body/clinical-reports/${r.id}/pdf`,
+                            );
+                          } catch (e: any) {
+                            // Fall back to HTML if PDF not present yet
+                            try {
+                              await openAuthHtml(
+                                r.html_url || `/api/clinical/body/clinical-reports/${r.id}/html`,
+                              );
+                            } catch (e2: any) {
+                              setError(e2?.message || e?.message || t('errors.generic'));
+                            }
+                          }
+                        }}
+                      >
+                        PDF
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      data-testid={`body-report-open-${r.id}`}
+                      onClick={async () => {
+                        try {
+                          await openAuthHtml(
+                            r.html_url
+                            || (r.kind === 'clinical_full' || !r.scenario_id
+                              ? `/api/clinical/body/clinical-reports/${r.id}/html`
+                              : `/api/clinical/body/reports/${r.id}/html`),
+                          );
+                        } catch (e: any) {
+                          setError(e?.message || t('errors.generic'));
+                        }
+                      }}
+                    >
+                      HTML
+                    </button>
+                  </div>
                 </li>
               ))}
               {!reports.length && (

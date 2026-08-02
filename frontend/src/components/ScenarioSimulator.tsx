@@ -545,6 +545,7 @@ export default function ScenarioSimulator({
         <p className="text-sm text-[color:var(--ink)] leading-relaxed">
           {t('body.sim_generate_panel_hint')}
         </p>
+        <p className="text-[11px] text-[color:var(--ink-muted)]">{t('body.sim_prontuario_context')}</p>
       </div>
 
       {!simulationsAllowed && (

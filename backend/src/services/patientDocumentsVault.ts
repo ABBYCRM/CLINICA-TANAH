@@ -14,6 +14,7 @@ export type DocSource =
   | 'invoice'
   | 'body_report'
   | 'body_clinical_report'
+  | 'body_composition_note'
   | 'form';
 
 export type UnifiedDoc = {
@@ -419,6 +420,7 @@ function originLabel(source: string): string {
     case 'invoice': return 'Fatura';
     case 'body_report': return 'Relatório Corpo';
     case 'body_clinical_report': return 'Relatório clínico';
+    case 'body_composition_note': return 'Nota composição';
     case 'form': return 'Formulário';
     default: return source;
   }

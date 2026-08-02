@@ -74,6 +74,12 @@ export function mailtoUrl(args: { to: string; subject: string; body: string }): 
   return `mailto:${encodeURIComponent(args.to)}?subject=${encodeURIComponent(args.subject)}&body=${encodeURIComponent(args.body)}`;
 }
 
+export type MailAttachment = {
+  filename: string;
+  content: Buffer | string;
+  contentType?: string;
+};
+
 async function sendViaResend(args: {
   to: string;
   subject: string;
@@ -82,6 +88,7 @@ async function sendViaResend(args: {
   from: string;
   headers?: Record<string, string>;
   tags?: Array<{ name: string; value: string }>;
+  attachments?: MailAttachment[];
 }): Promise<MailResult> {
   const apiKey = (process.env.RESEND_API_KEY || '').trim();
   if (!apiKey) {
@@ -100,6 +107,15 @@ async function sendViaResend(args: {
     };
     if (replyTo) payload.reply_to = replyTo;
     if (args.headers && Object.keys(args.headers).length) payload.headers = args.headers;
+    if (args.attachments?.length) {
+      payload.attachments = args.attachments.map((a) => ({
+        filename: a.filename,
+        content: Buffer.isBuffer(a.content)
+          ? a.content.toString('base64')
+          : Buffer.from(String(a.content)).toString('base64'),
+        content_type: a.contentType || undefined,
+      }));
+    }
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -108,7 +124,7 @@ async function sendViaResend(args: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(30_000),
     });
     const body: any = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -142,6 +158,7 @@ async function sendViaSmtp(args: {
   text: string;
   html?: string;
   from: string;
+  attachments?: MailAttachment[];
 }): Promise<MailResult> {
   if (!process.env.SMTP_HOST) {
     return { ok: false, configured: false, provider: null, error: 'smtp_not_configured' };
@@ -165,6 +182,11 @@ async function sendViaSmtp(args: {
       text: args.text,
       html: args.html || undefined,
       replyTo,
+      attachments: (args.attachments || []).map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType,
+      })),
       headers: {
         'X-Auto-Response-Suppress': 'OOF, AutoReply',
       },
@@ -187,6 +209,7 @@ export async function sendEmail(args: {
   html?: string;
   headers?: Record<string, string>;
   tags?: Array<{ name: string; value: string }>;
+  attachments?: MailAttachment[];
 }): Promise<MailResult> {
   const from = resolveFromAddress();
   const fallbackMailto = mailtoUrl({ to: args.to, subject: args.subject, body: args.text });

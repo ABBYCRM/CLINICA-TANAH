@@ -919,4 +919,5 @@ export function ensureClinicalReportsTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_body_clinical_reports_patient
       ON body_clinical_reports(tenant_id, patient_id, created_at);
   `);
+  try { db.exec(`ALTER TABLE body_clinical_reports ADD COLUMN pdf_path TEXT`); } catch { /* exists */ }
 }

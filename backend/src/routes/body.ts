@@ -57,6 +57,11 @@ import {
   renderClinicalReportHtml,
   writeClinicalReportHtml,
 } from '../services/clinicalFullReport';
+import {
+  buildCompositionDossierPdf,
+  collectBodyProntuarioForDossier,
+  writeCompositionDossierPdf,
+} from '../services/compositionDossierPdf';
 import { uploadsRoot } from '../services/nvidiaOcr';
 
 function ageFromBirthDate(birth?: string | null): number | null {
@@ -796,6 +801,33 @@ router.get('/clinical-reports/:reportId/html', requireRole(...CLINICAL_ROLES), (
   fs.createReadStream(row.html_path).pipe(res);
 });
 
+/** Full clinical dossier PDF (auth-only) — patient-facing Documentos artifact */
+router.get('/clinical-reports/:reportId/pdf', requireRole(...CLINICAL_ROLES), (req: Request, res: Response) => {
+  if (!requireClinical(req, res)) return;
+  ensureClinicalReportsTable(db);
+  const row = db.prepare(`
+    SELECT * FROM body_clinical_reports WHERE id = ? AND tenant_id = ?
+  `).get(req.params.reportId, req.tenantId) as any;
+  if (!row?.pdf_path || !fs.existsSync(row.pdf_path)) {
+    res.status(404).json({ error: 'not_found' });
+    return;
+  }
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'view_clinical_full_report_pdf', resourceType: 'body_clinical_report', resourceId: row.id,
+    afterValue: { patient_id: row.patient_id },
+    legalBasis: 'health_protection_art7_VIII',
+  });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${encodeURIComponent(String(row.title || 'relatorio-clinico').replace(/\s+/g, '-') + '.pdf')}"`,
+  );
+  res.setHeader('Cache-Control', 'private, max-age=60');
+  fs.createReadStream(row.pdf_path).pipe(res);
+});
+
 router.post('/scenarios/:scenarioId/reviews', requireRole('doctor', 'admin'), (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
   const scenario = db.prepare(`
@@ -1396,7 +1428,10 @@ router.get('/:patientId/reports', requireRole(...CLINICAL_ROLES), (req: Request,
   const clinicalReports = db.prepare(`
     SELECT id, NULL AS scenario_id, signature_name, next_follow_up_date, status, created_by, created_at,
            kind, title,
-           '/api/clinical/body/clinical-reports/' || id || '/html' AS html_url
+           '/api/clinical/body/clinical-reports/' || id || '/html' AS html_url,
+           CASE WHEN pdf_path IS NOT NULL AND pdf_path != ''
+             THEN '/api/clinical/body/clinical-reports/' || id || '/pdf'
+             ELSE NULL END AS pdf_url
     FROM body_clinical_reports
     WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
@@ -1414,7 +1449,10 @@ router.get('/:patientId/clinical-reports', requireRole(...CLINICAL_ROLES), (req:
   ensureClinicalReportsTable(db);
   const reports = db.prepare(`
     SELECT id, kind, title, signature_name, next_follow_up_date, status, created_by, created_at,
-           '/api/clinical/body/clinical-reports/' || id || '/html' AS html_url
+           '/api/clinical/body/clinical-reports/' || id || '/html' AS html_url,
+           CASE WHEN pdf_path IS NOT NULL AND pdf_path != ''
+             THEN '/api/clinical/body/clinical-reports/' || id || '/pdf'
+             ELSE NULL END AS pdf_url
     FROM body_clinical_reports
     WHERE tenant_id = ? AND patient_id = ?
     ORDER BY created_at DESC LIMIT 50
@@ -1422,7 +1460,7 @@ router.get('/:patientId/clinical-reports', requireRole(...CLINICAL_ROLES), (req:
   res.json({ reports });
 });
 
-router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admin'), (req: Request, res: Response) => {
+router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admin'), async (req: Request, res: Response) => {
   if (!requireClinical(req, res)) return;
   const patient = patientInTenant(req.params.patientId, req.tenantId!);
   if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
@@ -1471,20 +1509,75 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
   });
   const title = parsed.data.title?.trim()
     || `Relatório clínico completo — ${patient.full_name || patient.id}`;
+
+  // Medical-grade PDF for Documentos / patient email
+  const bodyRows = collectBodyProntuarioForDossier(db, req.tenantId!, patient.id);
+  const latestScenario = db.prepare(`
+    SELECT horizon_weeks, weeks, execution_plan FROM body_scenarios
+    WHERE tenant_id = ? AND patient_id = ? AND status IN ('completed','ready')
+    ORDER BY created_at DESC LIMIT 1
+  `).get(req.tenantId, patient.id) as any;
+  let doctorLoss: number | null = null;
+  let targetWeight: number | null = null;
+  let scenarioSummary: string | null = null;
+  try {
+    const plan = latestScenario?.execution_plan ? JSON.parse(latestScenario.execution_plan) : null;
+    doctorLoss = plan?.doctor_predicted_loss_kg ?? null;
+    targetWeight = plan?.target_weight_kg ?? plan?.projected?.weight_kg ?? null;
+    scenarioSummary = plan?.summary || null;
+  } catch { /* */ }
+
+  let pdfPath: string | null = null;
+  try {
+    const pdfBuf = await buildCompositionDossierPdf({
+      clinicName: 'Clínica Tanah',
+      patient: {
+        id: patient.id,
+        full_name: patient.full_name,
+        birth_date: patient.birth_date,
+        gender: patient.gender,
+        phone: patient.phone,
+        email: patient.email,
+        health_insurance: patient.health_insurance,
+      },
+      measurement: bodyRows.measurement,
+      medications: bodyRows.medications,
+      nutritionPlans: bodyRows.nutritionPlans,
+      exercisePlans: bodyRows.exercisePlans,
+      doctorPredictedLossKg: doctorLoss,
+      targetWeightKg: targetWeight,
+      scenarioSummary,
+      scenarioHorizonWeeks: latestScenario?.horizon_weeks || latestScenario?.weeks || null,
+      signatureName: parsed.data.signature_name,
+      nextFollowUpDate: parsed.data.next_follow_up_date,
+      generatedBy: (req.user as any).full_name || req.user!.email,
+      kind: 'clinical_full',
+      title,
+    });
+    pdfPath = writeCompositionDossierPdf({
+      tenantId: req.tenantId!,
+      patientId: patient.id,
+      reportId: id,
+      buffer: pdfBuf,
+    });
+  } catch { /* PDF optional — HTML still saved */ }
+
   db.prepare(`
     INSERT INTO body_clinical_reports
-      (id, tenant_id, patient_id, kind, title, signature_name, next_follow_up_date, include_json, html_path, status, created_by)
-    VALUES (?, ?, ?, 'clinical_full', ?, ?, ?, ?, ?, 'ready', ?)
+      (id, tenant_id, patient_id, kind, title, signature_name, next_follow_up_date, include_json, html_path, pdf_path, status, created_by)
+    VALUES (?, ?, ?, 'clinical_full', ?, ?, ?, ?, ?, ?, 'ready', ?)
   `).run(
     id, req.tenantId, patient.id, title,
     parsed.data.signature_name, parsed.data.next_follow_up_date ?? null,
-    JSON.stringify(include), htmlPath, req.user!.id,
+    JSON.stringify(include), htmlPath, pdfPath, req.user!.id,
   );
 
   let documentId: string | null = null;
   try {
+    const primaryPath = pdfPath || htmlPath;
+    const isPdf = !!pdfPath;
     let sizeBytes: number | null = null;
-    try { sizeBytes = fs.statSync(htmlPath).size; } catch { /* */ }
+    try { sizeBytes = fs.statSync(primaryPath).size; } catch { /* */ }
     documentId = upsertPatientDocumentPointer(db, {
       tenantId: req.tenantId!,
       patientId: patient.id,
@@ -1493,13 +1586,15 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
       status: 'active',
       source: 'body_clinical_report',
       sourceId: id,
-      notes: `Assinado: ${parsed.data.signature_name}${parsed.data.next_follow_up_date ? ` · Retorno: ${parsed.data.next_follow_up_date}` : ''}`,
+      notes: `Assinado: ${parsed.data.signature_name}${parsed.data.next_follow_up_date ? ` · Retorno: ${parsed.data.next_follow_up_date}` : ''}${isPdf ? ' · PDF' : ''}`,
       createdBy: req.user!.id,
-      mimeType: 'text/html',
-      originalName: `${id}.html`,
-      storagePath: htmlPath,
+      mimeType: isPdf ? 'application/pdf' : 'text/html',
+      originalName: isPdf ? `${id}.pdf` : `${id}.html`,
+      storagePath: primaryPath,
       sizeBytes,
-      fileUrl: `/api/clinical/body/clinical-reports/${id}/html`,
+      fileUrl: isPdf
+        ? `/api/clinical/body/clinical-reports/${id}/pdf`
+        : `/api/clinical/body/clinical-reports/${id}/html`,
     });
     db.prepare(`
       INSERT INTO patient_timeline_events
@@ -1515,6 +1610,7 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
         document_id: documentId,
         signature_name: parsed.data.signature_name,
         images: payload.image_policy,
+        format: isPdf ? 'pdf' : 'html',
       }),
     );
   } catch { /* vault/timeline optional — report HTML still saved */ }
@@ -1528,6 +1624,7 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
       sections: Object.keys(include).length ? include : 'all',
       document_id: documentId,
       images: payload.image_policy,
+      pdf: !!pdfPath,
     },
     legalBasis: 'health_protection_art7_VIII',
   });
@@ -1537,6 +1634,7 @@ router.post('/:patientId/clinical-reports', requireRole('doctor', 'nurse', 'admi
     kind: 'clinical_full',
     title,
     html_url: `/api/clinical/body/clinical-reports/${id}/html`,
+    pdf_url: pdfPath ? `/api/clinical/body/clinical-reports/${id}/pdf` : null,
     document_id: documentId,
     vault: 'patient_documents',
     counts: payload.counts,
@@ -2215,7 +2313,79 @@ router.post('/:patientId/scenarios', requireRole('doctor', 'nurse', 'admin'), as
 
   const scenario = loadScenarioForApi(id);
 
-  res.status(201).json({ id, scenario, execution_plan });
+  // Persist medical PDF note (meds / diet / measures + clinician Δkg) into Documentos
+  let compositionNoteDocumentId: string | null = null;
+  try {
+    if (execution_plan?.doctor_override || doctorLoss || targetWeight) {
+      const bodyRows = collectBodyProntuarioForDossier(db, req.tenantId!, patient.id);
+      const noteTitle = `Nota de composição corporal — ${patient.full_name || patient.id}`;
+      const pdfBuf = await buildCompositionDossierPdf({
+        clinicName: 'Clínica Tanah',
+        patient: {
+          id: patient.id,
+          full_name: patient.full_name,
+          birth_date: patient.birth_date,
+          gender: patient.gender,
+          phone: patient.phone,
+          email: patient.email,
+          health_insurance: patient.health_insurance,
+        },
+        measurement: bodyRows.measurement,
+        medications: bodyRows.medications,
+        nutritionPlans: bodyRows.nutritionPlans,
+        exercisePlans: bodyRows.exercisePlans,
+        doctorPredictedLossKg: execution_plan?.doctor_predicted_loss_kg ?? doctorLoss,
+        targetWeightKg: execution_plan?.target_weight_kg ?? targetWeight,
+        scenarioSummary: execution_plan?.summary || null,
+        scenarioHorizonWeeks: weeks,
+        signatureName: (req.user as any).full_name || req.user!.email,
+        generatedBy: (req.user as any).full_name || req.user!.email,
+        kind: 'composition_note',
+        title: noteTitle,
+      });
+      const noteId = `note_${id}`;
+      const pdfPath = writeCompositionDossierPdf({
+        tenantId: req.tenantId!,
+        patientId: patient.id,
+        reportId: noteId,
+        buffer: pdfBuf,
+      });
+      compositionNoteDocumentId = upsertPatientDocumentPointer(db, {
+        tenantId: req.tenantId!,
+        patientId: patient.id,
+        title: noteTitle,
+        docType: 'composition_note',
+        status: 'active',
+        source: 'body_composition_note',
+        sourceId: id,
+        notes: `Cenário ${id} · Δkg clínico ${execution_plan?.deltas?.weight_kg ?? doctorLoss ?? '—'} · PDF prontuário`,
+        createdBy: req.user!.id,
+        mimeType: 'application/pdf',
+        originalName: `${noteId}.pdf`,
+        storagePath: pdfPath,
+        sizeBytes: pdfBuf.length,
+        fileUrl: `/api/patients/${patient.id}/documents/by-source/body_composition_note/${id}/file`,
+      });
+      db.prepare(`
+        INSERT INTO patient_timeline_events
+          (id, tenant_id, patient_id, kind, title, subtitle, status, meta, occurred_at)
+        VALUES (?, ?, ?, 'document', 'document_composition_note', ?, 'active', ?, datetime('now'))
+      `).run(
+        `pte_cnote_${Date.now().toString(36)}`,
+        req.tenantId,
+        patient.id,
+        noteTitle,
+        JSON.stringify({ scenario_id: id, document_id: compositionNoteDocumentId }),
+      );
+    }
+  } catch { /* note is best-effort */ }
+
+  res.status(201).json({
+    id,
+    scenario,
+    execution_plan,
+    composition_note_document_id: compositionNoteDocumentId,
+  });
 });
 
 async function persistScenarioImage(

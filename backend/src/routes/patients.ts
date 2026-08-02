@@ -33,6 +33,7 @@ import {
   mimeFromName,
   writePatientDocumentFile,
 } from '../services/patientDocumentsVault';
+import { sendEmail } from '../services/mailer';
 import {
   ensurePatientConversation,
   isLive,
@@ -1812,6 +1813,88 @@ router.get('/:id/documents/:docId/file', (req: Request, res: Response) => {
     `inline; filename="${encodeURIComponent(doc.original_name || path.basename(doc.storage_path))}"`,
   );
   fs.createReadStream(doc.storage_path).pipe(res);
+});
+
+/** Email a Documentos file to the patient (PDF/HTML clinical notes). */
+router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
+  const patient = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.id, req.tenantId) as any;
+  if (!patient) { res.status(404).json({ error: 'not_found' }); return; }
+  ensurePatientDocumentsSchema(db);
+  const doc = db.prepare(`
+    SELECT * FROM patient_documents
+    WHERE id = ? AND patient_id = ? AND tenant_id = ? AND deleted_at IS NULL
+  `).get(req.params.docId, req.params.id, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  if (!doc.storage_path || !fs.existsSync(doc.storage_path)) {
+    res.status(404).json({ error: 'file_missing' }); return;
+  }
+
+  const to = String(req.body?.to || patient.email || '').trim();
+  if (!to || !to.includes('@')) {
+    res.status(400).json({ error: 'patient_email_required', message: 'Paciente sem e-mail cadastrado.' });
+    return;
+  }
+  if (!hasActiveConsent('patient', patient.id, 'email_communication')) {
+    res.status(403).json({
+      error: 'email_consent_required',
+      message: 'Consentimento LGPD de comunicação por e-mail necessário.',
+    });
+    return;
+  }
+
+  const clinic = 'Clínica Tanah';
+  const filename = doc.original_name || path.basename(doc.storage_path);
+  const bytes = fs.readFileSync(doc.storage_path);
+  const subject = `${clinic}: ${doc.title || 'documento clínico'}`;
+  const text = [
+    `Prezado(a) ${String(patient.full_name || '').split(/\s+/)[0] || 'paciente'},`,
+    '',
+    `Segue em anexo o documento “${doc.title || filename}” da ${clinic}, para os seus registros e acompanhamento.`,
+    '',
+    'Este envio é transacional (prontuário / evolução clínica). Não se trata de mensagem promocional.',
+    '',
+    'Em caso de dúvidas, responda a este e-mail ou fale com a recepção.',
+    '',
+    `Equipe — ${clinic}`,
+  ].join('\n');
+
+  const sent = await sendEmail({
+    to,
+    subject,
+    text,
+    html: `<p>${text.replace(/\n/g, '<br/>')}</p>`,
+    tags: [
+      { name: 'category', value: 'patient_document' },
+      { name: 'doc_type', value: String(doc.doc_type || 'document').slice(0, 40) },
+    ],
+    attachments: [{
+      filename,
+      content: bytes,
+      contentType: doc.mime_type || mimeFromName(filename),
+    }],
+  });
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'patient_document_email',
+    resourceType: 'patient_document',
+    resourceId: doc.id,
+    afterValue: { to, ok: sent.ok, provider: sent.provider, error: sent.error || null },
+    legalBasis: 'consent_art7_I',
+  });
+
+  if (!sent.ok) {
+    res.status(sent.configured ? 502 : 503).json({
+      error: sent.error || 'mail_failed',
+      mailto_url: sent.mailto_url,
+      configured: sent.configured,
+    });
+    return;
+  }
+  res.json({ ok: true, to, message_id: sent.messageId, provider: sent.provider });
 });
 
 /** Soft-delete a manual vault document, or cancel a clinical attachment. */
