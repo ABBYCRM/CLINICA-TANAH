@@ -457,8 +457,6 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   const clinical = (db.prepare(`
     SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ? AND tenant_id = ?) +
-           (SELECT COUNT(*) FROM body_medications WHERE patient_id = ? AND tenant_id = ?) +
-           (SELECT COUNT(*) FROM body_measurements WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_evolutions WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_vitals WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_exam_orders WHERE patient_id = ? AND tenant_id = ?) +
@@ -469,8 +467,6 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
            (SELECT COUNT(*) FROM clinical_allergies WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_attachments WHERE patient_id = ? AND tenant_id = ?) AS c
   `).get(
-    req.params.id, req.tenantId,
-    req.params.id, req.tenantId,
     req.params.id, req.tenantId,
     req.params.id, req.tenantId,
     req.params.id, req.tenantId,
@@ -1837,8 +1833,7 @@ router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse
     return;
   }
 
-  const clinicalDoc = ['clinical_report', 'composition_note', 'body_report'].includes(String(doc.doc_type || ''))
-    || ['body_clinical_report', 'body_composition_note', 'body_report'].includes(String(doc.source || ''));
+  const clinicalDoc = ['clinical_report', 'composition_note'].includes(String(doc.doc_type || ''));
   const emailOk = hasActiveConsent('patient', patient.id, 'email_communication');
   const healthOk = hasActiveConsent('patient', patient.id, 'health_data_processing');
   // Clinical dossiers may go to the patient file email under health protection / treatment.

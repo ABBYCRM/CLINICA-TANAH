@@ -6,8 +6,6 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { db, initSchema, DEFAULT_TENANT_ID, PRIMARY_USER_ID, PRIMARY_USER_EMAIL, PRIMARY_USER_NAME, PRIMARY_USER_PASSWORD } from './schema';
 import { recordConsent } from '../services/audit';
-import { seedMariaBodyCaptures } from './seedBodyMaria';
-import { seedAnaBodyCaptures } from './seedBodyAna';
 
 initSchema();
 
@@ -45,16 +43,6 @@ db.exec(`
   DELETE FROM prescriptions;
   DELETE FROM encounters;
   DELETE FROM appointments;
-  DELETE FROM body_scenario_reports;
-  DELETE FROM body_quality_events;
-  DELETE FROM body_scenarios;
-  DELETE FROM body_capture_assets;
-  DELETE FROM body_capture_sessions;
-  DELETE FROM body_captures;
-  DELETE FROM body_consents;
-  DELETE FROM body_lifestyle_plans;
-  DELETE FROM body_medications;
-  DELETE FROM body_measurements;
   DELETE FROM patients;
   DELETE FROM settings;
   DELETE FROM tenants;
@@ -123,35 +111,7 @@ for (const p of patientData) {
 }
 console.log(`  ✓ ${patientData.length} patients with LGPD consent`);
 
-// Maria Aparecida — 4-view body capture set for scenario before/after testing
-{
-  const mariaIdx = patientData.findIndex((p) => p.full_name === 'Maria Aparecida Silva');
-  if (mariaIdx >= 0) {
-    const seeded = seedMariaBodyCaptures(db, {
-      tenantId: T,
-      patientId: patientIds[mariaIdx],
-      createdBy: julianaId,
-    });
-    if (seeded) {
-      console.log(`  ✓ Maria body capture session (${seeded.views.join('/')})`);
-    }
-  }
-}
 
-// Ana Beatriz Lima — 4-view overweight baseline for image-gen testing
-{
-  const anaIdx = patientData.findIndex((p) => p.full_name === 'Ana Beatriz Lima');
-  if (anaIdx >= 0) {
-    const seeded = seedAnaBodyCaptures(db, {
-      tenantId: T,
-      patientId: patientIds[anaIdx],
-      createdBy: julianaId,
-    });
-    if (seeded) {
-      console.log(`  ✓ Ana body capture session (${seeded.views.join('/')})`);
-    }
-  }
-}
 
 // VENDORS — distributors, labs, suppliers
 const vendorData = [

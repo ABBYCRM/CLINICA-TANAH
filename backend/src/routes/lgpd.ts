@@ -120,7 +120,6 @@ router.get('/security-posture', requireRole('admin', 'dpo'), (_req, res) => {
     retention: {
       encounters_prescriptions_soft_cancel: true,
       appointments_cancel_not_hard_delete: true,
-      body_medications_discontinue_not_hard_delete: true,
       patient_delete_blocked_with_clinical: true,
       lgpd_deletion_anonymizes_identity: true,
       cfm_years: 20,

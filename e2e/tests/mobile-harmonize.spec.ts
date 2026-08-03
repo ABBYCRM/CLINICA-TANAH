@@ -123,19 +123,17 @@ test.describe('Mobile harmonize — all routes', () => {
     });
   }
 
-  test('patient clinical → corpo capture fits', async () => {
+  test('patient clinical chart tabs fit', async () => {
     pageErrors.length = 0;
     await page.goto('/patients');
     await page.locator('[data-testid^="patient-row-"]').first().click();
     await page.waitForURL(/\/patients\//, { timeout: 15_000 });
     await page.getByTestId('workspace-tab-clinical').click();
-    await page.getByTestId('chart-tab-corpo').click();
-    await expect(page.getByTestId('body-capture-studio')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('chart-tab-resumo')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('chart-tab-corpo')).toHaveCount(0);
     await noOverflow(page);
-    // body sub-tabs should scroll, not blow page width
-    await expect(page.getByTestId('body-tab-capture')).toBeVisible();
     expect(pageErrors).toEqual([]);
-    await page.screenshot({ path: path.join(SHOT, 'patient-corpo.png'), fullPage: true });
+    await page.screenshot({ path: path.join(SHOT, 'patient-clinical.png'), fullPage: true });
   });
 
   test('whatsapp tabs cycle without overflow', async () => {

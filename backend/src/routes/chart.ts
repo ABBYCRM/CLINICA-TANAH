@@ -104,27 +104,6 @@ router.get('/:patientId', requireRole(...CLINICAL), (req: Request, res: Response
     stamp_label: formatStampLabel(pr),
   }));
 
-  const bodyMeds = db.prepare(`
-    SELECT id, name, dosage, class_tag, status, started_at, created_at
-    FROM body_medications
-    WHERE tenant_id = ? AND patient_id = ? AND COALESCE(status,'active') NOT IN ('discontinued','cancelled','inactive')
-    ORDER BY created_at DESC LIMIT 20
-  `).all(req.tenantId, patientId) as any[];
-
-  const latestBody = db.prepare(`
-    SELECT height_cm, weight_kg, waist_cm, recorded_at
-    FROM body_measurements
-    WHERE tenant_id = ? AND patient_id = ?
-    ORDER BY recorded_at DESC LIMIT 1
-  `).get(req.tenantId, patientId) as any;
-  const bodySummary = latestBody ? {
-    ...latestBody,
-    measured_at: latestBody.recorded_at,
-    bmi: (latestBody.height_cm && latestBody.weight_kg)
-      ? Math.round((latestBody.weight_kg / ((latestBody.height_cm / 100) ** 2)) * 10) / 10
-      : null,
-  } : null;
-
   const counts = {
     evolutions: (db.prepare(`SELECT COUNT(*) AS c FROM clinical_evolutions WHERE tenant_id=? AND patient_id=? AND status='active'`).get(req.tenantId, patientId) as any).c,
     vitals: (db.prepare(`SELECT COUNT(*) AS c FROM clinical_vitals WHERE tenant_id=? AND patient_id=? AND status='active'`).get(req.tenantId, patientId) as any).c,
@@ -162,8 +141,6 @@ router.get('/:patientId', requireRole(...CLINICAL), (req: Request, res: Response
     recent_evolutions: recentEvolutions,
     open_exam_orders: openExams.map(withStampLabel),
     active_prescriptions: activeRx,
-    body_medications: bodyMeds,
-    body_summary: bodySummary,
     counts,
     compliance: {
       cfm_1638: true,
