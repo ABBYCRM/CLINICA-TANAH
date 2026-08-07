@@ -64,7 +64,8 @@
     "add": "Adicionar",
     "title": "Título",
     "description": "Descrição",
-    "saving": "Salvando…"
+    "saving": "Salvando…",
+    "skip_to_content": "Ir para o conteúdo"
   },
   "auth": {
     "login": "Entrar",

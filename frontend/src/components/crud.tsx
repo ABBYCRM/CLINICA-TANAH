@@ -34,19 +34,24 @@ export function Modal({ title, onClose, children, wide }: {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
       <div className="absolute inset-0 bg-[#1a261e]/50 backdrop-blur-[2px] animate-fade-in" onClick={onClose} />
-      <div className={`relative card w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} max-h-[90vh] overflow-y-auto animate-scale-in`}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`relative card modal-sheet w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} animate-scale-in`}
+      >
         <div
-          className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(63,92,66,0.18)] px-6 py-4"
+          className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(63,92,66,0.18)] px-6 py-4 shrink-0"
           style={{ background: 'linear-gradient(180deg, #f4efe6 0%, #ebe4d8 100%)' }}
         >
-          <h2 className="font-display text-lg font-semibold tracking-tight text-[#3a342c]">{title}</h2>
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[#3a342c] text-balance">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-xl p-1.5 text-[color:var(--ink-muted)] transition-all hover:text-[#3a342c]"
+            className="row-action-btn text-[color:var(--ink-muted)] transition-all hover:text-[#3a342c]"
             style={{
               background: 'linear-gradient(180deg,#f7faf4,#e2ebe0)',
               border: '1px solid rgba(63,92,66,0.2)',
@@ -58,7 +63,7 @@ export function Modal({ title, onClose, children, wide }: {
             </svg>
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="modal-sheet-body p-6">{children}</div>
       </div>
     </div>
   );
@@ -124,13 +129,13 @@ export function RowActions({ onEdit, onDelete, editTestId, deleteTestId, deleteT
     <div className="flex items-center justify-end gap-1">
       {onEdit && (
         <button type="button" onClick={onEdit} title={t('crud.edit')} data-testid={editTestId}
-          className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-clinic-50 hover:text-clinic-700">
+          className="row-action-btn text-slate-400 transition-colors hover:bg-clinic-50 hover:text-clinic-700">
           <IconPencil />
         </button>
       )}
       {onDelete && (
         <button type="button" onClick={onDelete} title={deleteTitle || t('common.delete')} data-testid={deleteTestId}
-          className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600">
+          className="row-action-btn text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600">
           <IconTrash />
         </button>
       )}
@@ -150,9 +155,9 @@ export function FormError({ message }: { message: string }) {
 export function FormActions({ saving, onCancel }: { saving: boolean; onCancel: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="flex justify-end gap-2 pt-2">
+    <div className="form-sticky-actions flex justify-end gap-2">
       <button type="button" onClick={onCancel} className="btn-secondary">{t('common.cancel')}</button>
-      <button type="submit" className="btn-primary" disabled={saving} data-testid="form-submit">
+      <button type="submit" className="btn-primary" disabled={saving} aria-busy={saving || undefined} data-testid="form-submit">
         {saving ? t('common.loading') : t('common.save')}
       </button>
     </div>

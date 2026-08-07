@@ -606,7 +606,7 @@ export default function PatientRecord() {
       {error && <FormError message={error} />}
 
       {/* Sticky patient header */}
-      <header className="aluminum-header rounded-panel px-4 py-4 sm:px-5 space-y-4">
+      <header className="patient-sticky-header aluminum-header rounded-panel px-4 py-4 sm:px-5 space-y-4">
         <div className="crm-record-toolbar">
           <Link to="/patients" className="text-sm font-medium text-[#4a453c] hover:underline shrink-0 leading-none">
             ← {t('patients.back_to_list')}
@@ -674,7 +674,7 @@ export default function PatientRecord() {
           </div>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto border-t border-[#9CA3AF]/50 pt-3 -mb-px" data-testid="workspace-tabs">
+        <div className="crm-tab-rail border-t border-[#9CA3AF]/50 pt-3 -mb-px" data-testid="workspace-tabs">
           {tabs.filter((x) => !x.hide).map((x) => (
             <button
               key={x.id}
