@@ -33,6 +33,7 @@ import {
   mimeFromName,
   writePatientDocumentFile,
 } from '../services/patientDocumentsVault';
+import { sendEmail } from '../services/mailer';
 import {
   ensurePatientConversation,
   isLive,
@@ -456,8 +457,6 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
   const clinical = (db.prepare(`
     SELECT (SELECT COUNT(*) FROM encounters WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM prescriptions WHERE patient_id = ? AND tenant_id = ?) +
-           (SELECT COUNT(*) FROM body_medications WHERE patient_id = ? AND tenant_id = ?) +
-           (SELECT COUNT(*) FROM body_measurements WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_evolutions WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_vitals WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_exam_orders WHERE patient_id = ? AND tenant_id = ?) +
@@ -468,8 +467,6 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
            (SELECT COUNT(*) FROM clinical_allergies WHERE patient_id = ? AND tenant_id = ?) +
            (SELECT COUNT(*) FROM clinical_attachments WHERE patient_id = ? AND tenant_id = ?) AS c
   `).get(
-    req.params.id, req.tenantId,
-    req.params.id, req.tenantId,
     req.params.id, req.tenantId,
     req.params.id, req.tenantId,
     req.params.id, req.tenantId,
@@ -1812,6 +1809,103 @@ router.get('/:id/documents/:docId/file', (req: Request, res: Response) => {
     `inline; filename="${encodeURIComponent(doc.original_name || path.basename(doc.storage_path))}"`,
   );
   fs.createReadStream(doc.storage_path).pipe(res);
+});
+
+/** Email a Documentos file to the email on the patient file. */
+router.post('/:id/documents/:docId/email', requireRole('admin', 'doctor', 'nurse', 'receptionist'), async (req: Request, res: Response) => {
+  const raw = db.prepare(`SELECT * FROM patients WHERE id = ? AND tenant_id = ?`)
+    .get(req.params.id, req.tenantId) as any;
+  if (!raw) { res.status(404).json({ error: 'not_found' }); return; }
+  const patient = revealPatientRow(raw) || raw;
+  ensurePatientDocumentsSchema(db);
+  const doc = db.prepare(`
+    SELECT * FROM patient_documents
+    WHERE id = ? AND patient_id = ? AND tenant_id = ? AND deleted_at IS NULL
+  `).get(req.params.docId, req.params.id, req.tenantId) as any;
+  if (!doc) { res.status(404).json({ error: 'not_found' }); return; }
+  if (!doc.storage_path || !fs.existsSync(doc.storage_path)) {
+    res.status(404).json({ error: 'file_missing' }); return;
+  }
+
+  const to = String(req.body?.to || patient.email || '').trim();
+  if (!to || !to.includes('@')) {
+    res.status(400).json({ error: 'patient_email_required', message: 'Paciente sem e-mail cadastrado no prontuário.' });
+    return;
+  }
+
+  const clinicalDoc = ['clinical_report', 'composition_note'].includes(String(doc.doc_type || ''));
+  const emailOk = hasActiveConsent('patient', patient.id, 'email_communication');
+  const healthOk = hasActiveConsent('patient', patient.id, 'health_data_processing');
+  // Clinical dossiers may go to the patient file email under health protection / treatment.
+  if (!emailOk && !(clinicalDoc && healthOk)) {
+    res.status(403).json({
+      error: 'email_consent_required',
+      message: 'Consentimento LGPD necessário (comunicação por e-mail ou tratamento de dados de saúde).',
+    });
+    return;
+  }
+
+  const clinic = 'Clínica Tanah';
+  const filename = doc.original_name || path.basename(doc.storage_path);
+  const bytes = fs.readFileSync(doc.storage_path);
+  const subject = `${clinic}: ${doc.title || 'relatório clínico'}`;
+  const firstName = String(patient.full_name || '').trim().split(/\s+/)[0] || 'paciente';
+  const text = [
+    `Prezado(a) ${firstName},`,
+    '',
+    `Segue em anexo o documento “${doc.title || filename}”, emitido pela ${clinic}, para os seus registros e acompanhamento clínico.`,
+    '',
+    'Este envio refere-se ao seu prontuário / evolução clínica. Não se trata de mensagem promocional.',
+    '',
+    'Em caso de dúvidas, responda a este e-mail ou fale com a recepção da clínica.',
+    '',
+    `Com cordialidade,`,
+    `Equipe clínica — ${clinic}`,
+  ].join('\n');
+
+  const sent = await sendEmail({
+    to,
+    subject,
+    text,
+    html: `<div style="font-family:Georgia,serif;color:#1a1612;line-height:1.5"><p>${text.replace(/\n/g, '<br/>')}</p></div>`,
+    tags: [
+      { name: 'category', value: 'patient_clinical_document' },
+      { name: 'doc_type', value: String(doc.doc_type || 'document').slice(0, 40) },
+    ],
+    attachments: [{
+      filename,
+      content: bytes,
+      contentType: doc.mime_type || mimeFromName(filename),
+    }],
+  });
+
+  logAudit({
+    tenantId: req.tenantId,
+    actorId: req.user!.id,
+    actorEmail: req.user!.email,
+    action: 'patient_document_email',
+    resourceType: 'patient_document',
+    resourceId: doc.id,
+    afterValue: {
+      to,
+      ok: sent.ok,
+      provider: sent.provider,
+      error: sent.error || null,
+      clinical_doc: clinicalDoc,
+      legal_basis: emailOk ? 'consent_art7_I' : 'health_protection_art7_VIII',
+    },
+    legalBasis: emailOk ? 'consent_art7_I' : 'health_protection_art7_VIII',
+  });
+
+  if (!sent.ok) {
+    res.status(sent.configured ? 502 : 503).json({
+      error: sent.error || 'mail_failed',
+      mailto_url: sent.mailto_url,
+      configured: sent.configured,
+    });
+    return;
+  }
+  res.json({ ok: true, to, message_id: sent.messageId, provider: sent.provider });
 });
 
 /** Soft-delete a manual vault document, or cancel a clinical attachment. */

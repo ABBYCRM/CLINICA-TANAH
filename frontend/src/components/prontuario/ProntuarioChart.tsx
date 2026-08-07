@@ -1,22 +1,21 @@
 /**
- * Full electronic prontuário hub — CFM 1.638/2002 chart sections + body analytics.
- * Nested in patient workspace Clínico tab. Tanah desk UI (not BodyPath).
+ * Full electronic prontuário hub — CFM 1.638/2002 chart sections.
+ * Nested in patient workspace Clínico tab.
  */
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useI18n } from '../../hooks/useI18n';
-import BodyProntuario from '../BodyProntuario';
 
 export type ChartTab =
   | 'resumo' | 'anamnese' | 'evolucoes' | 'soap' | 'vitais'
   | 'exames' | 'procedimentos' | 'problemas' | 'alergias'
-  | 'receitas' | 'corpo' | 'anexos';
+  | 'receitas' | 'anexos';
 
 const CHART_TABS: ChartTab[] = [
   'resumo', 'anamnese', 'evolucoes', 'soap', 'vitais',
   'exames', 'procedimentos', 'problemas', 'alergias',
-  'receitas', 'corpo', 'anexos',
+  'receitas', 'anexos',
 ];
 
 function fmtWhen(v?: string | null, locale = 'pt-BR') {
@@ -62,9 +61,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 export default function ProntuarioChart({
   patientId,
-  patientName,
-  birthDate,
-  gender,
 }: {
   patientId: string;
   patientName?: string;
@@ -124,7 +120,7 @@ export default function ProntuarioChart({
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
   const loadTab = useCallback(async (id: ChartTab) => {
-    if (id === 'corpo' || id === 'resumo') return;
+    if (id === 'resumo') return;
     setError('');
     try {
       if (id === 'evolucoes') {
@@ -255,15 +251,7 @@ export default function ProntuarioChart({
         <div className="mx-4 mt-3 text-sm text-[#8b3a2a] bg-[#f8e8e2] border border-[#e2b8a8] rounded-lg px-3 py-2">{error}</div>
       )}
 
-      {tab === 'corpo' ? (
-        <BodyProntuario
-          patientId={patientId}
-          patientName={patientName}
-          birthDate={birthDate}
-          gender={gender}
-        />
-      ) : (
-        <div className="p-3 sm:p-4 space-y-3 animate-fade-in">
+      <div className="p-3 sm:p-4 space-y-3 animate-fade-in">
           {tab === 'resumo' && summary && (
             <>
               <Panel title={t('chart.resumo_title')} testId="chart-resumo">
@@ -314,17 +302,6 @@ export default function ProntuarioChart({
                   </div>
                   <Stamp label={summary.latest_vitals.stamp_label} />
                   <div className="text-[11px] text-[color:var(--ink-muted)]">{fmtWhen(summary.latest_vitals.recorded_at, locale)}</div>
-                </Panel>
-              )}
-
-              {summary.body_summary && (
-                <Panel title={t('chart.body_metrics')}>
-                  <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                    {summary.body_summary.height_cm != null && <span>{t('body.height')}: {summary.body_summary.height_cm} cm</span>}
-                    {summary.body_summary.weight_kg != null && <span>{t('body.weight')}: {summary.body_summary.weight_kg} kg</span>}
-                    {summary.body_summary.bmi != null && <span>{t('body.bmi')}: {summary.body_summary.bmi}</span>}
-                    {summary.body_summary.waist_cm != null && <span>{t('body.waist')}: {summary.body_summary.waist_cm} cm</span>}
-                  </div>
                 </Panel>
               )}
 
@@ -951,7 +928,6 @@ export default function ProntuarioChart({
             </Panel>
           )}
         </div>
-      )}
     </div>
   );
 }

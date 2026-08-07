@@ -99,7 +99,7 @@ export default function Layout() {
   );
 
   const navList = (onNavigate?: () => void, compact = false) => (
-    <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${compact ? 'px-2' : 'px-3'}`}>
+    <nav className={`flex-1 overflow-y-auto overscroll-contain py-3 space-y-0.5 ${compact ? 'px-2' : 'px-3'}`}>
       {navItems.map(({ to, label, Icon }) => (
         <NavLink
           key={to}
@@ -180,7 +180,11 @@ export default function Layout() {
   } as const;
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-[100dvh] min-h-screen flex">
+      <a href="#main-content" className="skip-link">
+        {t('common.skip_to_content')}
+      </a>
+      <div className="scroll-progress" aria-hidden="true" />
       {/* Desktop sidebar — leather folder */}
       <aside
         data-testid="sidebar"
@@ -252,7 +256,7 @@ export default function Layout() {
             <div className="text-xs text-[#3a342c] truncate hidden sm:block leading-tight mt-0.5">{t('app.address')}</div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5 animate-fade-in">
+        <main id="main-content" className="shell-main flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-5 animate-fade-in">
           <Outlet />
         </main>
       </div>

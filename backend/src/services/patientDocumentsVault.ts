@@ -12,8 +12,6 @@ export type DocSource =
   | 'intake_submission'
   | 'lgpd_consent'
   | 'invoice'
-  | 'body_report'
-  | 'body_clinical_report'
   | 'form';
 
 export type UnifiedDoc = {
@@ -344,67 +342,7 @@ export function listUnifiedPatientDocuments(
     }
   } catch { /* ignore */ }
 
-  // Body scenario reports
-  try {
-    const rows = db.prepare(`
-      SELECT id, signature_name, status, created_at, html_path, scenario_id
-      FROM body_scenario_reports
-      WHERE tenant_id = ? AND patient_id = ?
-      ORDER BY created_at DESC LIMIT 50
-    `).all(tenantId, patientId) as any[];
-    for (const r of rows) {
-      const key = `body_report:${r.id}`;
-      if (seen.has(key)) continue;
-      push({
-        id: `brep_${r.id}`,
-        source: 'body_report',
-        source_id: r.id,
-        title: `Relatório de cenário — ${r.signature_name || r.id.slice(0, 8)}`,
-        doc_type: 'body_report',
-        status: r.status || 'ready',
-        mime_type: 'text/html',
-        size_bytes: null,
-        original_name: null,
-        created_at: r.created_at,
-        notes: r.scenario_id || null,
-        can_download: true,
-        can_delete: false,
-        download_url: `/api/clinical/body/reports/${r.id}/html`,
-        origin_label: originLabel('body_report'),
-      });
-    }
-  } catch { /* ignore */ }
 
-  // Full clinical reports
-  try {
-    const rows = db.prepare(`
-      SELECT id, title, signature_name, status, created_at, kind
-      FROM body_clinical_reports
-      WHERE tenant_id = ? AND patient_id = ?
-      ORDER BY created_at DESC LIMIT 50
-    `).all(tenantId, patientId) as any[];
-    for (const r of rows) {
-      const key = `body_clinical_report:${r.id}`;
-      if (seen.has(key)) continue;
-      push({
-        id: `crep_${r.id}`,
-        source: 'body_clinical_report',
-        source_id: r.id,
-        title: r.title || `Relatório clínico — ${r.signature_name || r.id.slice(0, 8)}`,
-        doc_type: r.kind || 'clinical_full',
-        status: r.status || 'ready',
-        mime_type: 'text/html',
-        size_bytes: null,
-        original_name: null,
-        created_at: r.created_at,
-        notes: null,
-        can_download: true,
-        can_delete: false,
-        download_url: `/api/clinical/body/clinical-reports/${r.id}/html`,
-        origin_label: originLabel('body_clinical_report'),
-      });
-    }
-  } catch { /* ignore */ }
 
   out.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
   return out;
@@ -417,8 +355,6 @@ function originLabel(source: string): string {
     case 'intake_submission': return 'Intake / formulário';
     case 'lgpd_consent': return 'Consentimento LGPD';
     case 'invoice': return 'Fatura';
-    case 'body_report': return 'Relatório Corpo';
-    case 'body_clinical_report': return 'Relatório clínico';
     case 'form': return 'Formulário';
     default: return source;
   }

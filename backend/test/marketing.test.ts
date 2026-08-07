@@ -126,6 +126,35 @@ describe('marketing hub', () => {
     expect(an.body.templates_approved).toBeGreaterThanOrEqual(1);
   });
 
+  it('binds template to automation and sends to audience as campaign', async () => {
+    const tpl = await api('GET', '/whatsapp/templates');
+    expect(tpl.status).toBe(200);
+    const birthday = tpl.body.templates.find((t: any) => t.meta_name === 'tpl_birthday');
+    expect(birthday).toBeTruthy();
+    expect(birthday.suggested_segment).toBe('birthday_month');
+    expect(birthday.suggested_automation_key).toBe('birthday');
+    expect(birthday.automation_id).toBeTruthy();
+
+    const draft = await api('POST', `/whatsapp/templates/${birthday.id}/send`, {
+      audience: 'all_consented',
+      dispatch: false,
+    });
+    expect(draft.status).toBe(201);
+    expect(draft.body.status).toBe('draft');
+    expect(draft.body.campaign_id).toBeTruthy();
+    expect(draft.body.audience_count).toBeGreaterThanOrEqual(1);
+
+    const auto = await api('POST', `/whatsapp/templates/${birthday.id}/automate`, { enable: true });
+    expect(auto.status).toBe(200);
+    expect(auto.body.ok).toBe(true);
+    expect(auto.body.automation.enabled).toBe(1);
+
+    const autos = await api('GET', '/whatsapp/automations');
+    const birthdayAuto = autos.body.automations.find((a: any) => a.key === 'birthday');
+    expect(birthdayAuto.template_id).toBe(birthday.id);
+    expect(birthdayAuto.template_name).toBeTruthy();
+  });
+
   it('runs an enabled automation', async () => {
     const autos = await api('GET', '/whatsapp/automations');
     const welcome = autos.body.automations.find((a: any) => a.key === 'welcome');

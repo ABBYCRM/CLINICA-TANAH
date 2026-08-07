@@ -8,7 +8,7 @@ import { PatientForm } from '../components/PatientForm';
 import ProntuarioChart from '../components/prontuario/ProntuarioChart';
 import TimelineInspector from '../components/TimelineInspector';
 import AppointmentForm from '../components/AppointmentForm';
-import HairTransplantStub from '../components/HairTransplantStub';
+import HairTransplantWorkspace from '../components/HairTransplantWorkspace';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -476,6 +476,27 @@ export default function PatientRecord() {
     }
   };
 
+  const emailDocument = async (doc: any) => {
+    if (!id || !doc?.id) return;
+    setDocBusy(true);
+    setDocMsg('');
+    try {
+      const res = await api.post(`/api/patients/${id}/documents/${doc.id}/email`, {});
+      setDocMsg(t('patients.workspace.documents_emailed', { to: res.to || patient?.email || '' }));
+    } catch (e: any) {
+      const code = e?.body?.error || e?.error;
+      if (code === 'email_consent_required') {
+        setError(t('patients.workspace.documents_email_consent'));
+      } else if (code === 'patient_email_required') {
+        setError(t('patients.workspace.documents_email_missing'));
+      } else {
+        setError(e?.body?.message || e.message || t('errors.generic'));
+      }
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
   const sendWhatsApp = async () => {
     if (!id || !waDraft.trim()) return;
     setWaBusy(true);
@@ -585,7 +606,7 @@ export default function PatientRecord() {
       {error && <FormError message={error} />}
 
       {/* Sticky patient header */}
-      <header className="aluminum-header rounded-panel px-4 py-4 sm:px-5 space-y-4">
+      <header className="patient-sticky-header aluminum-header rounded-panel px-4 py-4 sm:px-5 space-y-4">
         <div className="crm-record-toolbar">
           <Link to="/patients" className="text-sm font-medium text-[#4a453c] hover:underline shrink-0 leading-none">
             ← {t('patients.back_to_list')}
@@ -653,7 +674,7 @@ export default function PatientRecord() {
           </div>
         </div>
 
-        <div className="flex gap-1 overflow-x-auto border-t border-[#9CA3AF]/50 pt-3 -mb-px" data-testid="workspace-tabs">
+        <div className="crm-tab-rail border-t border-[#9CA3AF]/50 pt-3 -mb-px" data-testid="workspace-tabs">
           {tabs.filter((x) => !x.hide).map((x) => (
             <button
               key={x.id}
@@ -854,7 +875,7 @@ export default function PatientRecord() {
           )}
 
           {tab === 'hair_transplant' && patient && (
-            <HairTransplantStub
+            <HairTransplantWorkspace
               patientId={patient.id}
               patientName={patient.social_name || patient.full_name}
             />
@@ -1198,6 +1219,7 @@ export default function PatientRecord() {
               <div>
                 <h3 className="font-semibold text-sm">{t('patients.workspace.documents_heading')}</h3>
                 <p className="text-xs text-[color:var(--ink-muted)] mt-0.5">{t('patients.workspace.documents_hint')}</p>
+                {docMsg && <p className="text-xs text-[color:var(--ink)] mt-1" data-testid="documents-msg">{docMsg}</p>}
               </div>
 
               <div className="space-y-2 rounded-lg border border-[rgba(176,183,192,0.45)] bg-[color:var(--paper)]/60 p-3" data-testid="workspace-document-form">
@@ -1258,6 +1280,17 @@ export default function PatientRecord() {
                           onClick={() => openAuthedFile(d.download_url.startsWith('http') ? d.download_url : d.download_url)}
                         >
                           {t('patients.workspace.documents_download')}
+                        </button>
+                      )}
+                      {d.can_download && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          disabled={docBusy}
+                          data-testid={`doc-email-${d.id}`}
+                          onClick={() => emailDocument(d)}
+                        >
+                          {t('patients.workspace.documents_email')}
                         </button>
                       )}
                       {d.can_delete && (

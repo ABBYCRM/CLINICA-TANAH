@@ -19,6 +19,8 @@ import { getAvailableSlots, getPractitionerLoads } from '../services/availabilit
 import { DEFAULT_TENANT_ID } from '../db/schema';
 import {
   audienceStats, listAudience, marketingAnalytics, runAutomation,
+  linkTemplateAutomations, bindTemplateToAutomation,
+  suggestedSegmentForTemplate, suggestedAutomationKeyForTemplate,
   type AudienceSegment,
 } from '../services/marketing';
 
@@ -875,10 +877,31 @@ router.delete('/campaigns/:id', authenticate, requireRole('admin','receptionist'
  * ------------------------------------------------------------------ */
 
 router.get('/templates', authenticate, (req: Request, res: Response) => {
+  linkTemplateAutomations(req.tenantId!);
   const rows = db.prepare(`
-    SELECT * FROM wa_templates WHERE tenant_id = ? ORDER BY category, name
-  `).all(req.tenantId);
-  res.json({ templates: rows });
+    SELECT t.*,
+      a.id AS automation_id,
+      a.key AS automation_key,
+      a.name AS automation_name,
+      a.enabled AS automation_enabled,
+      a.last_run_at AS automation_last_run_at,
+      a.last_sent_count AS automation_last_sent_count
+    FROM wa_templates t
+    LEFT JOIN wa_automations a ON a.template_id = t.id AND a.tenant_id = t.tenant_id
+    WHERE t.tenant_id = ?
+    ORDER BY t.category, t.name
+  `).all(req.tenantId) as any[];
+  const stats = audienceStats(req.tenantId!);
+  const templates = rows.map((tpl) => {
+    const suggested_segment = suggestedSegmentForTemplate(tpl);
+    return {
+      ...tpl,
+      suggested_segment,
+      suggested_automation_key: suggestedAutomationKeyForTemplate(tpl),
+      audience_count: stats.segments[suggested_segment] ?? 0,
+    };
+  });
+  res.json({ templates, segments: stats.segments });
 });
 
 router.post('/templates', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
@@ -924,6 +947,13 @@ router.put('/templates/:id', authenticate, requireRole('admin','receptionist'), 
     UPDATE wa_templates SET name=?, category=?, body=?, header=?, footer=?, status=?, meta_name=?, updated_at=datetime('now')
     WHERE id=? AND tenant_id=?
   `).run(name, category, body, header, footer, status, meta_name, req.params.id, req.tenantId);
+  // Keep bound automation message in sync when body changes
+  if (body !== existing.body) {
+    db.prepare(`
+      UPDATE wa_automations SET message = ?, updated_at = datetime('now')
+      WHERE template_id = ? AND tenant_id = ?
+    `).run(body, req.params.id, req.tenantId);
+  }
   res.json({ ok: true });
 });
 
@@ -935,9 +965,140 @@ router.delete('/templates/:id', authenticate, requireRole('admin'), (req: Reques
   res.json({ ok: true });
 });
 
+/**
+ * Send template to an audience segment (HubSpot-style campaign from template).
+ * Creates a campaign row; when dispatch=true, sends immediately via WhatsApp text.
+ */
+router.post('/templates/:id/send', authenticate, requireRole('admin','receptionist'), async (req: Request, res: Response) => {
+  const tpl = db.prepare(`SELECT * FROM wa_templates WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!tpl) { res.status(404).json({ error: 'not_found' }); return; }
+  if (tpl.status !== 'approved') { res.status(409).json({ error: 'template_not_approved' }); return; }
+
+  const segment = (req.body?.audience || suggestedSegmentForTemplate(tpl)) as AudienceSegment;
+  const allowed: AudienceSegment[] = [
+    'all_consented', 'recent_30d', 'inactive_90d', 'birthday_month', 'upcoming_7d', 'high_nps',
+  ];
+  if (!allowed.includes(segment)) {
+    res.status(400).json({ error: 'validation', message: 'invalid audience segment' });
+    return;
+  }
+  const dispatch = req.body?.dispatch !== false && req.body?.dispatch !== 0;
+  const campaignName = String(req.body?.name || `${tpl.name} — ${new Date().toLocaleDateString('pt-BR')}`).trim();
+  const category = tpl.category === 'utility' || tpl.category === 'authentication' ? 'utility' : 'marketing';
+  const audience = listAudience(req.tenantId!, segment);
+  const campaignId = uuid();
+
+  db.prepare(`
+    INSERT INTO campaigns (id, tenant_id, name, message, scheduled_for, created_by, audience, template_id, category)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+  `).run(campaignId, req.tenantId, campaignName, tpl.body, req.user!.id, segment, tpl.id, category);
+
+  logAudit({
+    tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'wa_template_campaign_created', resourceType: 'campaign', resourceId: campaignId,
+    afterValue: { template_id: tpl.id, audience: segment, dispatch }, legalBasis: 'consent_art7_I',
+  });
+
+  if (!dispatch) {
+    res.status(201).json({
+      ok: true,
+      campaign_id: campaignId,
+      status: 'draft',
+      audience: segment,
+      audience_count: audience.length,
+      dry_run: !isLive(),
+    });
+    return;
+  }
+
+  db.prepare(`UPDATE campaigns SET status = 'sending' WHERE id = ? AND tenant_id = ?`).run(campaignId, req.tenantId);
+  let sent = 0, failed = 0;
+  const locale = (process.env.DEFAULT_LOCALE as Locale) || 'pt-BR';
+  const footer = category === 'marketing' ? t(locale, 'whatsapp.promo_footer', {}) : '';
+  for (const p of audience) {
+    const firstName = String(p.full_name || '').split(' ')[0] || '';
+    const body = tpl.body.replaceAll('{{name}}', firstName) + footer;
+    const result = await sendTextMessage(p.phone, body, req.tenantId!);
+    if (result.ok) sent++; else failed++;
+  }
+  db.prepare(`
+    UPDATE campaigns SET status = 'sent', sent_count = ?, failed_count = ?, skipped_count = 0,
+      dispatched_at = datetime('now') WHERE id = ? AND tenant_id = ?
+  `).run(sent, failed, campaignId, req.tenantId);
+
+  logAudit({
+    tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'campaign_dispatched', resourceType: 'campaign', resourceId: campaignId,
+    afterValue: { sent, failed, audience: audience.length, segment, template_id: tpl.id },
+    legalBasis: 'consent_art7_I',
+  });
+
+  res.status(201).json({
+    ok: true,
+    campaign_id: campaignId,
+    status: 'sent',
+    audience: segment,
+    audience_count: audience.length,
+    sent,
+    failed,
+    dry_run: !isLive(),
+  });
+});
+
+/**
+ * Bind template to an automation trigger (HubSpot "publish for automation").
+ * Body: { automation_id?: string, enable?: boolean }
+ * If automation_id omitted, uses the suggested automation for this template's meta_name.
+ */
+router.post('/templates/:id/automate', authenticate, requireRole('admin','receptionist'), (req: Request, res: Response) => {
+  const tpl = db.prepare(`SELECT * FROM wa_templates WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
+  if (!tpl) { res.status(404).json({ error: 'not_found' }); return; }
+  if (tpl.status !== 'approved') { res.status(409).json({ error: 'template_not_approved' }); return; }
+
+  let automationId = req.body?.automation_id as string | undefined;
+  if (!automationId) {
+    const key = suggestedAutomationKeyForTemplate(tpl);
+    if (!key) {
+      res.status(400).json({ error: 'no_suggested_automation', message: 'Pick an automation_id for this template' });
+      return;
+    }
+    const auto = db.prepare(`
+      SELECT id FROM wa_automations WHERE tenant_id = ? AND key = ?
+    `).get(req.tenantId, key) as any;
+    if (!auto) { res.status(404).json({ error: 'automation_not_found', key }); return; }
+    automationId = auto.id;
+  }
+
+  const enable = req.body?.enable !== undefined ? Boolean(req.body.enable) : true;
+  const result = bindTemplateToAutomation({
+    tenantId: req.tenantId!,
+    templateId: tpl.id,
+    automationId: automationId!,
+    enable,
+  });
+  if (!result.ok) {
+    res.status(result.error === 'automation_not_found' || result.error === 'template_not_found' ? 404 : 409).json(result);
+    return;
+  }
+
+  const auto = db.prepare(`
+    SELECT id, key, name, enabled, template_id FROM wa_automations WHERE id = ? AND tenant_id = ?
+  `).get(automationId, req.tenantId);
+
+  logAudit({
+    tenantId: req.tenantId, actorId: req.user!.id, actorEmail: req.user!.email,
+    action: 'wa_template_bound_automation', resourceType: 'wa_template', resourceId: tpl.id,
+    afterValue: { automation_id: automationId, enable }, legalBasis: 'legitimate_interest_art7_VI',
+  });
+
+  res.json({ ok: true, automation: auto });
+});
+
 router.get('/automations', authenticate, (req: Request, res: Response) => {
+  linkTemplateAutomations(req.tenantId!);
   const rows = db.prepare(`
-    SELECT a.*, t.name AS template_name FROM wa_automations a
+    SELECT a.*, t.name AS template_name, t.meta_name AS template_meta_name
+    FROM wa_automations a
     LEFT JOIN wa_templates t ON t.id = a.template_id
     WHERE a.tenant_id = ? ORDER BY a.name
   `).all(req.tenantId);
@@ -948,8 +1109,14 @@ router.put('/automations/:id', authenticate, requireRole('admin','receptionist')
   const existing = db.prepare(`SELECT * FROM wa_automations WHERE id = ? AND tenant_id = ?`).get(req.params.id, req.tenantId) as any;
   if (!existing) { res.status(404).json({ error: 'not_found' }); return; }
   const enabled = req.body?.enabled !== undefined ? (req.body.enabled ? 1 : 0) : existing.enabled;
-  const message = req.body?.message ?? existing.message;
+  let message = req.body?.message ?? existing.message;
   const template_id = req.body?.template_id !== undefined ? req.body.template_id : existing.template_id;
+  if (req.body?.template_id) {
+    const tpl = db.prepare(`SELECT body, status FROM wa_templates WHERE id = ? AND tenant_id = ?`).get(req.body.template_id, req.tenantId) as any;
+    if (tpl?.body && tpl.status === 'approved' && req.body?.message === undefined) {
+      message = tpl.body;
+    }
+  }
   const config = req.body?.config !== undefined
     ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config))
     : existing.config;

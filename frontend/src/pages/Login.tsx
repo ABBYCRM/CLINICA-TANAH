@@ -70,7 +70,7 @@ export default function Login() {
   return (
     <div className="login-desk min-h-screen flex">
       {/* Brand panel — leather + wood desk */}
-      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden skeuo-sidebar p-12 text-[#f0e2c8]">
+      <aside className="relative hidden lg:flex lg:w-[46%] xl:w-1/2 flex-col justify-between overflow-hidden skeuo-sidebar spotlight-desk p-12 text-[#f0e2c8]">
         <div
           className="pointer-events-none absolute inset-0 opacity-40 animate-drift"
           style={{
@@ -82,22 +82,21 @@ export default function Login() {
 
         <div className="relative animate-fade-in-down z-[1]">
           <div className="flex items-center gap-4">
-            <LogoMark className="w-12 h-12" />
+            <LogoMark className="w-12 h-12 logo-drop" />
             <div className="text-sm text-[#c9b896]">{t('app.tagline')}</div>
           </div>
         </div>
 
         <div className="relative space-y-6 z-[1]">
-          <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight text-[#f0e2c8] animate-fade-in-up delay-100"
-            style={{ textShadow: '0 2px 12px rgba(0,0,0,0.45)' }}>
+          <h1 className="font-display text-[2.75rem] xl:text-[3.35rem] font-semibold leading-[1.05] tracking-tight text-[#f0e2c8] brass-glow animate-fade-in-up delay-100">
             {t('app.name')}
           </h1>
-          <p className="max-w-md text-[1.05rem] text-[#c9b896] leading-relaxed animate-fade-in-up delay-200">
+          <p className="max-w-md text-[1.05rem] text-[#c9b896] leading-relaxed prose-desk animate-fade-in-up delay-200">
             {t('auth.brand_subtitle')}
           </p>
-          <ul className="space-y-3.5 animate-fade-in-up delay-300">
-            {features.map((f) => (
-              <li key={f.label} className="flex items-center gap-3 text-sm text-[#f0e2c8]">
+          <ul className="space-y-3.5 stagger animate-fade-in-up delay-300">
+            {features.map((f, i) => (
+              <li key={f.label} className="flex items-center gap-3 text-sm text-[#f0e2c8]" style={{ ['--i' as string]: i }}>
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl text-[#2a1f16] border border-[#7a5a22]"
                   style={{
                     background: 'linear-gradient(160deg, #f0d48a, #d4af6a 45%, #a8843d)',
@@ -144,7 +143,7 @@ export default function Login() {
             </div>
           </div>
 
-          <div className="panel-inset relative z-10 animate-fade-in-up p-6 sm:p-8 pointer-events-auto" data-testid="login-card">
+          <div className="panel-inset panel-brass-edge glass-parchment login-form-panel relative z-10 animate-fade-in-up p-6 sm:p-8 pointer-events-auto" data-testid="login-card">
             <div className="mb-6 lg:hidden text-center">
               <h2 className="font-display text-xl font-semibold tracking-tight text-[#3a342c]">{t('auth.welcome')}</h2>
               <p className="mt-1 text-sm text-[color:var(--ink-muted)]">{t('auth.subtitle')}</p>

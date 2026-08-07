@@ -14,6 +14,7 @@ type FormRow = {
   consent_text: string;
   submission_count: number;
   mailer_configured?: boolean;
+  mailer_provider?: 'resend' | 'smtp' | null;
   urls: { link: string; embed: string };
 };
 
@@ -56,6 +57,7 @@ type SendInviteResult = {
   embed?: string;
   mailto_url?: string | null;
   mailer_configured?: boolean;
+  mailer_provider?: 'resend' | 'smtp' | null;
   error?: string | null;
 };
 
@@ -161,11 +163,16 @@ export default function Forms() {
         name: inviteName.trim() || undefined,
       };
       setLastShare(share);
-      if (res.mailto_url) {
+      if (res.mailer_configured != null) setMailerConfigured(Boolean(res.mailer_configured));
+      if (res.status === 'sent' && !res.mailto_url) {
+        setOkMsg(t('forms.invite_sent'));
+      } else if (res.mailto_url) {
         setLastMailto(res.mailto_url);
         setOkMsg(t('forms.invite_mailto_hint'));
+        if (res.status === 'failed' && res.error) setError(String(res.error));
       } else {
         setOkMsg(t('forms.invite_sent_share'));
+        if (res.status === 'failed' && res.error) setError(String(res.error));
       }
       setInviteName('');
       setInviteEmail('');
@@ -184,6 +191,8 @@ export default function Forms() {
         });
         if (body.mailto_url) setLastMailto(body.mailto_url);
         setOkMsg(t('forms.invite_mailto_hint'));
+        if (body.error) setError(String(body.error));
+        if (body.mailer_configured != null) setMailerConfigured(Boolean(body.mailer_configured));
         try {
           const inv = await api.get(`/api/forms/${selectedId}/invites`);
           setInvites(inv.invites || []);
@@ -208,12 +217,25 @@ export default function Forms() {
 
       {error && <FormError message={error} />}
       {okMsg && (
-        <div className="rounded-lg border border-[var(--moss)]/30 bg-[var(--moss)]/10 px-3 py-2 text-sm text-[var(--moss)]" role="status">
+        <div
+          className={`rounded-lg border px-3.5 py-2.5 text-sm font-medium text-[color:var(--ink)] ${
+            lastMailto
+              ? 'border-[color:var(--brass-deep)] bg-[color:var(--paper-mid)]'
+              : 'border-[color:var(--moss)]/50 bg-[color:var(--paper)]'
+            }`}
+          role="status"
+          data-testid="forms-invite-status"
+        >
           {okMsg}
           {lastMailto ? (
             <>
               {' '}
-              <a href={lastMailto} className="underline font-medium text-[var(--ink)]">{t('forms.open_mailto')}</a>
+              <a
+                href={lastMailto}
+                className="underline font-semibold text-[color:var(--ink)] decoration-[color:var(--brass-deep)] underline-offset-2 hover:text-[color:var(--desk-deep)]"
+              >
+                {t('forms.open_mailto')}
+              </a>
             </>
           ) : null}
         </div>
@@ -371,11 +393,12 @@ export default function Forms() {
                     <p className="text-sm text-[var(--ink-muted)] mt-1">{t('forms.send_invite_help')}</p>
                   </div>
                   <span
-                    className={`text-[11px] px-2 py-1 rounded ${
+                    className={`text-[11px] font-semibold px-2 py-1 rounded border ${
                       mailerConfigured
-                        ? 'bg-[var(--moss)]/15 text-[var(--moss)]'
-                        : 'bg-[#8b6914]/12 text-[#6b5210]'
+                        ? 'border-[color:var(--moss)]/45 bg-[color:var(--paper)] text-[color:var(--ink)]'
+                        : 'border-[color:var(--brass-deep)]/55 bg-[color:var(--paper-mid)] text-[color:var(--ink)]'
                     }`}
+                    data-testid="forms-mailer-badge"
                   >
                     {mailerConfigured ? t('forms.mailer_ok') : t('forms.mailer_missing')}
                   </span>

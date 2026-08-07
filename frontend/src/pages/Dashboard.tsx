@@ -87,48 +87,48 @@ export default function Dashboard() {
   return (
     <div className="space-y-7" data-testid="dashboard">
       <header className="max-w-2xl animate-fade-in-down">
-        <h1 className="page-title">
+        <h1 className="page-title display-type">
           {t('dashboard.welcome')}
         </h1>
-        <p className="page-subtitle">
+        <p className="page-subtitle prose-desk">
           {t('app.name')} — {t('app.address')}
         </p>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <section className="cards-autofit stagger">
         {tiles.map((c, i) => (
           <div
             key={c.key}
-            className={`stat-tile tone-${c.tone} animate-fade-in-up`}
-            style={{ animationDelay: `${i * 0.05}s` }}
+            className={`stat-tile card-lift tone-${c.tone}`}
+            style={{ ['--i' as string]: i }}
           >
             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[color:var(--ink-muted)]">{c.label}</p>
-            <p className="mt-3 font-display text-[1.7rem] font-semibold leading-none tracking-tight text-[#3a342c]">
+            <p className="mt-3 font-display text-[1.7rem] font-semibold leading-none tracking-tight text-[#3a342c] metric">
               {c.value}
             </p>
           </div>
         ))}
-        <div className="stat-tile tone-moss animate-fade-in-up delay-300">
+        <div className="stat-tile card-lift tone-moss" style={{ ['--i' as string]: tiles.length }}>
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.07em] text-[color:var(--ink-muted)]">
             {t('dashboard.monthly_revenue')}
           </p>
-          <p className="mt-3 font-display text-[1.45rem] font-semibold leading-none tracking-tight text-[#3a342c]">
+          <p className="mt-3 font-display text-[1.45rem] font-semibold leading-none tracking-tight text-[#3a342c] metric">
             {revenue}
           </p>
         </div>
       </section>
 
-      <section className="card overflow-hidden animate-fade-in-up delay-200">
+      <section className="card panel-brass-edge overflow-hidden animate-fade-in-up delay-200">
         <div
-          className="flex items-center justify-between gap-3 border-b border-[rgba(176,183,192,0.45)] px-5 py-3.5"
+          className="toolbar border-b border-[rgba(176,183,192,0.45)] px-5 py-3.5"
           style={{ background: 'linear-gradient(180deg, #E5E7EB 0%, #D1D5DB 100%)' }}
         >
           <h2 className="font-display text-lg font-semibold text-[#3a342c]">
             {t('dashboard.upcoming_appointments')}
           </h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-auto live-feed">
+          <table className="w-full crm-table">
             <thead>
               <tr>
                 <th className="table-th">{t('appointments.scheduled_at')}</th>
@@ -138,20 +138,20 @@ export default function Dashboard() {
                 <th className="table-th">{t('appointments.status')}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="results" data-empty={t('common.no_data')}>
               {data.upcoming_appointments.length === 0 && (
                 <tr>
                   <td colSpan={5} className="table-td text-center text-[color:var(--ink-muted)] py-8">{t('common.no_data')}</td>
                 </tr>
               )}
               {data.upcoming_appointments.map((a: any, i: number) => (
-                <tr key={i} className="transition-colors hover:bg-[rgba(176,183,192,0.2)]">
-                  <td className="table-td font-medium text-[#3a342c]">{a.scheduled_at}</td>
+                <tr key={i} className="list-row-cv">
+                  <td className="table-td font-medium text-[#3a342c] tabular">{a.scheduled_at}</td>
                   <td className="table-td">{a.patient_name}</td>
                   <td className="table-td">{a.practitioner_name}</td>
                   <td className="table-td">{typeLabel(a.type)}</td>
                   <td className="table-td">
-                    <span className={`badge ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>
+                    <span className={`badge chip-motion ${a.status === 'confirmed' ? 'badge-green' : 'badge-yellow'}`}>
                       {statusLabel(a.status)}
                     </span>
                   </td>
