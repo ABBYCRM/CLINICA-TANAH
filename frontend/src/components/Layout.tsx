@@ -184,6 +184,7 @@ export default function Layout() {
       <a href="#main-content" className="skip-link">
         {t('common.skip_to_content')}
       </a>
+      <div className="scroll-progress" aria-hidden="true" />
       {/* Desktop sidebar — leather folder */}
       <aside
         data-testid="sidebar"

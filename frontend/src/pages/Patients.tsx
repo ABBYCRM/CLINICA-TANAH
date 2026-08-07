@@ -157,14 +157,14 @@ export default function Patients() {
   return (
     <div className="crm-page space-y-3" data-testid="patients-crm">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">{t('patients.title')}</h1>
+      <div className="toolbar page-header">
+        <div className="min-0">
+          <h1 className="page-title display-type">{t('patients.title')}</h1>
           <p className="page-subtitle" data-testid="patients-count">
             {total === 1 ? t('patients.record_one') : t('patients.record_many', { n: total })}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="cluster push-end ms-auto">
           <div className="relative">
             <button type="button" className="btn-secondary" onClick={() => setActionsOpen((v) => !v)} data-testid="patients-actions">
               {t('patients.actions')}
@@ -287,8 +287,8 @@ export default function Patients() {
       </div>
 
       {/* Table */}
-      <div className="card overflow-hidden !rounded-[0.85rem]">
-        <div className="overflow-x-auto">
+      <div className="card panel-brass-edge overflow-hidden !rounded-[0.85rem]">
+        <div className="overflow-x-auto live-feed">
           <table className="w-full crm-table">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -312,7 +312,7 @@ export default function Patients() {
                 <tr><td colSpan={8} className="table-td text-center text-slate-400 py-10">{t('common.no_data')}</td></tr>
               )}
               {patients.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group">
+                <tr key={p.id} className="list-row-cv group">
                   <td className="table-td">
                     <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} aria-label={p.full_name} />
                   </td>
